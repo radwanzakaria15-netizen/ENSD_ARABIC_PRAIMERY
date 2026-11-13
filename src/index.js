@@ -112,8 +112,43 @@ function xmlText(xml, tag) {
     .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'") : "";
 }
 
+function safeFileName(value) {
+  const name = String(value || "document").replace(/[\/\\\u0000-\u001f\u007f]/g, "_").trim().slice(0, 140);
+  return name || "document";
+}
+
+function contentTypeForName(name) {
+  const lower = String(name || "").toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".doc")) return "application/msword";
+  if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  return "application/octet-stream";
+}
+
+function fileInfo(key, size = 0) {
+  if (KEY_PATTERN.test(key)) {
+    return { lessonKey: key, key, name: "محاضرة سابقة.pdf", type: "application/pdf", size: Number(size) || 0, legacy: true };
+  }
+  const slash = key.indexOf("/");
+  if (slash < 0) return null;
+  const lessonKey = key.slice(0, slash);
+  const storedName = key.slice(slash + 1);
+  if (!KEY_PATTERN.test(lessonKey) || /^[\/\\\u0000-\u001f\u007f]/u.test(storedName) || storedName.length > 190) return null;
+  const marker = storedName.indexOf("__");
+  const name = marker >= 0 ? storedName.slice(marker + 2) : storedName;
+  if (!name) return null;
+  const type = contentTypeForName(name);
+  if (type === "application/octet-stream") return null;
+  return { lessonKey, key, name, type, size: Number(size) || 0, legacy: false };
+}
+
+function validStoredKey(key) {
+  if (KEY_PATTERN.test(key)) return true;
+  return Boolean(fileInfo(key));
+}
+
 async function listLessons(env) {
-  const keys = [];
+  const files = [];
   let token = "";
   for (let page = 0; page < 100; page++) {
     const response = await signedB2Request(env, "GET", "", null, {
@@ -123,15 +158,19 @@ async function listLessons(env) {
     });
     if (!response.ok) throw new Error("B2 list failed (" + response.status + "): " + (await response.text()).slice(0, 180));
     const xml = await response.text();
-    for (const match of xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)) {
-      const key = match[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<");
-      if (KEY_PATTERN.test(key)) keys.push(key);
+    for (const match of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+      const block = match[1];
+      const key = xmlText(block, "Key");
+      const size = xmlText(block, "Size");
+      const info = fileInfo(key, size);
+      if (info) files.push(info);
     }
     if (xmlText(xml, "IsTruncated") !== "true") break;
     token = xmlText(xml, "NextContinuationToken");
     if (!token) break;
   }
-  return keys;
+  files.sort((a, b) => a.lessonKey.localeCompare(b.lessonKey) || a.name.localeCompare(b.name, "ar"));
+  return files;
 }
 
 async function handleApi(request, env) {
@@ -156,7 +195,13 @@ async function handleApi(request, env) {
     return json({ error: "method_not_allowed" }, 405);
   }
 
-  if (url.pathname !== "/api/file" || !KEY_PATTERN.test(key)) return json({ error: "not_found" }, 404);
+  if (url.pathname !== "/api/file") return json({ error: "not_found" }, 404);
+  if (request.method === "POST") {
+    if (!KEY_PATTERN.test(key)) return json({ error: "invalid_lesson_key" }, 400);
+  } else if (!validStoredKey(key)) {
+    return json({ error: "not_found" }, 404);
+  }
+
   if (request.method !== "GET" && !isAdmin(request, env)) {
     if (!String(env.ADMIN_CODE || "").trim()) return json({ error: "admin_code_not_configured" }, 503);
     return json({ error: "unauthorized" }, 401);
@@ -164,13 +209,18 @@ async function handleApi(request, env) {
 
   try {
     if (request.method === "GET") {
+      const info = fileInfo(key);
       const response = await signedB2Request(env, "GET", key);
       if (response.status === 404) return json({ error: "not_found" }, 404);
       if (!response.ok) throw new Error("B2 download failed (" + response.status + "): " + (await response.text()).slice(0, 180));
+      const type = info?.type || "application/pdf";
+      const name = info?.name || "document.pdf";
+      const fallback = name.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+      const disposition = type === "application/pdf" && url.searchParams.get("download") !== "1"
+        ? "inline" : "attachment";
       const headers = new Headers({
-        "content-type": "application/pdf",
-        "content-disposition": url.searchParams.get("download") === "1"
-          ? 'attachment; filename="lecture.pdf"' : 'inline; filename="lecture.pdf"',
+        "content-type": type,
+        "content-disposition": disposition + '; filename="' + fallback + '"; filename*=UTF-8\'\'' + encodeRFC3986(name),
         "cache-control": "private, max-age=0, must-revalidate",
         "x-content-type-options": "nosniff",
       });
@@ -180,14 +230,23 @@ async function handleApi(request, env) {
     }
 
     if (request.method === "POST") {
+      const name = safeFileName(url.searchParams.get("name"));
+      const type = contentTypeForName(name);
+      if (type === "application/octet-stream") return json({ error: "unsupported_file_type" }, 400);
       const data = await request.arrayBuffer();
       if (!data.byteLength) return json({ error: "empty_file" }, 400);
       if (data.byteLength > MAX_FILE_SIZE) return json({ error: "file_too_large", limit: MAX_FILE_SIZE }, 413);
-      const signature = new TextDecoder().decode(data.slice(0, 5));
-      if (!signature.startsWith("%PDF-")) return json({ error: "pdf_required" }, 400);
-      const response = await signedB2Request(env, "PUT", key, data, {}, "application/pdf");
+      const bytes = new Uint8Array(data);
+      const pdf = type === "application/pdf" && new TextDecoder().decode(bytes.slice(0, 5)).startsWith("%PDF-");
+      const wordDoc = type === "application/msword" &&
+        bytes.slice(0, 8).every((value, index) => value === [0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][index]);
+      const wordDocx = type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
+        bytes[0] === 0x50 && bytes[1] === 0x4B;
+      if (!(pdf || wordDoc || wordDocx)) return json({ error: "file_type_mismatch" }, 400);
+      const objectKey = key + "/" + crypto.randomUUID() + "__" + name;
+      const response = await signedB2Request(env, "PUT", objectKey, data, {}, type);
       if (!response.ok) throw new Error("B2 upload failed (" + response.status + "): " + (await response.text()).slice(0, 180));
-      return json({ ok: true, key, size: data.byteLength });
+      return json({ ok: true, key: objectKey, lessonKey: key, name, size: data.byteLength });
     }
 
     if (request.method === "DELETE") {
