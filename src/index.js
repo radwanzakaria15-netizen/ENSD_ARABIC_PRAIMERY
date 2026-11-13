@@ -185,9 +185,11 @@ async function handleApi(request, env) {
       : json({ error: "unauthorized" }, 401);
   }
 
-  const hasB2 = env.B2_ENDPOINT && env.B2_BUCKET && env.B2_REGION &&
-    env.B2_KEY_ID && env.B2_APPLICATION_KEY;
-  if (!hasB2) return json({ error: "storage_not_configured" }, 503);
+  const requiredStorageSettings = ["B2_ENDPOINT", "B2_BUCKET", "B2_REGION", "B2_KEY_ID", "B2_APPLICATION_KEY"];
+  const missingStorageSettings = requiredStorageSettings.filter((name) => !String(env[name] || "").trim());
+  if (missingStorageSettings.length) {
+    return json({ error: "storage_not_configured", missing: missingStorageSettings }, 503);
+  }
 
   if (url.pathname === "/api/lessons") {
     if (request.method === "GET") {
