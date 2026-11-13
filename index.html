@@ -941,7 +941,7 @@ function escapeLectureValue(value){
  return String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 }
 function renderPublishedLectures(subjectTitle){
- const lectures=(publishedLecturesBySubject[subjectTitle]||[]).filter(item=>item&&/^https?:\\/\\//i.test(String(item.url||"").trim()));
+ const lectures=(publishedLecturesBySubject[subjectTitle]||[]).filter(item=>item&&new RegExp("^https?://","i").test(String(item.url||"").trim()));
  const heading='<div class="published-lectures-head"><h3>المحاضرات المنشورة</h3><span class="published-lectures-count">'+lectures.length+' محاضرات</span></div>';
  if(!lectures.length){
   return '<section class="published-lectures" aria-label="المحاضرات المنشورة">'+heading+'<div class="published-lectures-empty"><p>لا توجد محاضرات منشورة حالياً</p><small>ستظهر هنا محاضرات هذا المقياس عند نشرها.</small></div></section>';
