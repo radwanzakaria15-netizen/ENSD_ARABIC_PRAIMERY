@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ensd-arabic-praimery",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-13",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "r2_buckets": [
+    {
+      "binding": "LESSONS_BUCKET",
+      "bucket_name": "arabic-primary-lessons"
+    }
+  ]
+}
