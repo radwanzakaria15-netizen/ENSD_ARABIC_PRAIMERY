@@ -31,7 +31,7 @@ export default async (req) => {
           : json({ error: "unauthorized" }, 401);
       }
       if (req.method !== "GET") return json({ error: "method_not_allowed" }, 405);
-      const store = getStore({ name: STORE_NAME, consistency: "strong" });
+      const store = getStore(STORE_NAME);
       const { blobs } = await store.list();
       return json(blobs.map((blob) => blob.key));
     }
@@ -47,16 +47,31 @@ export default async (req) => {
       return json({ error: "unauthorized" }, 401);
     }
 
-    const store = getStore({ name: STORE_NAME, consistency: "strong" });
+    const store = getStore(STORE_NAME);
 
     if (req.method === "GET") {
-      const data = await store.get(key, { type: "arrayBuffer", consistency: "strong" });
-      if (!data) return json({ error: "not_found" }, 404);
-      return new Response(data, {
+      // Stream the PDF directly to the browser instead of buffering the
+      // complete file in the function's memory before sending it.
+      const entry = await store.getWithMetadata(key, { type: "stream" });
+      if (!entry || !entry.data) return json({ error: "not_found" }, 404);
+
+      const etag = entry.etag;
+      if (etag && req.headers.get("if-none-match") === etag) {
+        return new Response(null, {
+          status: 304,
+          headers: { etag, "cache-control": "private, max-age=0, must-revalidate" },
+        });
+      }
+
+      const download = url.searchParams.get("download") === "1";
+      return new Response(entry.data, {
         headers: {
           "content-type": "application/pdf",
-          "content-disposition": 'inline; filename="lecture.pdf"',
-          "cache-control": "no-store",
+          "content-disposition": download
+            ? 'attachment; filename="lecture.pdf"'
+            : 'inline; filename="lecture.pdf"',
+          "cache-control": "private, max-age=0, must-revalidate",
+          ...(etag ? { etag } : {}),
           "x-content-type-options": "nosniff",
         },
       });
