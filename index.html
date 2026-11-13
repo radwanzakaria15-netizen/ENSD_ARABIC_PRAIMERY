@@ -538,6 +538,76 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
  #page-lessons .lesson-subject-card{animation:none!important;transition:none!important}
 }
 </style>
+<style id="lessons-heading-redesign-20261113">
+/* Clearer lessons header; remove the redundant top strip */
+#page-lessons .lessons-topbar{display:none!important}
+#page-lessons .lessons-panel{
+ padding:15px!important;
+ border-radius:24px!important;
+ background:linear-gradient(180deg,#f7faf7 0%,#ffffff 42%)!important;
+ border:1px solid #e2ebe4!important;
+ box-shadow:0 12px 34px rgba(42,75,57,.08)!important;
+}
+#page-lessons .lessons-heading{
+ position:relative!important;
+ display:flex!important;
+ align-items:center!important;
+ justify-content:space-between!important;
+ gap:14px!important;
+ min-height:108px!important;
+ padding:19px 18px!important;
+ margin:0 0 16px!important;
+ border:1px solid rgba(255,255,255,.18)!important;
+ border-radius:19px!important;
+ background:linear-gradient(112deg,#244c43 0%,#376b5a 58%,#62856b 100%)!important;
+ box-shadow:0 9px 22px rgba(38,82,63,.18)!important;
+ overflow:hidden!important;
+}
+#page-lessons .lessons-heading:before{
+ content:""!important;
+ position:absolute!important;
+ width:155px!important;height:155px!important;
+ left:-44px!important;top:-82px!important;
+ border:1px solid rgba(255,255,255,.13)!important;
+ border-radius:50%!important;
+ box-shadow:0 0 0 17px rgba(255,255,255,.035),0 0 0 35px rgba(255,255,255,.025)!important;
+ pointer-events:none!important;
+}
+#page-lessons .lessons-heading>div:first-child{position:relative!important;z-index:1!important}
+#page-lessons .lessons-heading h3{
+ margin:0 0 7px!important;
+ color:#fff!important;
+ font-size:21px!important;
+ font-weight:900!important;
+ line-height:1.5!important;
+}
+#page-lessons .lessons-heading p{
+ margin:0!important;
+ color:rgba(255,255,255,.82)!important;
+ font-size:11px!important;
+ line-height:1.8!important;
+}
+#page-lessons .lessons-total{
+ position:relative!important;z-index:1!important;
+ width:62px!important;height:62px!important;
+ flex:none!important;
+ border:1px solid rgba(255,255,255,.28)!important;
+ border-radius:17px!important;
+ background:rgba(255,255,255,.14)!important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.12)!important;
+ backdrop-filter:blur(5px)!important;
+}
+#page-lessons .lessons-total b{color:#fff!important;font-size:22px!important}
+#page-lessons .lessons-total span{color:rgba(255,255,255,.84)!important;font-size:10px!important}
+@media(max-width:700px){
+ #page-lessons .lessons-panel{padding:11px!important;border-radius:20px!important}
+ #page-lessons .lessons-heading{min-height:101px!important;padding:16px 14px!important;border-radius:16px!important;margin-bottom:13px!important}
+ #page-lessons .lessons-heading h3{font-size:18px!important}
+ #page-lessons .lessons-heading p{font-size:10px!important;max-width:230px!important}
+ #page-lessons .lessons-total{width:55px!important;height:55px!important;border-radius:15px!important}
+}
+</style>
+
 
 </head>
 <body>
