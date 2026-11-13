@@ -946,6 +946,62 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
 }
 </style>
 
+
+<style id="lesson-dialog-editorial-redesign-20261114">
+.lesson-subject-dialog{padding:clamp(10px,2.5vw,26px)!important}
+.lesson-dialog-backdrop{background:rgba(20,29,25,.64)!important;backdrop-filter:blur(8px)!important;-webkit-backdrop-filter:blur(8px)!important}
+.lesson-dialog-panel{width:min(790px,100%)!important;max-height:min(88vh,920px)!important;padding:0!important;overflow:auto!important;overscroll-behavior:contain;border:1px solid #dfe6e0!important;border-radius:22px!important;background:#fff!important;box-shadow:0 30px 90px rgba(8,22,14,.34)!important;scrollbar-width:thin;scrollbar-color:#cbd5cd transparent}
+.lesson-dialog-panel:before{content:"";position:absolute;inset:0 0 auto;height:4px;z-index:2;background:var(--lesson-accent,#6f9277)!important}
+.lesson-dialog-close{position:sticky!important;float:left!important;top:13px!important;z-index:9!important;margin:13px 13px -48px 13px!important;width:36px!important;height:36px!important;border:1px solid #dfe6e0!important;border-radius:11px!important;background:#fff!important;color:#4d6253!important;font-size:22px!important;box-shadow:0 3px 10px rgba(25,45,30,.08)!important}
+.lesson-dialog-close:hover{background:#f0f5f1!important;transform:rotate(90deg)!important}
+.lesson-dialog-kicker{margin:0!important;padding:25px 27px 0!important;color:#718176!important;font-size:11px!important;font-weight:800!important}
+.lesson-dialog-heading{position:relative!important;display:flex!important;align-items:center!important;gap:15px!important;margin:15px 24px 0!important;padding:18px 20px!important;border:0!important;border-right:4px solid var(--lesson-accent,#6f9277)!important;border-radius:0 14px 14px 0!important;background:var(--lesson-bg,#f0f5f1)!important;box-shadow:none!important}
+.lesson-dialog-heading:after{display:none!important}
+.lesson-dialog-symbol{display:grid!important;place-items:center;flex:0 0 52px!important;height:52px!important;border-radius:14px!important;background:#fff!important;color:var(--lesson-ink,#56745e)!important;font-size:22px!important;font-weight:900!important;box-shadow:0 2px 8px rgba(30,55,36,.07)!important}
+.lesson-dialog-heading>div{min-width:0}
+.lesson-dialog-heading h2{margin:0 0 5px!important;color:#293c30!important;font-size:22px!important;font-weight:900!important;line-height:1.5!important}
+.lesson-dialog-heading p{margin:0!important;color:#748177!important;font-size:11px!important;line-height:1.7!important}
+.lesson-dialog-content{padding:23px 27px 5px!important}
+.lesson-dialog-axis{margin:0 0 23px!important;padding:0!important}
+.lesson-dialog-axis-title{display:flex!important;align-items:center!important;gap:11px!important;margin:0 0 12px!important;padding:0 0 10px!important;border-bottom:1px solid #e9eeea!important}
+.lesson-dialog-axis-title>span{padding:5px 10px!important;border-radius:7px!important;background:#edf2ee!important;color:#526d59!important;font-size:10px!important;font-weight:900!important}
+.lesson-dialog-axis-title h3{margin:0!important;color:#34483a!important;font-size:15px!important;font-weight:900!important;line-height:1.7!important}
+.lesson-dialog-chapters{display:grid!important;gap:8px!important}
+.lesson-dialog-chapter{overflow:hidden!important;border:1px solid #e5eae6!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;transition:border-color .18s,background .18s!important}
+.lesson-dialog-chapter.is-published{border-color:#d3e0d5!important;background:#fff!important}
+.lesson-dialog-chapter.is-published:hover{border-color:#a9c5ad!important;background:#fcfefc!important}
+.lesson-dialog-chapter.is-unpublished{border-style:dashed!important;background:#f7f8f7!important;opacity:1!important}
+.lesson-dialog-chapter summary{display:flex!important;align-items:center!important;gap:11px!important;min-height:56px!important;padding:10px 13px!important;color:#35483a!important;font-size:12px!important;font-weight:800!important}
+.lesson-dialog-chapter summary>b{display:grid!important;place-items:center;flex:0 0 31px;width:31px!important;height:31px!important;border-radius:9px!important;background:#f0f4f0!important;color:#607966!important;font-size:10px!important;font-weight:900!important}
+.lesson-dialog-unit-name{font-weight:850!important;line-height:1.65}
+.lesson-unit-status{padding:5px 8px!important;border-radius:6px!important;background:#edf5ee!important;color:#55775b!important;font-size:9px!important;font-weight:850!important;white-space:nowrap}
+.lesson-dialog-chapter.is-unpublished .lesson-unit-status{background:#ecefec!important;color:#7b867d!important}
+.lesson-dialog-chapter summary i{margin-right:auto!important;color:#738477!important;font-size:17px!important}
+.lesson-dialog-chapter[open] summary{border-bottom:1px solid #edf1ed!important}
+.lesson-dialog-chapter ul{padding:9px 57px 13px 15px!important;color:#69776d!important;font-size:11px!important;line-height:2!important}
+.lesson-unit-actions{padding:0 57px 13px!important;gap:8px!important}
+.lesson-unit-open,.lesson-unit-download,.lesson-admin-upload,.lesson-admin-delete{min-height:36px!important;padding:7px 11px!important;border-radius:9px!important;font-size:10px!important;font-weight:850!important}
+.lesson-unit-soon{font-size:10px!important;color:#818b83!important}
+.lesson-file-list{padding:8px 13px 13px!important}
+.lesson-admin-footer{margin:8px 27px 0!important;padding:16px 0 20px!important;border-top:1px solid #e8ede9!important}
+.lesson-admin-lock{min-height:43px!important;border-radius:10px!important;background:#f8faf8!important}
+.lesson-admin-login{margin-top:10px!important;padding:14px!important;border:1px solid #e4eae5!important;border-radius:12px!important;background:#fafcfb!important}
+.lesson-admin-active{padding:2px 0!important}
+.lesson-dialog-empty{padding:25px 16px!important;border:1px dashed #dce5dd!important;border-radius:12px!important;background:#fafcfa!important}
+@media(max-width:600px){
+.lesson-subject-dialog{padding:7px!important}.lesson-dialog-panel{width:100%!important;max-height:92vh!important;border-radius:17px!important}
+.lesson-dialog-kicker{padding:21px 15px 0!important;font-size:10px!important}.lesson-dialog-close{margin:10px 10px -45px 10px!important;width:34px!important;height:34px!important}
+.lesson-dialog-heading{margin:12px 10px 0!important;padding:15px 12px!important;gap:11px!important}.lesson-dialog-symbol{flex-basis:45px!important;height:45px!important;border-radius:12px!important;font-size:19px!important}
+.lesson-dialog-heading h2{font-size:18px!important}.lesson-dialog-heading p{font-size:10px!important}.lesson-dialog-content{padding:19px 11px 4px!important}
+.lesson-dialog-axis{margin-bottom:19px!important}.lesson-dialog-axis-title{gap:8px!important;margin-bottom:9px!important;padding-bottom:8px!important}.lesson-dialog-axis-title h3{font-size:13px!important}
+.lesson-dialog-chapter summary{min-height:52px!important;padding:8px 9px!important;gap:8px!important;font-size:11px!important}.lesson-dialog-chapter summary>b{flex-basis:28px;width:28px!important;height:28px!important}
+.lesson-unit-status{padding:4px 6px!important;font-size:8px!important}.lesson-dialog-chapter ul{padding:7px 44px 10px 10px!important;font-size:10px!important}
+.lesson-unit-actions{padding:0 44px 10px!important;gap:6px!important}.lesson-unit-open,.lesson-unit-download,.lesson-admin-upload,.lesson-admin-delete{min-height:33px!important;padding:6px 8px!important;font-size:9px!important}
+.lesson-file-list{padding:7px 7px 10px!important}.lesson-admin-footer{margin:7px 11px 0!important;padding:13px 0 15px!important}
+}
+@media(prefers-reduced-motion:reduce){.lesson-subject-dialog,.lesson-dialog-panel,.lesson-dialog-close,.lesson-dialog-chapter{transition:none!important}}
+</style>
+
 </head>
 <body>
 <div class="app">
@@ -1249,7 +1305,10 @@ function openLessonSubjectDialog(card){
    if(!response.ok){
     if(response.status===401)throw new Error("رمز الإدارة غير صحيح.");
     if(result.error==="admin_code_not_configured")throw new Error("رمز الإدارة غير مضبوط في إعدادات Cloudflare Worker.");
-    if(result.error==="storage_not_configured")throw new Error("إعدادات التخزين غير مكتملة في Cloudflare.");
+    if(result.error==="storage_not_configured"){
+     const missing=Array.isArray(result.missing)?result.missing.join("، "):"إعدادات B2";
+     throw new Error("إعدادات التخزين التالية غير مضبوطة في Cloudflare Worker: "+missing);
+    }
     throw new Error("تعذر الاتصال بخدمة الإدارة ("+response.status+"). افتح رابط منصة Cloudflare Workers وليس GitHub Pages.");
    }
    LESSON_ADMIN=true;LESSON_ADMIN_CODE=code;
@@ -1294,7 +1353,13 @@ function openLessonSubjectDialog(card){
     });
     let result={};
     try{result=await response.json();}catch(e){throw new Error("استجابة الخادم غير صالحة؛ تحقق من نشر Worker.");}
-    if(!response.ok||result.ok!==true)throw new Error([file.name,result.error,result.message].filter(Boolean).join(": ")||("HTTP "+response.status));
+    if(!response.ok||result.ok!==true){
+     if(result.error==="storage_not_configured"){
+      const missing=Array.isArray(result.missing)?result.missing.join("، "):"إعدادات B2";
+      throw new Error("إعدادات التخزين ناقصة في Worker: "+missing);
+     }
+     throw new Error([file.name,result.error,result.message].filter(Boolean).join(": ")||("HTTP "+response.status));
+    }
     uploaded++;
    }
    await refreshPublishedLessons(false);
