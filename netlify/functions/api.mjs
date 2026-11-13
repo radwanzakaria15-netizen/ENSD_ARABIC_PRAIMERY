@@ -31,7 +31,7 @@ export default async (req) => {
           : json({ error: "unauthorized" }, 401);
       }
       if (req.method !== "GET") return json({ error: "method_not_allowed" }, 405);
-      const store = getStore(STORE_NAME);
+      const store = getStore({ name: STORE_NAME, consistency: "strong" });
       const { blobs } = await store.list();
       return json(blobs.map((blob) => blob.key));
     }
@@ -50,7 +50,7 @@ export default async (req) => {
     const store = getStore(STORE_NAME);
 
     if (req.method === "GET") {
-      const data = await store.get(key, { type: "arrayBuffer" });
+      const data = await store.get(key, { type: "arrayBuffer", consistency: "strong" });
       if (!data) return json({ error: "not_found" }, 404);
       return new Response(data, {
         headers: {
@@ -78,7 +78,7 @@ export default async (req) => {
         metadata: { contentType: "application/pdf" },
       });
 
-      const saved = await store.get(key, { type: "arrayBuffer" });
+      const saved = await store.get(key, { type: "arrayBuffer", consistency: "strong" });
       if (!saved || saved.byteLength !== data.byteLength) {
         throw new Error("Stored PDF verification failed");
       }
@@ -86,7 +86,7 @@ export default async (req) => {
     }
 
     if (req.method === "DELETE") {
-      const existing = await store.getMetadata(key);
+      const existing = await store.getMetadata(key, { consistency: "strong" });
       if (!existing) return json({ error: "not_found" }, 404);
       await store.delete(key);
       return json({ ok: true, key });
