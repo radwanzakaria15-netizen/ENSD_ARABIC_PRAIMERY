@@ -1041,9 +1041,9 @@ function openLessonSubjectDialog(card){
   if(!file)return;
   if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){alert("يرجى اختيار ملف PDF فقط.");input.value="";return;}
   if(file.size>4200000){alert("حجم الملف يتجاوز الحد المسموح (4.2 ميغابايت) لضمان نجاح الرفع.");input.value="";return;}
-  const label=dialog.querySelector('[data-pick-upload-key="'+key+'"]');
+  const label=input.closest(".lesson-upload-control")?.querySelector(".lesson-admin-upload");
   if(!label)return;
-  label.disabled=true;label.classList.add("is-busy");
+  label.disabled=true;input.disabled=true;label.classList.add("is-busy");
   const originalLabel=label.textContent;
   label.textContent="جارٍ رفع الملف…";
   try{
@@ -1051,13 +1051,12 @@ function openLessonSubjectDialog(card){
     method:"POST",
     headers:{"x-admin-code":LESSON_ADMIN_CODE,"content-type":"application/pdf"},
     body:file,
-    cache:"no-store"
+    cache:"no-store",
+    redirect:"error"
    });
-   if(!response.ok){
-    let reason="";
-    try{const detail=await response.json();reason=detail.error||"";}catch(e){}
-    throw new Error(reason||("HTTP "+response.status));
-   }
+   let result={};
+   try{result=await response.json();}catch(e){throw new Error("استجابة الخادم غير صالحة؛ تحقق من نشر دالة الرفع في Netlify.");}
+   if(!response.ok||result.ok!==true)throw new Error(result.error||("HTTP "+response.status));
    PUBLISHED_LESSONS[key]=true;
    const refreshed=await refreshPublishedLessons(false);
    if(!refreshed)PUBLISHED_LESSONS[key]=true;
@@ -1066,7 +1065,7 @@ function openLessonSubjectDialog(card){
   }catch(error){
    console.error("Lecture upload failed:",error);
    alert("لم يكتمل رفع الملف ("+error.message+"). لم يتم تحديث الصفحة؛ يمكنك إعادة المحاولة.");
-   label.disabled=false;label.classList.remove("is-busy");
+   label.disabled=false;input.disabled=false;label.classList.remove("is-busy");
    label.textContent=originalLabel;
    input.value="";
   }
