@@ -678,6 +678,66 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
  #page-lessons .lesson-subject-grid>.lesson-subject-card{animation:none!important}
 }
 </style>
+
+<style id="lesson-sticky-stack-visible-fix-20261113">
+/* Make sticky stacking work in the actual page scroll context */
+#page-lessons{animation:none!important;transform:none!important}
+#page-lessons,
+#page-lessons .lessons-panel,
+#page-lessons .lesson-subject-grid{overflow:visible!important}
+#page-lessons .lesson-subject-grid{
+ display:flex!important;flex-direction:column!important;align-items:stretch!important;
+ gap:0!important;position:relative!important;isolation:isolate!important;
+ padding:8px 3px 42px!important;
+}
+#page-lessons .lesson-subject-grid>.lesson-subject-card{
+ display:flex!important;position:-webkit-sticky!important;position:sticky!important;
+ flex:0 0 auto!important;width:100%!important;min-height:132px!important;
+ margin:0 0 14px!important;transform-origin:top center!important;
+ animation:none!important;
+ box-shadow:0 8px 20px rgba(37,57,46,.11)!important;
+}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:hover{transform:none!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(1){top:12px!important;z-index:1!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(2){top:20px!important;z-index:2!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(3){top:28px!important;z-index:3!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(4){top:36px!important;z-index:4!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(5){top:44px!important;z-index:5!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(6){top:52px!important;z-index:6!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(7){top:60px!important;z-index:7!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(8){top:68px!important;z-index:8!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(9){top:76px!important;z-index:9!important}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(10){top:84px!important;z-index:10!important}
+@supports (animation-timeline:view()){
+ @keyframes lesson-stack-card-shrink-visible{
+  from{transform:scaleY(1)}
+  to{transform:scaleY(.94)}
+ }
+ #page-lessons .lesson-subject-grid>.lesson-subject-card{
+  animation:lesson-stack-card-shrink-visible linear both!important;
+  animation-timeline:view()!important;
+  animation-range:exit 0% exit 78%!important;
+ }
+}
+@media(max-width:700px){
+ #page-lessons .lesson-subject-grid{padding:6px 2px 34px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card{min-height:124px!important;margin-bottom:11px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(1){top:9px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(2){top:16px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(3){top:23px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(4){top:30px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(5){top:37px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(6){top:44px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(7){top:51px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(8){top:58px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(9){top:65px!important}
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(10){top:72px!important}
+}
+@media(prefers-reduced-motion:reduce){
+ #page-lessons .lesson-subject-grid>.lesson-subject-card{animation:none!important}
+}
+</style>
+
 </head>
 <body>
 <div class="app">
