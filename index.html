@@ -103,7 +103,21 @@ let currentGroup="A";
 try{const savedGroup=localStorage.getItem("ensd_student_group");if(savedGroup==="A"||savedGroup==="B")currentGroup=savedGroup;}catch(e){}
 function filterLessons(){const q=(document.getElementById("lessonSearch")?.value||"").trim().toLocaleLowerCase("ar");const cards=[...document.querySelectorAll("#lessonList .course")];let shown=0;cards.forEach(card=>{const match=card.textContent.toLocaleLowerCase("ar").includes(q);card.hidden=!match;if(match)shown++;});let status=document.getElementById("lessonSearchStatus");if(!status){status=document.createElement("div");status.id="lessonSearchStatus";status.className="search-status";document.getElementById("lessonList").after(status);}status.textContent=q?(shown?`عدد النتائج: ${shown}`:"لا توجد نتائج مطابقة."): "";}
 document.getElementById("lessonSearch")?.addEventListener("input",filterLessons);
-function setGroup(g){currentGroup=g;try{localStorage.setItem("ensd_student_group",g);}catch(e){}document.querySelectorAll("[data-group]").forEach(b=>b.classList.toggle("active",b.dataset.group===g));const hall=g==="A"?"مدرج أ":"مدرج د";document.getElementById("groupName").textContent="المجموعة "+g;document.getElementById("groupHall").textContent=hall;document.getElementById("lessonGroup").textContent="المجموعة "+g;document.getElementById("lessonHall").textContent=hall;const list=document.getElementById("lessonList");list.innerHTML='<article class="course"><div class="course-mark">'+(g==="A"?"A":"B")+'</div><div class="course-info"><b>فضاء دروس المجموعة '+g+'</b><small>مدرج '+(g==="A"?"أ":"د")+' · تُعرض هنا محاضرات أساتذة المجموعة وملفاتهم.</small></div><span class="pill pending">بانتظار النشر</span></article>';document.getElementById("courseList").querySelectorAll(".course").forEach(c=>c.style.display="");filterLessons();}
+const lessonSubjects=["النحو العربي","الصرف العربي","قضايا النقد","مدخل إلى علم الأحياء","الرياضيات","الذكاء الاصطناعي في التعلم","لسانيات عامة","علم نفس النمو: الطفل والمراهق","التربية الإسلامية","اللغة الإنجليزية"];
+const lessonData={A:lessonSubjects.map(name=>({name,lessons:[]})),B:lessonSubjects.map(name=>({name,lessons:[]}))};
+function renderLessonSubjects(g){
+ const list=document.getElementById("lessonList");
+ const items=lessonData[g]||[];
+ list.innerHTML=items.map(item=>{
+  const count=item.lessons.length;
+  const symbol=item.name==="اللغة الإنجليزية"?"EN":item.name.slice(0,1);
+  const status=count?count+" "+(count===1?"درس مضاف":"دروس مضافة"):"قريباً";
+  return '<article class="course" data-search="'+item.name+'"><div class="course-mark">'+symbol+'</div><div class="course-info"><b>'+item.name+'</b><small>الدروس والمحاضرات الخاصة بالمقياس</small></div><div class="course-meta"><span class="pill">مقياس</span><small class="'+(count?"":"")+'">'+status+'</small></div></article>';
+ }).join("");
+ filterLessons();
+}
+function setGroup(g){currentGroup=g;try{localStorage.setItem("ensd_student_group",g);}catch(e){}document.querySelectorAll("[data-group]").forEach(b=>b.classList.toggle("active",b.dataset.group===g));const hall=g==="A"?"مدرج أ":"مدرج د";document.getElementById("groupName").textContent="المجموعة "+g;document.getElementById("groupHall").textContent=hall;document.getElementById("lessonGroup").textContent="المجموعة "+g;document.getElementById("lessonHall").textContent=hall;renderLessonSubjects(g);}
+document.querySelectorAll("[data-group]").forEach(b=>b.classList.toggle("active",b.dataset.group===g));const hall=g==="A"?"مدرج أ":"مدرج د";document.getElementById("groupName").textContent="المجموعة "+g;document.getElementById("groupHall").textContent=hall;document.getElementById("lessonGroup").textContent="المجموعة "+g;document.getElementById("lessonHall").textContent=hall;const list=document.getElementById("lessonList");list.innerHTML='<article class="course"><div class="course-mark">'+(g==="A"?"A":"B")+'</div><div class="course-info"><b>فضاء دروس المجموعة '+g+'</b><small>مدرج '+(g==="A"?"أ":"د")+' · تُعرض هنا محاضرات أساتذة المجموعة وملفاتهم.</small></div><span class="pill pending">بانتظار النشر</span></article>';document.getElementById("courseList").querySelectorAll(".course").forEach(c=>c.style.display="");filterLessons();}
 document.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>setGroup(b.dataset.group)));
 setGroup(currentGroup);
 document.getElementById("noticeBtn").addEventListener("click",()=>{const t=document.getElementById("toast");t.textContent="لا توجد إشعارات جديدة حالياً.";t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300)});
