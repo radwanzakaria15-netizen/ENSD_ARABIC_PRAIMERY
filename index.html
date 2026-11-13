@@ -931,4 +931,27 @@ subjectSearch.addEventListener("input",renderSubjects);renderSubjects();
 
 
 </script>
+
+<style id="lesson-stack-visible-on-load-20261113">
+/* Keep the subject cards visibly stacked as soon as the lessons page opens */
+#page-lessons .lesson-subject-grid{
+  padding-bottom:190px!important;
+}
+#page-lessons .lesson-subject-grid>.lesson-subject-card{
+  margin-bottom:-160px!important;
+}
+@media(max-width:700px){
+  #page-lessons .lesson-subject-grid{
+    padding-bottom:158px!important;
+  }
+  #page-lessons .lesson-subject-grid>.lesson-subject-card{
+    margin-bottom:-130px!important;
+  }
+}
+@media(max-width:370px){
+  #page-lessons .lesson-subject-grid>.lesson-subject-card{
+    margin-bottom:-130px!important;
+  }
+}
+</style>
 </body></html>
