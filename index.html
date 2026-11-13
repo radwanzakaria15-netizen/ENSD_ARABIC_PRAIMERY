@@ -123,7 +123,9 @@ button,.panel,.stat,.quick,.course,.notice,.icon-btn,.nav button,.mobile-nav but
 .topbar{animation:headEnterSoft .45s cubic-bezier(.22,.8,.3,1) both}
 .nav button:hover,.mobile-nav button:active{transform:translateY(-2px)}
 .icon-btn:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(27,48,60,.09)}
-button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
+button:focus-visible{outline:2px solid rgba(91,139,108,.42);outline-offset:2px}
+button:focus:not(:focus-visible),a:focus:not(:focus-visible),[role="button"]:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+button,a,[role="button"]{-webkit-tap-highlight-color:transparent}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 
