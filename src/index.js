@@ -1,4 +1,4 @@
-const KEY_PATTERN = /^[AB]-\\d{2}-\\d{2}-\\d{2}$/;
+const KEY_PATTERN = /^[AB]-\d{2}-\d{2}-\d{2}$/;
 const MAX_FILE_SIZE = 4_200_000;
 const encoder = new TextEncoder();
 
@@ -123,7 +123,7 @@ async function listLessons(env) {
     });
     if (!response.ok) throw new Error("B2 list failed (" + response.status + "): " + (await response.text()).slice(0, 180));
     const xml = await response.text();
-    for (const match of xml.matchAll(/<Key>([\\s\\S]*?)<\\/Key>/g)) {
+    for (const match of xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)) {
       const key = match[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<");
       if (KEY_PATTERN.test(key)) keys.push(key);
     }
