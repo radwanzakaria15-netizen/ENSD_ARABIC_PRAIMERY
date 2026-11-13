@@ -1056,7 +1056,7 @@ function openLessonSubjectDialog(card){
    });
    let result={};
    try{result=await response.json();}catch(e){throw new Error("استجابة الخادم غير صالحة؛ تحقق من نشر دالة الرفع في Netlify.");}
-   if(!response.ok||result.ok!==true)throw new Error(result.error||("HTTP "+response.status));
+   if(!response.ok||result.ok!==true)throw new Error([result.error,result.message].filter(Boolean).join(": ")||("HTTP "+response.status));
    PUBLISHED_LESSONS[key]=true;
    const refreshed=await refreshPublishedLessons(false);
    if(!refreshed)PUBLISHED_LESSONS[key]=true;
@@ -1076,7 +1076,7 @@ function openLessonSubjectDialog(card){
   button.disabled=true;button.textContent="جارٍ الحذف…";
   try{
    const response=await fetch("/api/file?key="+encodeURIComponent(key),{method:"DELETE",headers:{"x-admin-code":LESSON_ADMIN_CODE}});
-   if(!response.ok){let reason="";try{const detail=await response.json();reason=detail.error||"";}catch(e){}throw new Error(reason||("HTTP "+response.status));}
+   if(!response.ok){let reason="";try{const detail=await response.json();reason=[detail.error,detail.message].filter(Boolean).join(": ");}catch(e){}throw new Error(reason||("HTTP "+response.status));}
    await refreshPublishedLessons(false);
    renderLessonSubjects(currentGroup);
    openLessonSubjectDialog(card);
