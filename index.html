@@ -66,29 +66,65 @@
  .lesson-card-foot{font-size:9px}
 }
 @media(max-width:390px){.lesson-subject-grid{grid-template-columns:1fr}.lesson-card-title{min-height:0}}
-/* اختيار الأفواج وعرض صور التوقيت المرجعية */
-.schedule-panel{padding:22px}
-.schedule-groups{display:grid;grid-template-columns:1fr 1fr;gap:15px}
-.schedule-group-card{border:1px solid var(--line);border-radius:17px;padding:17px;background:#fff}
-.schedule-group-head{display:flex;align-items:center;justify-content:space-between;padding-bottom:14px;margin-bottom:13px;border-bottom:1px solid #edf1ed}
-.schedule-group-head h4{margin:0;font-size:17px;color:var(--ink)}
-.schedule-group-head p{margin:4px 0 0;font-size:11px;color:var(--muted)}
-.schedule-group-number{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:#eff5f0;color:#50745e;font-size:15px;font-weight:850}
-.schedule-cohort-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.schedule-cohort{border:1px solid #e5ece7;background:#f9fbf9;color:var(--ink);border-radius:12px;padding:11px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;transition:.18s}
-.schedule-cohort:hover{border-color:#9fbba9;background:#f0f6f1;transform:translateY(-2px)}
-.schedule-cohort span{font-size:9px;color:var(--muted)}
-.schedule-cohort b{font-size:19px;color:#385f49}
-.schedule-cohort small{font-size:9px;color:#7d9284;margin-top:2px}
-.schedule-back{border:1px solid var(--line);background:#f7faf7;color:#476b55;border-radius:11px;padding:9px 13px;font-size:12px;font-weight:750;margin-bottom:14px}
-.schedule-selected{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px 17px;margin-bottom:14px;background:#f2f7f3;border:1px solid #e0ebe3;border-radius:15px}
-.schedule-selected span{font-size:10px;color:#71877a}
-.schedule-selected h4{margin:3px 0;font-size:19px;color:#315d49}
-.schedule-selected p{margin:0;font-size:11px;color:var(--muted)}
-.schedule-selected-tag{background:#e4efe7;color:#4a7056;border-radius:20px;padding:7px 11px;font-size:10px;font-weight:800;white-space:nowrap}
-.schedule-image-frame{border:1px solid var(--line);border-radius:15px;background:#fff;padding:8px;overflow:hidden}
-.schedule-image-frame img{display:block;width:100%;height:auto;max-height:none;object-fit:contain;border-radius:9px}
-@media(max-width:700px){.schedule-panel{padding:15px}.schedule-groups{grid-template-columns:1fr;gap:12px}.schedule-group-card{padding:14px}.schedule-selected{padding:12px}.schedule-image-frame{padding:4px}}
+/* ===== Timetable: reference visual system ===== */
+.schedule-panel{padding:25px;background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(249,250,255,.92));}
+.schedule-groups{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.schedule-group-card{position:relative;overflow:hidden;border:1px solid rgba(221,226,241,.95);border-radius:23px;padding:22px;background:linear-gradient(145deg,#fff,rgba(245,247,255,.9));box-shadow:0 10px 28px rgba(45,55,100,.07);transition:transform .25s cubic-bezier(.22,.8,.3,1),box-shadow .25s,border-color .25s}
+.schedule-group-card:before{content:"";position:absolute;right:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#5865f2,#7c3aed)}
+.schedule-group-card:after{content:"";position:absolute;width:150px;height:150px;border-radius:50%;left:-65px;bottom:-100px;background:rgba(88,101,242,.055);pointer-events:none}
+.schedule-group-card:hover{transform:translateY(-5px);box-shadow:0 18px 38px rgba(45,55,100,.12);border-color:#cfd6ff}
+.schedule-group-head{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:15px;margin-bottom:15px;border-bottom:1px solid #edf0f6}
+.schedule-overline{display:block;font-size:10px;font-weight:900;letter-spacing:1.7px;color:#6874dc;margin-bottom:5px}
+.schedule-group-head h4{margin:0;font-size:19px;font-weight:950;color:#202a45}
+.schedule-group-head p{margin:5px 0 0;font-size:12px;color:#71809b}
+.schedule-group-number{width:46px;height:46px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(135deg,#eef2ff,#f4edff);color:#5865f2;font-size:17px;font-weight:950;box-shadow:0 7px 18px rgba(79,70,229,.1)}
+.schedule-cohort-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.schedule-cohort{border:1px solid #e0e5f2;background:linear-gradient(135deg,#f3f5ff,#f8f4ff);color:#4655b8;border-radius:13px;padding:12px 5px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;box-shadow:0 5px 14px rgba(50,60,110,.045);transition:transform .22s cubic-bezier(.22,.8,.3,1),box-shadow .22s,background .22s,border-color .22s}
+.schedule-cohort:hover{border-color:#c4cafa;background:#e9edff;transform:translateY(-4px);box-shadow:0 12px 22px rgba(74,74,180,.12)}
+.schedule-cohort:active{transform:scale(.96)}
+.schedule-cohort span{font-size:10px;color:#7c86a8}
+.schedule-cohort b{font-size:21px;color:#4655b8;font-weight:950}
+.schedule-cohort small{font-size:9px;color:#7c86a8;margin-top:2px}
+.schedule-back{border:1px solid #e1e5ee;background:rgba(244,246,251,.92);color:#344054;border-radius:13px;padding:10px 15px;font-size:12px;font-weight:800;margin-bottom:15px;transition:transform .2s,background .2s}
+.schedule-back:hover{transform:translateX(3px);background:#eef1fa}
+.schedule-selected{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:17px;margin-bottom:18px;background:linear-gradient(135deg,rgba(238,242,255,.97),rgba(249,246,255,.95));border:1px solid rgba(214,220,250,.9);border-radius:18px;box-shadow:0 8px 22px rgba(65,70,140,.06)}
+.schedule-selected span{font-size:11px;color:#7a8498}
+.schedule-selected h4{margin:4px 0;font-size:21px;color:#263765;font-weight:950}
+.schedule-selected p{margin:0;font-size:12px;color:#7a8498}
+.schedule-selected-tag{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:999px;padding:9px 13px;font-size:11px;font-weight:850;white-space:nowrap;box-shadow:0 7px 18px rgba(79,70,229,.22)}
+.schedule-image-frame{border:1px solid rgba(220,225,238,.95);border-radius:18px;background:rgba(255,255,255,.9);padding:9px;overflow:hidden;box-shadow:0 12px 30px rgba(45,55,100,.08)}
+.schedule-image-frame img{display:block;width:100%;height:auto;max-height:none;object-fit:contain;border-radius:11px}
+@keyframes pageEnterSoft{from{opacity:0;transform:translateY(18px) scale(.99)}to{opacity:1;transform:none}}
+@keyframes cardEnterSoft{from{opacity:0;transform:translateY(17px)}to{opacity:1;transform:none}}
+@keyframes headEnterSoft{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
+@keyframes imageEnterSoft{from{opacity:0;transform:scale(.975);filter:blur(5px)}to{opacity:1;transform:none;filter:none}}
+.page.active{animation:pageEnterSoft .46s cubic-bezier(.22,.8,.3,1) both}
+#page-schedule.active .schedule-group-card{animation:cardEnterSoft .5s cubic-bezier(.22,.8,.3,1) both}
+#page-schedule.active .schedule-group-card:nth-child(2){animation-delay:.12s}
+#page-schedule.active .schedule-cohort{animation:cardEnterSoft .42s cubic-bezier(.22,.8,.3,1) both}
+#page-schedule.active .schedule-cohort:nth-child(2){animation-delay:.05s}
+#page-schedule.active .schedule-cohort:nth-child(3){animation-delay:.1s}
+#page-schedule.active .schedule-cohort:nth-child(4){animation-delay:.15s}
+#page-schedule.active .schedule-cohort:nth-child(5){animation-delay:.2s}
+#page-schedule.active .schedule-cohort:nth-child(6){animation-delay:.25s}
+#scheduleView.schedule-enter{animation:pageEnterSoft .42s cubic-bezier(.22,.8,.3,1) both}
+#scheduleView.schedule-enter .schedule-selected{animation:headEnterSoft .45s cubic-bezier(.22,.8,.3,1) both}
+#scheduleView.schedule-enter .schedule-image-frame img{animation:imageEnterSoft .7s cubic-bezier(.22,.8,.3,1) .08s both}
+@media(max-width:700px){.schedule-panel{padding:16px}.schedule-groups{grid-template-columns:1fr;gap:13px}.schedule-group-card{padding:17px}.schedule-group-head h4{font-size:17px}.schedule-selected{padding:13px}.schedule-selected h4{font-size:19px}.schedule-image-frame{padding:5px}}
+/* Site-wide polish and accessible motion */
+html{scroll-behavior:smooth}
+button,.panel,.stat,.quick,.course,.notice,.icon-btn,.nav button,.mobile-nav button{transition:transform .22s cubic-bezier(.22,.8,.3,1),box-shadow .22s ease,border-color .22s ease,background-color .22s ease,color .22s ease}
+.panel{transition:box-shadow .25s ease,border-color .25s ease}
+.stat,.quick,.course,.notice{animation:cardEnterSoft .48s cubic-bezier(.22,.8,.3,1) both}
+.stats .stat:nth-child(2),.quick:nth-child(2){animation-delay:.05s}
+.stats .stat:nth-child(3),.quick:nth-child(3){animation-delay:.1s}
+.stats .stat:nth-child(4){animation-delay:.15s}
+.welcome{animation:pageEnterSoft .55s cubic-bezier(.22,.8,.3,1) both}
+.topbar{animation:headEnterSoft .45s cubic-bezier(.22,.8,.3,1) both}
+.nav button:hover,.mobile-nav button:active{transform:translateY(-2px)}
+.icon-btn:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(27,48,60,.09)}
+button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 </style>
 </head>
@@ -246,18 +282,22 @@ document.querySelectorAll("[data-schedule-id]").forEach(button=>{
   const number=button.dataset.scheduleId;
   const group=button.dataset.scheduleGroup;
   const image=scheduleImages[number];
+  const view=document.getElementById("scheduleView");
   document.getElementById("scheduleChooser").hidden=true;
-  document.getElementById("scheduleView").hidden=false;
+  view.hidden=false;
+  view.classList.remove("schedule-enter");void view.offsetWidth;view.classList.add("schedule-enter");
   document.getElementById("scheduleGroupName").textContent="الفوج "+String(number).padStart(2,"0");
   document.getElementById("scheduleGroupHall").textContent="المجموعة "+group+" · "+(group==="A"?"مدرج أ":"مدرج د");
   const img=document.getElementById("scheduleImage");
   if(image){img.src=image;img.alt="جدول توقيت الفوج "+String(number).padStart(2,"0");}
   else{img.removeAttribute("src");}
+  view.scrollIntoView({behavior:"smooth",block:"start"});
  });
 });
 document.getElementById("scheduleBack").addEventListener("click",()=>{
  document.getElementById("scheduleView").hidden=true;
  document.getElementById("scheduleChooser").hidden=false;
+ document.getElementById("scheduleChooser").scrollIntoView({behavior:"smooth",block:"start"});
 });
 document.getElementById("noticeBtn").addEventListener("click",()=>{const t=document.getElementById("toast");t.textContent="لا توجد إشعارات جديدة حالياً.";t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300)});
 const subjectData=[
