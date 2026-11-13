@@ -176,6 +176,15 @@ async function listLessons(env) {
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
+  if (url.pathname === "/api/lessons" && request.method === "POST") {
+    if (!String(env.ADMIN_CODE || "").trim()) {
+      return json({ error: "admin_code_not_configured" }, 503);
+    }
+    return isAdmin(request, env)
+      ? json({ ok: true })
+      : json({ error: "unauthorized" }, 401);
+  }
+
   const hasB2 = env.B2_ENDPOINT && env.B2_BUCKET && env.B2_REGION &&
     env.B2_KEY_ID && env.B2_APPLICATION_KEY;
   if (!hasB2) return json({ error: "storage_not_configured" }, 503);
@@ -187,10 +196,6 @@ async function handleApi(request, env) {
         console.error("B2 list failed:", error);
         return json({ error: "storage_error", message: String(error.message || error).slice(0, 240) }, 502);
       }
-    }
-    if (request.method === "POST") {
-      if (!String(env.ADMIN_CODE || "").trim()) return json({ error: "admin_code_not_configured" }, 503);
-      return isAdmin(request, env) ? json({ ok: true }) : json({ error: "unauthorized" }, 401);
     }
     return json({ error: "method_not_allowed" }, 405);
   }
