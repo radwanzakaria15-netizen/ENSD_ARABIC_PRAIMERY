@@ -232,6 +232,41 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
  #page-lessons .lesson-subject-card,#page-lessons .lesson-group-option{transition:none}
 }
 
+
+/* Subject-themed cards and calm lesson palette */
+#page-lessons .lessons-panel{background:linear-gradient(145deg,#f8fafc,#f1f5f9 58%,#f7f5fb);border-color:#e2e8f0;box-shadow:0 14px 38px rgba(47,62,87,.065)}
+#page-lessons .lessons-panel:before{background:linear-gradient(90deg,#829bb8,#9eb6b0 48%,#b5a8c9)}
+#page-lessons .lessons-kicker{color:#7289a5}
+#page-lessons .lessons-total{background:linear-gradient(145deg,#e9eff7,#f0edf7);border-color:#dce4ef}
+#page-lessons .lessons-total b,#page-lessons .lesson-summary-count b{color:#536d91}
+#page-lessons .lesson-group-option.active{border-color:#c4d2e2;background:linear-gradient(110deg,#edf3f9,#f5f3f9)}
+#page-lessons .lesson-group-option.active:after{background:#829bb8}
+#page-lessons .lesson-group-option.active span,#page-lessons .lesson-group-summary>div:first-child b{color:#4e6685}
+#page-lessons .lesson-group-summary{background:linear-gradient(110deg,#edf3f8,#f7f7fa 70%,#f3f0f8);border-color:#e1e7ef}
+#page-lessons .lesson-search:focus-within{border-color:#a9bbd1;box-shadow:0 0 0 3px rgba(112,139,173,.13)}
+#page-lessons .lesson-subject-card{overflow:hidden;isolation:isolate;position:relative;border-color:var(--lesson-border,#e4e9ef);background:linear-gradient(135deg,var(--lesson-bg,#fff),#fff 80%);box-shadow:0 5px 16px rgba(45,60,80,.045)}
+#page-lessons .lesson-subject-card:after{content:attr(data-watermark);position:absolute;z-index:-1;right:13px;top:1px;width:100px;height:100px;display:grid;place-items:center;font-family:Arial,sans-serif;font-size:49px;font-weight:900;letter-spacing:-3px;color:var(--lesson-accent,#829bb8);opacity:.13;pointer-events:none;transform:rotate(-9deg);transition:opacity .25s,transform .25s}
+#page-lessons .lesson-subject-card:hover:after{opacity:.23;transform:rotate(0) scale(1.06)}
+#page-lessons .lesson-subject-card:before{z-index:1;background:var(--lesson-accent,#b7c6d8)}
+#page-lessons .lesson-card-title,#page-lessons .lesson-card-top,#page-lessons .lesson-card-foot{position:relative;z-index:2}
+#page-lessons .lesson-card-title{max-width:94%;text-shadow:0 1px 0 rgba(255,255,255,.65)}
+#page-lessons .lesson-card-index{background:var(--lesson-chip,#edf1f5);color:var(--lesson-ink,#61748b)}
+#page-lessons .lesson-card-foot{border-color:rgba(115,135,155,.15)}
+#page-lessons .lesson-card-foot b{color:var(--lesson-ink,#61748b)}
+#page-lessons .lesson-visual-grammar{--lesson-bg:#f1f5fb;--lesson-border:#dce5f0;--lesson-accent:#829dbd;--lesson-chip:#e3ebf5;--lesson-ink:#536d8d}
+#page-lessons .lesson-visual-morphology{--lesson-bg:#f4f2fa;--lesson-border:#e5dff0;--lesson-accent:#9a8bb8;--lesson-chip:#eee9f5;--lesson-ink:#75658f}
+#page-lessons .lesson-visual-criticism{--lesson-bg:#fbf5ee;--lesson-border:#eee3d5;--lesson-accent:#c19a70;--lesson-chip:#f5eadc;--lesson-ink:#94724e}
+#page-lessons .lesson-visual-biology{--lesson-bg:#eff7f1;--lesson-border:#dcebdd;--lesson-accent:#7eaa87;--lesson-chip:#e4f0e5;--lesson-ink:#527d5b}
+#page-lessons .lesson-visual-math{--lesson-bg:#f0f5f8;--lesson-border:#dce8ed;--lesson-accent:#79a4b1;--lesson-chip:#e2eef1;--lesson-ink:#4e7886}
+#page-lessons .lesson-visual-ai{--lesson-bg:#f1f2fa;--lesson-border:#dfe2f1;--lesson-accent:#888fbd;--lesson-chip:#e8e9f5;--lesson-ink:#626b99}
+#page-lessons .lesson-visual-linguistics{--lesson-bg:#f0f6f7;--lesson-border:#dce9e9;--lesson-accent:#78a7a4;--lesson-chip:#e2efee;--lesson-ink:#4d7e7b}
+#page-lessons .lesson-visual-psychology{--lesson-bg:#f8f2f7;--lesson-border:#eddfeb;--lesson-accent:#b08baa;--lesson-chip:#f1e7f0;--lesson-ink:#896786}
+#page-lessons .lesson-visual-islamic{--lesson-bg:#f8f5ed;--lesson-border:#ece5d4;--lesson-accent:#b5a16e;--lesson-chip:#f2ecd9;--lesson-ink:#8b7848}
+#page-lessons .lesson-visual-english{--lesson-bg:#f1f4fa;--lesson-border:#dfe5f0;--lesson-accent:#8299bd;--lesson-chip:#e7edf6;--lesson-ink:#5c7195}
+#page-schedule .schedule-group-number{width:auto;min-width:66px;height:43px;padding:0 12px;border-radius:13px;font-size:12px;white-space:nowrap;letter-spacing:0}
+#page-schedule .schedule-group-card:nth-child(2) .schedule-group-number{background:linear-gradient(135deg,#f0edf8,#f5f1fa);color:#75658f}
+@media(max-width:700px){#page-lessons .lesson-subject-card:after{width:78px;height:78px;right:8px;font-size:42px;opacity:.13}#page-schedule .schedule-group-number{min-width:61px;height:40px;font-size:11px}}
+
 </style>
 </head>
 <body>
@@ -313,7 +348,7 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
    <div id="scheduleChooser">
     <div class="schedule-groups">
      <section class="schedule-group-card">
-      <div class="schedule-group-head"><div><span class="schedule-overline">GROUP A</span><h4>المجموعة A</h4><p>مدرج أ · الأفواج 01 إلى 06</p></div><span class="schedule-group-number">06</span></div>
+      <div class="schedule-group-head"><div><span class="schedule-overline">GROUP A</span><h4>المجموعة A</h4><p>مدرج أ · الأفواج 01 إلى 06</p></div><span class="schedule-group-number">مدرج أ</span></div>
       <div class="schedule-cohort-grid">
        <button type="button" class="schedule-cohort" data-schedule-id="1" data-schedule-group="A"><span>فوج</span><b>01</b><small>عرض التوقيت</small></button>
        <button type="button" class="schedule-cohort" data-schedule-id="2" data-schedule-group="A"><span>فوج</span><b>02</b><small>عرض التوقيت</small></button>
@@ -324,7 +359,7 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
       </div>
      </section>
      <section class="schedule-group-card">
-      <div class="schedule-group-head"><div><span class="schedule-overline">GROUP B</span><h4>المجموعة B</h4><p>مدرج د · الأفواج 07 إلى 12</p></div><span class="schedule-group-number">06</span></div>
+      <div class="schedule-group-head"><div><span class="schedule-overline">GROUP B</span><h4>المجموعة B</h4><p>مدرج د · الأفواج 07 إلى 12</p></div><span class="schedule-group-number">مدرج د</span></div>
       <div class="schedule-cohort-grid">
        <button type="button" class="schedule-cohort" data-schedule-id="7" data-schedule-group="B"><span>فوج</span><b>07</b><small>عرض التوقيت</small></button>
        <button type="button" class="schedule-cohort" data-schedule-id="8" data-schedule-group="B"><span>فوج</span><b>08</b><small>عرض التوقيت</small></button>
@@ -368,6 +403,7 @@ try{const savedGroup=localStorage.getItem("ensd_student_group");if(savedGroup===
 function filterLessons(){const q=(document.getElementById("lessonSearch")?.value||"").trim().toLocaleLowerCase("ar");const cards=[...document.querySelectorAll("#lessonList .lesson-subject-card")];let shown=0;cards.forEach(card=>{const match=card.textContent.toLocaleLowerCase("ar").includes(q);card.hidden=!match;if(match)shown++;});let status=document.getElementById("lessonSearchStatus");if(!status){status=document.createElement("div");status.id="lessonSearchStatus";status.className="search-status";document.getElementById("lessonList").after(status);}status.textContent=q?(shown?`عدد النتائج: ${shown}`:"لا توجد نتائج مطابقة."): "";}
 document.getElementById("lessonSearch")?.addEventListener("input",filterLessons);
 const lessonSubjects=["النحو العربي","الصرف العربي","قضايا النقد","مدخل إلى علم الأحياء","الرياضيات","الذكاء الاصطناعي في التعلم","لسانيات عامة","علم نفس النمو: الطفل والمراهق","التربية الإسلامية","اللغة الإنجليزية"];
+const lessonVisuals=["grammar","morphology","criticism","biology","math","ai","linguistics","psychology","islamic","english"];
 const lessonData={A:lessonSubjects.map(name=>({name,lessons:[]})),B:lessonSubjects.map(name=>({name,lessons:[]}))};
 function renderLessonSubjects(g){
  const list=document.getElementById("lessonList");
@@ -375,7 +411,7 @@ function renderLessonSubjects(g){
  list.innerHTML=items.map((item,index)=>{
   const count=item.lessons.length;
   const status=count?count+" "+(count===1?"درس مضاف":"دروس مضافة"):"قريباً";
-  return '<article class="lesson-subject-card" data-search="'+item.name+'"><div class="lesson-card-top"><span class="lesson-card-index">'+String(index+1).padStart(2,"0")+'</span><span class="lesson-card-status '+(count?"has-lessons":"")+'">'+status+'</span></div><div class="lesson-card-title">'+item.name+'</div><div class="lesson-card-foot"><span>مقياس دراسي</span><b>'+(count?count+" درس":"لم تنشر الدروس")+'</b></div></article>';
+  return '<article class="lesson-subject-card lesson-visual-'+lessonVisuals[index]+'" data-watermark="'+["ن","ص","ق","BIO","∑","AI","ل","ع","إ","Aa"][index]+'" data-search="'+item.name+'"><div class="lesson-card-top"><span class="lesson-card-index">'+String(index+1).padStart(2,"0")+'</span><span class="lesson-card-status '+(count?"has-lessons":"")+'">'+status+'</span></div><div class="lesson-card-title">'+item.name+'</div><div class="lesson-card-foot"><span>مقياس دراسي</span><b>'+(count?count+" درس":"لم تنشر الدروس")+'</b></div></article>';
  }).join("");
  filterLessons();
 }
@@ -397,13 +433,11 @@ document.querySelectorAll("[data-schedule-id]").forEach(button=>{
   const img=document.getElementById("scheduleImage");
   if(image){img.src=image;img.alt="جدول توقيت الفوج "+String(number).padStart(2,"0");}
   else{img.removeAttribute("src");}
-  view.scrollIntoView({behavior:"smooth",block:"start"});
  });
 });
 document.getElementById("scheduleBack").addEventListener("click",()=>{
  document.getElementById("scheduleView").hidden=true;
  document.getElementById("scheduleChooser").hidden=false;
- document.getElementById("scheduleChooser").scrollIntoView({behavior:"smooth",block:"start"});
 });
 document.getElementById("noticeBtn").addEventListener("click",()=>{const t=document.getElementById("toast");t.textContent="لا توجد إشعارات جديدة حالياً.";t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300)});
 const subjectData=[
