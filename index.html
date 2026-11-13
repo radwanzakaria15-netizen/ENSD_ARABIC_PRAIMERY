@@ -815,6 +815,137 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
 </style>
 
 
+
+<style id="lesson-dialog-elegant-redesign-20261114">
+/* Elegant, fully opaque subject dialog */
+.lesson-subject-dialog{padding:clamp(12px,3vw,28px)!important}
+.lesson-dialog-backdrop{background:rgba(17,29,24,.66)!important;backdrop-filter:blur(9px)!important;-webkit-backdrop-filter:blur(9px)!important}
+.lesson-dialog-panel{
+ width:min(820px,100%)!important;max-height:min(88vh,940px)!important;
+ padding:0!important;overflow:auto!important;
+ border:1px solid #e2e9e3!important;border-radius:28px!important;
+ background:#f7f9f7!important;
+ box-shadow:0 34px 100px rgba(8,22,15,.38)!important;
+ scrollbar-width:thin;scrollbar-color:#c7d4ca transparent
+}
+.lesson-dialog-panel:before{height:4px!important;background:linear-gradient(90deg,var(--lesson-accent,#668b72),color-mix(in srgb,var(--lesson-accent,#668b72) 38%,#fff))!important}
+.lesson-dialog-close{
+ position:sticky!important;float:left!important;top:14px!important;left:auto!important;
+ z-index:8!important;margin:14px 14px -52px 14px!important;
+ width:40px!important;height:40px!important;border:1px solid #e1e8e2!important;
+ border-radius:14px!important;background:#fff!important;color:#53665a!important;
+ font-size:24px!important;box-shadow:0 5px 16px rgba(27,47,33,.1)!important
+}
+.lesson-dialog-close:hover{background:#edf4ee!important;transform:rotate(90deg)!important}
+.lesson-dialog-kicker{
+ display:flex;align-items:center;gap:8px;
+ margin:0!important;padding:28px 30px 0!important;
+ color:var(--lesson-ink,#54715c)!important;font-size:11px!important;
+ font-weight:850!important;letter-spacing:.15px
+}
+.lesson-dialog-heading{
+ position:relative!important;isolation:isolate;overflow:hidden;
+ display:flex!important;align-items:center!important;gap:18px!important;
+ margin:17px 24px 0!important;padding:24px 23px!important;
+ border:1px solid var(--lesson-border,#dce7de)!important;
+ border-radius:22px!important;
+ background:linear-gradient(120deg,var(--lesson-bg,#edf4ee) 0%,#fff 82%)!important;
+ box-shadow:0 8px 24px rgba(35,57,40,.045)!important
+}
+.lesson-dialog-heading:after{
+ content:"";position:absolute;z-index:-1;width:190px;height:190px;
+ left:-74px;top:-118px;border:1px solid color-mix(in srgb,var(--lesson-accent,#668b72) 18%,transparent);
+ border-radius:50%;box-shadow:0 0 0 20px color-mix(in srgb,var(--lesson-accent,#668b72) 5%,transparent),0 0 0 42px color-mix(in srgb,var(--lesson-accent,#668b72) 3%,transparent)
+}
+.lesson-dialog-symbol{
+ display:grid!important;place-items:center;flex:0 0 62px!important;height:62px!important;
+ border-radius:19px!important;background:var(--lesson-chip,#e5eee7)!important;
+ color:var(--lesson-ink,#52765e)!important;font-size:24px!important;font-weight:900!important;
+ box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--lesson-accent,#668b72) 13%,transparent),0 5px 14px rgba(30,55,37,.06)!important
+}
+.lesson-dialog-heading>div{position:relative;z-index:1;min-width:0}
+.lesson-dialog-heading h2{margin:0 0 7px!important;color:var(--lesson-ink,#2e4938)!important;font-size:25px!important;font-weight:900!important;line-height:1.45!important}
+.lesson-dialog-heading p{margin:0!important;color:#78867c!important;font-size:12px!important;line-height:1.8!important}
+.lesson-dialog-content{padding:25px 27px 8px!important}
+.lesson-dialog-axis{margin:0 0 25px!important;padding:0!important}
+.lesson-dialog-axis-title{
+ display:flex!important;align-items:center!important;gap:12px!important;
+ margin:0 0 13px!important;padding:0 2px 11px!important;
+ border-bottom:1px solid #e5ebe6
+}
+.lesson-dialog-axis-title>span{
+ flex:0 0 auto;padding:7px 12px!important;border-radius:10px!important;
+ background:var(--lesson-chip,#e7efe9)!important;color:var(--lesson-ink,#64816d)!important;
+ font-size:10px!important;font-weight:900!important;letter-spacing:.2px
+}
+.lesson-dialog-axis-title h3{margin:0!important;color:#344b3b!important;font-size:16px!important;font-weight:900!important;line-height:1.6!important}
+.lesson-dialog-chapters{display:grid!important;gap:10px!important}
+.lesson-dialog-chapter{
+ overflow:hidden;border:1px solid #e1e8e2!important;border-radius:16px!important;
+ background:#fff!important;box-shadow:0 3px 12px rgba(27,48,33,.035)!important;
+ transition:border-color .2s,box-shadow .2s,transform .2s!important
+}
+.lesson-dialog-chapter.is-published{border-color:color-mix(in srgb,var(--lesson-accent,#7fa18a) 36%,#fff)!important}
+.lesson-dialog-chapter.is-published:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(31,62,39,.08)!important}
+.lesson-dialog-chapter.is-unpublished{background:#f1f4f1!important;border-style:dashed!important;opacity:1!important}
+.lesson-dialog-chapter summary{
+ display:flex!important;align-items:center!important;gap:12px!important;
+ min-height:61px!important;padding:12px 15px!important;
+ color:#344b3b!important;font-size:13px!important;font-weight:800!important
+}
+.lesson-dialog-chapter summary>b{
+ display:grid!important;place-items:center;flex:0 0 35px;width:35px!important;height:35px!important;
+ border-radius:11px!important;background:var(--lesson-bg,#eff4ef)!important;
+ color:var(--lesson-ink,#718576)!important;font-size:11px!important;font-weight:900!important
+}
+.lesson-dialog-unit-name{font-weight:850!important;line-height:1.7}
+.lesson-unit-status{padding:6px 9px!important;border-radius:8px;background:#edf4ee;color:#5b7962;font-size:10px!important;font-weight:850!important;white-space:nowrap}
+.lesson-dialog-chapter.is-unpublished .lesson-unit-status{background:#e8ece8;color:#7d897f}
+.lesson-dialog-chapter summary i{margin-right:auto!important;color:var(--lesson-accent,#829187)!important;font-size:19px!important}
+.lesson-dialog-chapter[open] summary{border-bottom:1px solid #edf1ed!important}
+.lesson-dialog-chapter ul{padding:10px 64px 15px 18px!important;color:#6c7b70!important;font-size:12px!important;line-height:2.05!important}
+.lesson-unit-actions{padding:0 64px 15px!important;gap:8px!important}
+.lesson-unit-open,.lesson-unit-download,.lesson-admin-upload,.lesson-admin-delete{
+ min-height:38px!important;padding:8px 13px!important;border-radius:11px!important;
+ font-size:11px!important;font-weight:850!important
+}
+.lesson-unit-soon{font-size:11px!important;color:#879187!important}
+.lesson-file-list{padding:10px 15px 15px!important}
+.lesson-admin-footer{
+ margin:10px 27px 0!important;padding:18px 0 23px!important;
+ border-top:1px solid #e2e9e3!important
+}
+.lesson-admin-lock{min-height:46px!important;padding:0 16px!important;border-radius:12px!important;background:#fff!important}
+.lesson-admin-login{margin-top:12px!important;padding:16px!important;border:1px solid #e2e9e3!important;border-radius:15px!important;background:#fff!important}
+.lesson-admin-active{padding:3px 0}
+.lesson-dialog-empty{padding:30px 18px!important;border-radius:17px!important;background:#fff!important}
+@media(max-width:600px){
+ .lesson-subject-dialog{padding:8px!important}
+ .lesson-dialog-panel{width:100%!important;max-height:91vh!important;border-radius:22px!important}
+ .lesson-dialog-kicker{padding:23px 17px 0!important;font-size:10px!important}
+ .lesson-dialog-close{margin:11px 11px -47px 11px!important;width:36px!important;height:36px!important}
+ .lesson-dialog-heading{margin:13px 12px 0!important;padding:17px 14px!important;gap:12px!important;border-radius:17px!important}
+ .lesson-dialog-symbol{flex-basis:49px!important;height:49px!important;border-radius:15px!important;font-size:20px!important}
+ .lesson-dialog-heading h2{font-size:19px!important}
+ .lesson-dialog-heading p{font-size:10px!important}
+ .lesson-dialog-content{padding:20px 13px 5px!important}
+ .lesson-dialog-axis{margin-bottom:20px!important}
+ .lesson-dialog-axis-title{gap:9px!important;margin-bottom:10px!important;padding-bottom:9px!important}
+ .lesson-dialog-axis-title h3{font-size:13px!important}
+ .lesson-dialog-chapter summary{min-height:55px!important;padding:9px 10px!important;gap:9px!important;font-size:11px!important}
+ .lesson-dialog-chapter summary>b{flex-basis:30px;width:30px!important;height:30px!important}
+ .lesson-unit-status{padding:5px 7px!important;font-size:9px!important}
+ .lesson-dialog-chapter ul{padding:8px 49px 12px 12px!important;font-size:11px!important}
+ .lesson-unit-actions{padding:0 49px 12px!important;gap:7px!important}
+ .lesson-unit-open,.lesson-unit-download,.lesson-admin-upload,.lesson-admin-delete{min-height:34px!important;padding:6px 9px!important;font-size:10px!important}
+ .lesson-file-list{padding:8px 9px 12px!important}
+ .lesson-admin-footer{margin:8px 13px 0!important;padding:14px 0 17px!important}
+}
+@media(prefers-reduced-motion:reduce){
+ .lesson-subject-dialog,.lesson-dialog-panel,.lesson-dialog-close,.lesson-dialog-chapter{transition:none!important}
+}
+</style>
+
 </head>
 <body>
 <div class="app">
