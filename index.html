@@ -996,7 +996,7 @@ function openLessonSubjectDialog(card){
    const key=lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex);
    const published=!!PUBLISHED_LESSONS[key];
    const topics=chapter[1]||[];
-   return '<div class="lesson-dialog-unit-wrap"><details class="lesson-dialog-chapter '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?'منشور':'قريباً')+'</span><i>＋</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details><div class="lesson-unit-actions">'+(published?'<a class="lesson-unit-open" href="/api/file?key='+encodeURIComponent(key)+'" target="_blank" rel="noopener">فتح المحاضرة</a><a class="lesson-unit-download" href="/api/file?key='+encodeURIComponent(key)+'&download=1" aria-label="تحميل ملف المحاضرة PDF"><span class="lesson-file-type" aria-hidden="true">PDF</span><span class="lesson-file-name">محاضرة '+key+'.pdf</span><svg class="lesson-download-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v3h16v-3"/></svg></a>':(LESSON_ADMIN?'':'<span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span>'))+(LESSON_ADMIN?'<span class="lesson-upload-control"><button class="lesson-admin-upload" type="button" tabindex="-1">'+(published?'استبدال المحاضرة':'رفع المحاضرة')+'</button><input class="lesson-upload-input" type="file" accept="application/pdf,.pdf" aria-label="اختيار ملف المحاضرة PDF" data-upload-key="'+key+'"></span>'+(published?'<button class="lesson-admin-delete" type="button" data-delete-key="'+key+'">حذف</button>':''):'')+'</div></div>';
+   return '<div class="lesson-dialog-unit-wrap"><details class="lesson-dialog-chapter '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?'منشور':'قريباً')+'</span><i>＋</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details><div class="lesson-unit-actions">'+(published?'<a class="lesson-unit-open" href="/api/file?key='+encodeURIComponent(key)+'" target="_blank" rel="noopener">فتح المحاضرة</a><a class="lesson-unit-download" href="/api/file?key='+encodeURIComponent(key)+'&download=1">تحميل الدرس PDF</a>':(LESSON_ADMIN?'':'<span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span>'))+(LESSON_ADMIN?'<span class="lesson-upload-control"><button class="lesson-admin-upload" type="button" tabindex="-1">'+(published?'استبدال المحاضرة':'رفع المحاضرة')+'</button><input class="lesson-upload-input" type="file" accept="application/pdf,.pdf" aria-label="اختيار ملف المحاضرة PDF" data-upload-key="'+key+'"></span>'+(published?'<button class="lesson-admin-delete" type="button" data-delete-key="'+key+'">حذف</button>':''):'')+'</div></div>';
   }).join("");
   const hasPublished=axis.chapters.some((chapter,chapterIndex)=>!!PUBLISHED_LESSONS[lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex)]);
   return '<section class="lesson-dialog-axis '+(hasPublished?'has-published':'off')+'"><div class="lesson-dialog-axis-title"><span>المحور '+String(axisIndex+1).padStart(2,"0")+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+units+'</div></section>';
@@ -1387,38 +1387,7 @@ document.addEventListener("keydown",event=>{
 @media(max-width:700px){.lesson-upload-control{min-height:38px;min-width:120px}}
 </style>
 
-<style id="lesson-dialog-clarity-and-download-20261113">
-/* Clearer, fully opaque subject dialog and more readable lesson details */
-.lesson-dialog-backdrop{background:rgba(15,27,21,.68)!important;backdrop-filter:blur(3px)!important;-webkit-backdrop-filter:blur(3px)!important}
-.lesson-dialog-panel{background:#f8fbf8!important;border-color:#dce7de!important;box-shadow:0 28px 90px rgba(8,22,13,.42)!important}
-.lesson-dialog-kicker{font-size:13px!important;color:#526b59!important}
-.lesson-dialog-heading h2{font-size:24px!important}
-.lesson-dialog-heading p{font-size:13px!important;color:#586b5e!important}
-.lesson-dialog-axis-title>span{font-size:12px!important}
-.lesson-dialog-axis-title h3{font-size:16px!important}
-.lesson-dialog-chapter{background:#fff!important}
-.lesson-dialog-chapter.is-unpublished{opacity:1!important;filter:none!important;background:#f0f3f0!important;border-color:#dce4dd!important}
-.lesson-dialog-axis.off .lesson-dialog-axis-title{opacity:1!important;filter:none!important}
-.lesson-dialog-chapter summary{font-size:14px!important;min-height:54px!important;color:#304b38!important}
-.lesson-dialog-chapter summary>b{font-size:12px!important}
-.lesson-unit-status{font-size:12px!important}
-.lesson-dialog-chapter ul{font-size:13px!important;color:#526458!important}
-.lesson-unit-actions{gap:10px!important}
-.lesson-unit-open,.lesson-admin-upload,.lesson-admin-delete{font-size:12px!important;min-height:38px!important}
-.lesson-unit-download{display:inline-flex;align-items:center;gap:9px;min-height:42px!important;padding:6px 12px!important;border:1px solid #d4e1d7!important;border-radius:11px!important;background:#fff!important;color:#385b43!important;font-size:12px!important;font-weight:800;text-decoration:none;box-shadow:0 2px 7px rgba(35,67,43,.06)}
-.lesson-file-type{display:grid;place-items:center;min-width:39px;height:29px;padding:0 5px;border-radius:7px;background:#e9efff;color:#435c9b;font-size:10px;font-weight:950;letter-spacing:.3px}
-.lesson-file-name{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lesson-download-icon{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.lesson-unit-download:hover{background:#f1f7f2!important;border-color:#a9c7af!important}
-.lesson-dialog-close{font-size:28px!important}
-@media(max-width:600px){
- .lesson-dialog-panel{background:#f8fbf8!important;padding:20px 15px!important}
- .lesson-dialog-heading h2{font-size:21px!important}
- .lesson-dialog-chapter summary{font-size:13px!important}
- .lesson-dialog-chapter ul{font-size:12px!important}
- .lesson-file-name{max-width:150px}
-}
-</style>
+
 
 </body>
 </html>
