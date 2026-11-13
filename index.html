@@ -873,8 +873,8 @@ let currentGroup="A";
 try{const savedGroup=localStorage.getItem("ensd_student_group");if(savedGroup==="A"||savedGroup==="B")currentGroup=savedGroup;}catch(e){}
 function filterLessons(){const q=(document.getElementById("lessonSearch")?.value||"").trim().toLocaleLowerCase("ar");const cards=[...document.querySelectorAll("#lessonList .lesson-subject-card")];let shown=0;cards.forEach(card=>{const match=card.textContent.toLocaleLowerCase("ar").includes(q);card.hidden=!match;if(match)shown++;});let status=document.getElementById("lessonSearchStatus");if(!status){status=document.createElement("div");status.id="lessonSearchStatus";status.className="search-status";document.getElementById("lessonList").after(status);}status.textContent=q?(shown?`عدد النتائج: ${shown}`:"لا توجد نتائج مطابقة."): "";}
 document.getElementById("lessonSearch")?.addEventListener("input",filterLessons);
-const lessonSubjects=["النحو العربي","الصرف العربي","قضايا النقد","علم الأحياء","الرياضيات","الذكاء الاصطناعي في التعلم","لسانيات عامة","علم نفس النمو: الطفل والمراهق","التربية الإسلامية","اللغة الإنجليزية"];
-const lessonVisuals=["grammar","morphology","criticism","biology","math","ai","linguistics","psychology","islamic","english"];
+const lessonSubjects=["علم الأحياء","الصرف العربي","قضايا النقد","الرياضيات","الذكاء الاصطناعي في التعلم","علم نفس النمو: الطفل والمراهق","التربية الإسلامية","النحو العربي","اللغة الإنجليزية","لسانيات عامة"];
+const lessonVisuals=["biology","morphology","criticism","math","ai","psychology","islamic","grammar","english","linguistics"];
 const lessonData={A:lessonSubjects.map(name=>({name,lessons:[]})),B:lessonSubjects.map(name=>({name,lessons:[]}))};
 let PUBLISHED_LESSONS=Object.create(null);
 let LESSON_ADMIN=false;
@@ -904,7 +904,7 @@ function renderLessonSubjects(g){
   const prefix=g+"-"+String(index+1).padStart(2,"0")+"-";
   const count=Object.keys(PUBLISHED_LESSONS).filter(key=>key.startsWith(prefix)).length;
   const status=count?count+" "+(count===1?"محاضرة منشورة":"محاضرات منشورة"):"قريباً";
-  return '<article class="lesson-subject-card lesson-visual-'+lessonVisuals[index]+'" data-watermark="'+["ن","ص","ق","BIO","∑","AI","ل","ع","إ","Aa"][index]+'" data-search="'+item.name+'"><div class="lesson-card-top"><span class="lesson-card-index">'+String(index+1).padStart(2,"0")+'</span><span class="lesson-card-status '+(count?"has-lessons":"")+'">'+status+'</span></div><div class="lesson-card-title">'+item.name+'</div><div class="lesson-card-foot"><span>مقياس دراسي</span><b>'+(count?count+" محاضرة":"لم تنشر المحاضرات")+'</b></div></article>';
+  return '<article class="lesson-subject-card lesson-visual-'+lessonVisuals[index]+'" data-watermark="'+["BIO","ص","ق","∑","AI","ع","إ","ن","Aa","ل"][index]+'" data-search="'+item.name+'"><div class="lesson-card-top"><span class="lesson-card-index">'+String(index+1).padStart(2,"0")+'</span><span class="lesson-card-status '+(count?"has-lessons":"")+'">'+status+'</span></div><div class="lesson-card-title">'+item.name+'</div><div class="lesson-card-foot"><span>مقياس دراسي</span><b>'+(count?count+" محاضرة":"لم تنشر المحاضرات")+'</b></div></article>';
  }).join("");
  filterLessons();
 }
@@ -996,7 +996,7 @@ function openLessonSubjectDialog(card){
    const key=lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex);
    const published=!!PUBLISHED_LESSONS[key];
    const topics=chapter[1]||[];
-   return '<details class="lesson-dialog-chapter '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?'منشور':'قريباً')+'</span><i>＋</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul><div class="lesson-unit-actions">'+(published?'<a class="lesson-unit-open" href="/api/file?key='+encodeURIComponent(key)+'" target="_blank" rel="noopener">فتح المحاضرة</a>':'<span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span>')+(LESSON_ADMIN?'<label class="lesson-admin-upload">'+(published?'استبدال المحاضرة':'نشر المحاضرة')+'<input type="file" accept="application/pdf" data-upload-key="'+key+'" hidden></label>'+(published?'<button class="lesson-admin-delete" type="button" data-delete-key="'+key+'">حذف</button>':''):'')+'</div></details>';
+   return '<div class="lesson-dialog-unit-wrap"><details class="lesson-dialog-chapter '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?'منشور':'قريباً')+'</span><i>＋</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details><div class="lesson-unit-actions">'+(published?'<a class="lesson-unit-open" href="/api/file?key='+encodeURIComponent(key)+'" target="_blank" rel="noopener">فتح المحاضرة</a>':(LESSON_ADMIN?'':'<span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span>'))+(LESSON_ADMIN?'<label class="lesson-admin-upload">'+(published?'استبدال المحاضرة':'رفع المحاضرة')+'<input type="file" accept="application/pdf,.pdf" data-upload-key="'+key+'" hidden></label>'+(published?'<button class="lesson-admin-delete" type="button" data-delete-key="'+key+'">حذف</button>':''):'')+'</div></div>';
   }).join("");
   const hasPublished=axis.chapters.some((chapter,chapterIndex)=>!!PUBLISHED_LESSONS[lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex)]);
   return '<section class="lesson-dialog-axis '+(hasPublished?'has-published':'off')+'"><div class="lesson-dialog-axis-title"><span>المحور '+String(axisIndex+1).padStart(2,"0")+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+units+'</div></section>';
@@ -1138,7 +1138,7 @@ document.addEventListener("keydown",event=>{
 }
 </style>
 
-</body></html>
+\n<style id="lesson-visibility-admin-fix-20261113">\n/* Keep unpublished units readable while preserving a quiet visual distinction. */\n#page-lessons .lesson-dialog-axis.off .lesson-dialog-axis-title{opacity:1!important;filter:none!important}\n#page-lessons .lesson-dialog-chapter.is-unpublished{opacity:1!important;filter:none!important;background:#f1f4f1!important;border-color:#d8e0d9!important}\n#page-lessons .lesson-dialog-chapter.is-unpublished summary{color:#43584a!important}\n#page-lessons .lesson-dialog-chapter.is-unpublished summary>b{background:#e2e9e3!important;color:#526b59!important}\n#page-lessons .lesson-dialog-chapter.is-unpublished .lesson-unit-status{color:#685a3f!important;background:#f5efdf!important;border-color:#e8dcc0!important}\n.lesson-dialog-unit-wrap{display:grid;gap:7px}\n.lesson-unit-actions{padding:0 8px 5px!important;min-height:0}\n.lesson-admin-upload,.lesson-admin-delete,.lesson-unit-open{min-height:36px!important;font-size:11px!important}\n.lesson-admin-upload{background:#e8efff!important;color:#334d9a!important;border-color:#cbd8ff!important}\n.lesson-admin-upload input{display:none!important}\n.lesson-admin-upload.is-busy{opacity:.65!important;pointer-events:none}\n@media(max-width:700px){.lesson-unit-actions{padding:0 5px 7px!important;gap:7px!important}.lesson-admin-upload,.lesson-admin-delete,.lesson-unit-open{min-height:38px!important;padding:7px 12px!important}}\n</style>\n</body></html>
 
 <style id="lesson-dialog-publication-admin-20261113">
 .lesson-dialog-content{display:grid;gap:19px}
