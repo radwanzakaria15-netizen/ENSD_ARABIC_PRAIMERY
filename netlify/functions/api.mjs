@@ -9,14 +9,16 @@ const json = (value, status = 200) =>
 export default async (req) => {
   const url = new URL(req.url);
   const key = url.searchParams.get("key") || "";
-  const store = getStore("arabic-primary-lessons");
-
   const isAdmin = () => {
-    const code = process.env.ADMIN_CODE;
-    return Boolean(code) && req.headers.get("x-admin-code") === code;
+    const code = (process.env.ADMIN_CODE || "").trim();
+    const submitted = (req.headers.get("x-admin-code") || "").trim();
+    return Boolean(code) && submitted === code;
   };
 
   try {
+    // Initialize storage inside the guarded block so configuration failures
+    // return a readable API error instead of terminating the function early.
+    const store = getStore("arabic-primary-lessons");
     if (url.pathname === "/api/lessons") {
       if (req.method === "POST") {
         return isAdmin()
@@ -63,8 +65,8 @@ export default async (req) => {
       if (!data.byteLength) {
         return json({ error: "empty_file" }, 400);
       }
-      if (data.byteLength > 5_500_000) {
-        return json({ error: "file_too_large", limit: 5_500_000 }, 413);
+      if (data.byteLength > 4_200_000) {
+        return json({ error: "file_too_large", limit: 4_200_000 }, 413);
       }
 
       const signature = new TextDecoder().decode(data.slice(0, 5));
