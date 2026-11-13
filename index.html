@@ -1036,13 +1036,32 @@ function openLessonSubjectDialog(card){
   if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){alert("يرجى اختيار ملف PDF فقط.");input.value="";return;}
   if(file.size>5500000){alert("حجم الملف يتجاوز الحد المسموح (5.5 ميغابايت).");input.value="";return;}
   const label=input.parentElement;label.classList.add("is-busy");
+  const originalLabel=label.childNodes[0]?.textContent||"رفع المحاضرة";
+  label.childNodes[0].textContent="جارٍ رفع الملف… ";
   try{
-   const response=await fetch("/api/file?key="+encodeURIComponent(key),{method:"POST",headers:{"x-admin-code":LESSON_ADMIN_CODE,"content-type":"application/pdf"},body:file});
-   if(!response.ok)throw new Error("تعذر النشر");
-   await refreshPublishedLessons(false);
+   const response=await fetch("/api/file?key="+encodeURIComponent(key),{
+    method:"POST",
+    headers:{"x-admin-code":LESSON_ADMIN_CODE,"content-type":"application/pdf"},
+    body:file,
+    cache:"no-store"
+   });
+   if(!response.ok){
+    let reason="";
+    try{const detail=await response.json();reason=detail.error||"";}catch(e){}
+    throw new Error(reason||("HTTP "+response.status));
+   }
+   PUBLISHED_LESSONS[key]=true;
+   const refreshed=await refreshPublishedLessons(false);
+   if(!refreshed)PUBLISHED_LESSONS[key]=true;
    renderLessonSubjects(currentGroup);
    openLessonSubjectDialog(card);
-  }catch(error){alert("تعذر نشر المحاضرة. تحقق من إعداد خدمة الإدارة.");label.classList.remove("is-busy");}
+  }catch(error){
+   console.error("Lecture upload failed:",error);
+   alert("لم يكتمل رفع الملف ("+error.message+"). تأكد من إعداد ADMIN_CODE وNetlify Blobs ثم أعد المحاولة.");
+   label.classList.remove("is-busy");
+   label.childNodes[0].textContent=originalLabel;
+   input.value="";
+  }
  }));
  dialog.querySelectorAll("[data-delete-key]").forEach(button=>button.addEventListener("click",async()=>{
   const key=button.dataset.deleteKey;
