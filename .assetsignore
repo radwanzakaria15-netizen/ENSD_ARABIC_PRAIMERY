@@ -1,0 +1,11 @@
+node_modules/
+.git/
+.wrangler/
+src/
+package.json
+package-lock.json
+bun.lock
+bun.lockb
+wrangler.jsonc
+README.md
+netlify.toml
