@@ -126,6 +126,112 @@ button,.panel,.stat,.quick,.course,.notice,.icon-btn,.nav button,.mobile-nav but
 button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
+
+/* Lessons section refinement */
+#page-lessons{animation:lessonsPageIn .42s ease both}
+@keyframes lessonsPageIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+#page-lessons .lessons-panel{
+ background:linear-gradient(145deg,#fff 0%,#fbfdfc 58%,#f5faf8 100%);
+ border:1px solid #e4ece8;border-radius:24px;padding:clamp(17px,2.5vw,28px);
+ box-shadow:0 14px 38px rgba(35,75,61,.055);overflow:hidden;position:relative
+}
+#page-lessons .lessons-panel:before{
+ content:"";position:absolute;inset:0 0 auto;height:4px;
+ background:linear-gradient(90deg,#78a99a,#b8cbbd 48%,#9ba9cb)
+}
+#page-lessons .lessons-heading{align-items:center;margin:2px 0 23px}
+#page-lessons .lessons-kicker{color:#6c9485;font-size:10px;letter-spacing:2px}
+#page-lessons .lessons-heading h3{font-size:clamp(20px,2.2vw,25px);letter-spacing:-.35px;margin:0 0 7px}
+#page-lessons .lessons-heading p{font-size:13px;line-height:1.8;color:#7c8984}
+#page-lessons .lessons-total{
+ width:68px;height:68px;border-radius:21px;background:linear-gradient(145deg,#e7f2ec,#f1f6f1);
+ border:1px solid #dceae1;box-shadow:0 7px 18px rgba(64,111,84,.07)
+}
+#page-lessons .lessons-total b{font-size:23px;color:#3e735b}
+#page-lessons .lesson-group-switch{gap:12px;margin-bottom:16px}
+#page-lessons .lesson-group-option{
+ position:relative;overflow:hidden;min-height:76px;padding:15px 17px 15px 14px;
+ border:1px solid #e7ece9;border-radius:17px;background:#fff;
+ box-shadow:0 3px 12px rgba(35,60,48,.025);gap:7px
+}
+#page-lessons .lesson-group-option:after{
+ content:"";position:absolute;right:0;top:13px;bottom:13px;width:3px;border-radius:5px;background:transparent;transition:.2s
+}
+#page-lessons .lesson-group-option span{font-size:14px}
+#page-lessons .lesson-group-option small{font-size:11px}
+#page-lessons .lesson-group-option.active{
+ border-color:#c9ded1;background:linear-gradient(110deg,#f0f7f2,#f8fbf8);
+ box-shadow:0 6px 18px rgba(55,105,76,.07),inset 0 0 0 1px #e2eee5
+}
+#page-lessons .lesson-group-option.active:after{background:#6d9d7d}
+#page-lessons .lesson-group-summary{
+ border:1px solid #e3eee6;border-radius:17px;padding:15px 17px;
+ background:linear-gradient(110deg,#f0f7f2,#f8faf8 75%,#f2f5fa);margin-bottom:16px
+}
+#page-lessons .lesson-group-summary>div:first-child small{font-size:11px;color:#819087}
+#page-lessons .lesson-group-summary>div:first-child b{font-size:16px;color:#315e49}
+#page-lessons .lesson-group-summary>div:first-child span{font-size:11px}
+#page-lessons .lesson-summary-count{border-right-color:#dce8df;padding-right:19px}
+#page-lessons .lesson-summary-count b{font-size:21px;color:#47785d}
+#page-lessons .lesson-search{
+ border:1px solid #e5ece8;border-radius:14px;background:#fff;
+ box-shadow:0 3px 12px rgba(35,60,48,.025);padding-inline:14px;margin-bottom:17px
+}
+#page-lessons .lesson-search:focus-within{border-color:#a9cbb6;box-shadow:0 0 0 3px rgba(119,169,137,.12)}
+#page-lessons .lesson-search input{padding:13px 0;font-size:13px}
+#page-lessons .lesson-subject-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+#page-lessons .lesson-subject-card{
+ min-height:157px;padding:16px;border:1px solid #e8eeea;border-radius:17px;
+ background:linear-gradient(155deg,#fff 0%,#fff 65%,#f9fbf9 100%);
+ box-shadow:0 4px 14px rgba(39,69,52,.035);gap:12px;
+ animation:lessonCardIn .35s ease both
+}
+@keyframes lessonCardIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+#page-lessons .lesson-subject-card:before{
+ content:"";position:absolute;right:0;top:18px;bottom:18px;width:3px;
+ border-radius:5px;background:#dce9df;transition:.2s
+}
+#page-lessons .lesson-subject-card:hover{
+ transform:translateY(-3px);border-color:#c8ddce;
+ box-shadow:0 12px 25px rgba(44,83,63,.075)
+}
+#page-lessons .lesson-card-index{
+ display:grid;place-items:center;width:29px;height:29px;border-radius:10px;
+ background:#f0f5f1;color:#64816d;font-size:10px;letter-spacing:.3px
+}
+#page-lessons .lesson-card-status{background:#f3f5f3;color:#78837d;padding:6px 10px}
+#page-lessons .lesson-card-status.has-lessons{background:#e8f3eb;color:#3e7653}
+#page-lessons .lesson-card-title{font-size:14px;line-height:1.7;min-height:48px;padding-right:2px}
+#page-lessons .lesson-card-foot{padding-top:11px;border-top:1px solid #edf1ee;font-size:10px}
+#page-lessons .lesson-card-foot b{color:#5b8068}
+#page-lessons .search-status{color:#74847a;font-size:12px;padding:11px 3px}
+#page-lessons button:focus-visible,#page-lessons input:focus-visible{outline:3px solid rgba(92,145,111,.22);outline-offset:2px}
+@media(max-width:1000px){#page-lessons .lesson-subject-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){
+ #page-lessons .lessons-panel{padding:17px 14px;border-radius:20px}
+ #page-lessons .lessons-heading{margin-bottom:18px}
+ #page-lessons .lessons-heading h3{font-size:19px}
+ #page-lessons .lessons-heading p{font-size:11px}
+ #page-lessons .lessons-total{width:57px;height:57px;border-radius:17px}
+ #page-lessons .lesson-group-switch{gap:8px}
+ #page-lessons .lesson-group-option{min-height:69px;padding:12px 11px}
+ #page-lessons .lesson-group-option span{font-size:12px}
+ #page-lessons .lesson-group-option small{font-size:9px}
+ #page-lessons .lesson-group-summary{padding:13px 12px}
+ #page-lessons .lesson-group-summary>div:first-child b{font-size:14px}
+ #page-lessons .lesson-summary-count{padding-right:12px;min-width:59px}
+ #page-lessons .lesson-subject-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ #page-lessons .lesson-subject-card{min-height:148px;padding:12px 11px;border-radius:14px;gap:10px}
+ #page-lessons .lesson-card-title{font-size:12px;min-height:49px}
+ #page-lessons .lesson-card-status{font-size:9px;padding:5px 7px}
+ #page-lessons .lesson-card-foot{font-size:9px}
+}
+@media(max-width:370px){#page-lessons .lesson-subject-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){
+ #page-lessons,#page-lessons .lesson-subject-card{animation:none}
+ #page-lessons .lesson-subject-card,#page-lessons .lesson-group-option{transition:none}
+}
+
 </style>
 </head>
 <body>
