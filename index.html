@@ -912,16 +912,108 @@ document.getElementById("scheduleBack").addEventListener("click",()=>{
 });
 document.getElementById("noticeBtn").addEventListener("click",()=>{const t=document.getElementById("toast");t.textContent="لا توجد إشعارات جديدة حالياً.";t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2300)});
 const subjectData=[
-{name:"النحو العربي",symbol:"ن",axes:[{name:"الجملة الاسمية وأحكامها",chapters:[["المبتدأ والخبر",["تعريف المبتدأ والخبر","أنواع الخبر","تقديم المبتدأ والخبر وتأخيرهما","حذف المبتدأ والخبر"]],["كان وأخواتها",["عمل كان وأخواتها","معاني الأفعال الناقصة","أحكام اسمها وخبرها"]],["إن وأخواتها",["عمل الحروف المشبهة بالفعل","معاني إن وأخواتها","تقديم الخبر وتأخيره"]]]},{name:"النواسخ والتراكيب",chapters:[["الحروف المشبهة بليس",["ما ولا ولات وإن","شروط العمل والإهمال"]],["كاد وأخواتها",["أفعال المقاربة","أفعال الرجاء","أفعال الشروع"]]]}]},
-{name:"الصرف العربي",symbol:"ص",axes:[{name:"المشتقات",chapters:[["اسم الفاعل واسم المفعول",["صياغتهما من الثلاثي وغير الثلاثي","عمل اسم الفاعل","أحكام اسم المفعول"]],["الصفة المشبهة وصيغ المبالغة",["أوزان الصفة المشبهة","أوزان صيغ المبالغة","الفروق والاستعمال"]]]},{name:"الأسماء والصيغ",chapters:[["المصادر",["المصدر الأصلي","مصادر الأفعال الثلاثية وغير الثلاثية"]],["أسماء الزمان والمكان والآلة",["أوزان اسم الزمان والمكان","صيغ اسم الآلة"]],["اسم التفضيل",["صياغته وشروطه","أحكامه واستعمالاته"]]]}]},
-{name:"قضايا النقد",symbol:"ق",axes:[{name:"مدخل إلى النقد العربي",chapters:[["فلسفة النقد وتاريخه",["مفهوم النقد ووظائفه","نشأة النقد العربي وتطوره"]],["النقد في العصور الأولى",["النقد في العصر الجاهلي","النقد في صدر الإسلام","النقد في العصر الأموي"]]]},{name:"قضايا واتجاهات نقدية",chapters:[["النقد في العصر العباسي",["أبرز النقاد والاتجاهات","قضايا اللفظ والمعنى"]],["قضايا نقدية",["الموازنة بين الشعراء","نظرية النظم","المناهج النقدية"]]]}]},
-{name:"مدخل إلى علم الأحياء",symbol:"ح",axes:[{name:"أساسيات علم الأحياء",chapters:[["مدخل وتصنيف العالم الحي",["مفهوم علم الأحياء وفروعه","مستويات التنظيم الحيوي","تصنيف الكائنات الحية"]],["الأحياء الدقيقة",["مفهوم الأحياء الدقيقة","البكتيريا وخصائصها","الفيروسات"]]]},{name:"الوظائف والتطبيقات",chapters:[["التغذية والأيض",["مبادئ التغذية","الأيض والتحولات الحيوية"]],["تطبيقات علم الأحياء",["تطبيقات بيئية","تطبيقات طبية"]]]}]},
-{name:"الرياضيات",symbol:"ر",axes:[{name:"مفاهيم وتطبيقات رياضية",chapters:[["التشفير",["مبادئ التشفير الرياضي","تطبيقات مبسطة"]],["ثلاثيات الحدود",["مفهوم ثلاثي الحدود","العمليات والتحليل"]],["المعادلات والمتراجحات بمجهولين",["حل المعادلات","تمثيل المتراجحات"]],["المتتاليات",["مفهوم المتتالية","أنواع المتتاليات"]],["التحويلات النقطية",["مفهوم التحويل","أنواع التحويلات"]]]}]},
-{name:"الذكاء الاصطناعي في التعلم",symbol:"ذ",axes:[{name:"أساسيات الذكاء الاصطناعي",chapters:[["الذكاء الاصطناعي التوليدي والتعلم",["مفهوم الذكاء الاصطناعي","النماذج التوليدية","مبادئ التعلم الآلي"]],["هندسة الأوامر",["صياغة الأوامر","تحسين المخرجات والتحقق منها"]]]},{name:"التطبيقات والأخلاقيات",chapters:[["أخلاقيات النزاهة",["الخصوصية وحماية البيانات","النزاهة الأكاديمية","الاستخدام المسؤول"]],["البحث والتحليل والتلخيص",["البحث بمساعدة الذكاء الاصطناعي","تحليل المعلومات وتلخيصها"]],["الذكاء متعدد الأنماط والمساعد الذكي",["التعامل مع النص والصورة والصوت","المساعد والوكيل الذكي"]]]}]},
-{name:"لسانيات عامة",symbol:"ل",axes:[{name:"مدخل إلى اللسانيات",chapters:[["مفهوم اللسانيات",["موضوع اللسانيات وفروعها","اللسانيات وعلم اللغة"]],["فرديناند دي سوسير",["اللغة واللسان والكلام","الدال والمدلول"]]]},{name:"اللسان والتواصل",chapters:[["اللسان نظام من الأبنية",["مستويات التحليل اللساني","العلاقات بين الوحدات"]],["اللسان والوسائل التبليغية",["التواصل وأنظمته","دورة التخاطب ووظائف اللسان"]]]}]},
-{name:"علم نفس النمو: الطفل والمراهق",symbol:"ن",axes:[{name:"مفاهيم ونظريات النمو",chapters:[["مدخل إلى علم نفس النمو",["مفهوم النمو وخصائصه","مبادئ النمو ومراحله"]],["نظريات النمو",["النظريات المفسرة للنمو","العوامل المؤثرة في النمو"]]]},{name:"مراحل النمو",chapters:[["المرحلة الجنينية والرضاعة",["النمو قبل الولادة","مرحلة الرضاعة"]],["الطفولة والبلوغ والمراهقة",["مرحلة الطفولة","البلوغ","خصائص مرحلة المراهقة"]]]}]},
-{name:"التربية الإسلامية",symbol:"ت",axes:[{name:"مبادئ العبادات",chapters:[["أركان الإسلام والشهادتان",["أركان الإسلام","معنى الشهادتين ومقتضياتهما"]],["الطهارة",["أحكام الطهارة","أنواع المياه والنجاسات"]],["الصلاة",["مكانة الصلاة وشروطها","أركان الصلاة وواجباتها"]]]}]},
-{name:"اللغة الإنجليزية",symbol:"EN",axes:[{name:"Course units",chapters:[["Teacher Roles and Professional Identity",["Roles of the teacher","Professional identity"]],["Classroom Communication and Interaction",["Classroom language","Teacher-learner interaction"]],["Classroom Life and Learner Behavior",["Classroom routines","Learner behavior"]],["Learning Strategies and Study Skills",["Learning strategies","Study skills"]],["Technology in Language Teaching",["Digital tools","Technology in language teaching"]]]}]}
+{name:"النحو العربي",symbol:"ن",theme:{accent:"#8b573b",soft:"#f4e6d8",panel:"#fffaf4",line:"#ead5c2"},axes:[
+{name:"الجملة الاسمية",chapters:[
+["المبتدأ وأحكامه",["تعريف المبتدأ","أقسام المبتدأ","أحكام المبتدأ"]],
+["الخبر وأحكامه",["تعريف الخبر","أقسام الخبر","روابطه بالمبتدأ","أحكامه"]],
+["مبدأ الوصف",["تعريفه","شروطه"]]
+]},
+{name:"النواسخ",chapters:[
+["كان وأخواتها",["معانيها وشروط عملها","أقسامها وأحوال خبرها","تصريفها وخصائصها"]],
+["الحروف المشبهة بليس",["ما، لا، لات، إن","أحكامها"]],
+["أفعال المقاربة (كاد وأخواتها)",["أقسامها","شروط عملها","اقتران خبرها بـ«أن»","خصائصها وتصريفها"]],
+["الحروف المشبهة بالفعل (إن وأخواتها)",["معانيها وأحكامها","حذف الخبر وتقديمه","الكافة والعطف على أسمائها","اتصالها بنون الوقاية","كسر همزة «إن» وتخفيفها"]]
+]}
+]},
+{name:"الصرف العربي",symbol:"ص",theme:{accent:"#7560a4",soft:"#eee8f8",panel:"#fbf9ff",line:"#ddd3ef"},axes:[
+{name:"المحور الأول: المصادر وأوزانها",chapters:[
+["مصدر الفعل الثلاثي وغير الثلاثي",[]],["مصدر الخماسي والسداسي",[]],["اسم المصدر",[]],["المصدر الميمي والصناعي والمرة والهيئة",[]]
+]},
+{name:"المحور الثاني: اسم الفاعل",chapters:[["صياغة اسم الفاعل",["من الثلاثي","من الأجوف","من الناقص","من غير الثلاثي"]]]},
+{name:"المحور الثالث: اسم المفعول",chapters:[["صياغة اسم المفعول",["من الثلاثي","من الأجوف","من الناقص","من غير الثلاثي"]]]},
+{name:"المحور الرابع: الصفة المشبهة",chapters:[["الصفة المشبهة",[]]]},
+{name:"المحور الخامس: صيغة المبالغة",chapters:[["صيغة المبالغة",[]]]},
+{name:"المحور السادس: اسم الزمان واسم المكان",chapters:[["صياغة اسمي الزمان والمكان",["من الثلاثي","من غير الثلاثي"]]]},
+{name:"المحور السابع: اسم الآلة",chapters:[["اسم الآلة",[]]]},
+{name:"المحور الثامن: اسم التفضيل",chapters:[["اسم التفضيل",[]]]}
+]},
+{name:"قضايا النقد",symbol:"ق",theme:{accent:"#315f87",soft:"#e5eff8",panel:"#f7fbff",line:"#ccdeed"},axes:[
+{name:"أولاً: مدخل إلى فلسفة النقد وأدواته",chapters:[
+["ماهية النقد الأدبي",[]],["وظيفة النقد وغايته",[]],["شروط الناقد وأدواته",[]],["الذوق الأدبي",[]]
+]},
+{name:"ثانياً: تاريخ النقد العربي القديم (الجذور والتحولات)",chapters:[
+["النقد الفطري (الجاهلي)",[]],["النقد في صدر الإسلام",[]],["تطور النقد في العصر الأموي",[]],["أثر العلوم العقلية في العصر العباسي",[]]
+]},
+{name:"ثالثاً: قضايا النقد العربي الكبرى (المادة العلمية للمعلم)",chapters:[
+["قضية اللفظ والمعنى",[]],["الموازنة النقدية",[]],["نظرية النظم عند الجرجاني",[]],["نقد أدب الطفل في التراث العربي القديم وأهميته التربوية",[]]
+]}
+]},
+{name:"مدخل إلى علم الأحياء",symbol:"ح",theme:{accent:"#267568",soft:"#e1f1ec",panel:"#f5fbf8",line:"#c9e3d9"},axes:[
+{name:"المحور الأول: مدخل إلى علم الأحياء",chapters:[
+["الفصل الأول: التنظيم البنيوي للأحياء",["مستويات التنظيم الحيوي","الخلية والأنسجة والأعضاء والأجهزة","تنوع الخلايا والوظائف الحيوية","المقاييس الحيوية ووسائل الملاحظة","مفهوم الطاقة"]],
+["الفصل الثاني: تصنيف العالم الحي",["مفهوم وأهمية التصنيف","أسس ومعايير التصنيف","السلم التصنيفي والمستويات الرئيسية"]]
+]},
+{name:"المحور الثاني: دراسة الأحياء الدقيقة",chapters:[
+["الفصل الأول: مدخل إلى علم الأحياء الدقيقة",["تاريخ العلم وأبرز الرواد","ليفنهوك وباستور وكوخ","العصر الذهبي والميكروبيوم"]],
+["الفصل الثاني: مظهر وبنية البكتيريا",["أشكال البكتيريا والمستعمرات","البنية الخلوية ووظائفها"]],
+["الفصل الثالث: التغذية والأيض البكتيري",["الأنماط الغذائية والتنفسية","الأيض والطاقة واستقلاب الجلوكوز","التطبيقات الغذائية والدوائية والبيئية"]],
+["الفصل الرابع: النمو ومثبطات النمو",["منحنى النمو ومراحله","التعقيم والتطهير","المضادات الحيوية والمقاومة"]],
+["الفصل الخامس: تصنيف البكتيريا",["السلم والمعايير التصنيفية","التصنيف المظهري والوراثي","Proteobacteria و16S rRNA"]],
+["الفصل السادس: الفيروسات",["خصائص وبنية الفيروسات","اكتشافها ودورات تكاثرها","الفيريونات والفيرويدات"]],
+["الفصل السابع: التطبيقات الميدانية",["التطبيقات الطبية والغذائية","التطبيقات الزراعية والبيئية والصناعية","التخمّر"]]
+]}
+]},
+{name:"الرياضيات",symbol:"ر",theme:{accent:"#294f91",soft:"#e5edfc",panel:"#f7f9ff",line:"#cbd8f1"},axes:[
+{name:"المحور الأول: التشفير",chapters:[["موضوعات التشفير",["مفهوم التشفير والترميز","عناصر التشفير","الرسالة الأصلية والمفتاح والخوارزمية","تطور تقنيات التشفير","شفرة قيصر","شفرة الاستبدال","الشفرة الثنائية","تطبيقات التشفير في الاتصالات والتجارة الإلكترونية والخدمات البنكية"]]]},
+{name:"المحور الثاني: ثلاثي الحدود من الدرجة الثانية",chapters:[["موضوعات ثلاثي الحدود",["الشكل النموذجي","المميز والمميز المختزل","المعادلات من الدرجة الثانية","الجذور والإشارة","مجموع وجداء الجذرين","تشكيل معادلة جذراها معلومان","تحليل ثلاثي الحدود","تطبيقات في نمذجة الظواهر الفيزيائية"]]]},
+{name:"المحور الثالث: المعادلات والمتراجحات بمجهولين حقيقيين",chapters:[["موضوعات المعادلات والمتراجحات",["حل جملة معادلتين بمجهولين","طريقة التعويض","طريقة الحذف","طريقة المحدد","التفسير البياني","حل متراجحة بمجهولين بيانياً"]]]},
+{name:"المحور الرابع: المتتاليات الحقيقية",chapters:[["موضوعات المتتاليات",["مفهوم المتتالية","الحد العام","اتجاه التغير والتزايد","المحدودية","المتتاليات الحسابية والهندسية","جوار عدد حقيقي","جوار اللانهاية","نهاية المتتالية","التقارب والتباعد","التفسير البياني للنهاية","مبرهنات التقارب","المتتاليات المتجاورة","المتتاليات المستخرجة أو الجزئية","المتتاليات الكوشية","المتتاليات التراجعية"]]]},
+{name:"المحور الخامس: التحويلات النقطية المألوفة في المستوى",chapters:[["موضوعات التحويلات النقطية",["التناظران المحوري والمركزي","الانسحاب","التحاكي","الدوران","التشابه","التعريفات الهندسية والتحليلية","النقاط الصامدة","العناصر والخصائص المميزة","تحويلات بعض الأشكال الهندسية"]]]}
+]},
+{name:"الذكاء الاصطناعي في التعلم",symbol:"ذ",theme:{accent:"#1769b4",soft:"#e2f1ff",panel:"#f5faff",line:"#c8e2f7"},axes:[
+{name:"برنامج المقياس",chapters:[
+["الفصل 1: اكتشاف الذكاء الاصطناعي التوليدي",["المفاهيم","القدرات","الحدود","الاصطلاحات الأكاديمية"]],
+["الفصل 2: فهم كيفية تعلم الذكاء الاصطناعي",["البيانات","التدريب","الانحياز"]],
+["الفصل 3: التفاعل الفعال مع الذكاء الاصطناعي",["مبادئ هندسة الأوامر (Prompt Engineering)"]],
+["الفصل 4: أخلاقيات استعمال الذكاء الاصطناعي والنزاهة الأكاديمية",["المسؤولية الأخلاقية","السرقة الفكرية","الإفصاح","التوثيق المنهجي"]],
+["الفصل 5: البحث عن المعلومات، تحليلها وتلخيصها",["استخدام الذكاء الاصطناعي ومحركات البحث المدعومة به في البحث الأكاديمي"]],
+["الفصل 6: استغلال القدرات متعددة الأنماط للذكاء الاصطناعي (Multimodal)",["التعامل مع النصوص","الصور","البيانات","المقاطع الصوتية"]],
+["الفصل 7: تصميم مساعد ذكاء اصطناعي، وكيل ذكي أو سير عمل مبرمج (Workflow)",["تصميم مساعدين مخصصين","الوكلاء الأذكياء","أتمتة المهام","تنظيم المعرفة"]]
+]}
+]},
+{name:"لسانيات عامة",symbol:"ل",theme:{accent:"#805064",soft:"#f1e7ec",panel:"#fff9fb",line:"#e6d2dc"},axes:[
+{name:"برنامج اللسانيات العامة",chapters:[
+["01 · اللسانيات: مدخل مفاهيمي",[]],
+["02 · آراء وأفكار دي سوسير",[]],
+["03 · اللسان: نظام من الأبنية الوضعية",[]],
+["04 · اللسان والوسائل التبليغية",[]],
+["05 · دورة التخاطب ووظائف اللسان",[]]
+]}
+]},
+{name:"علم نفس النمو: الطفل والمراهق",symbol:"ن",theme:{accent:"#267b9c",soft:"#e3f3f9",panel:"#f6fcff",line:"#cce6ef"},axes:[
+{name:"برنامج مقياس علم نفس النمو الطفل والمراهق",chapters:[
+["علم نفس النمو: الطفل والمراهق",["مفهوم وأهداف علم النفس النمو","نشأته وتطوره وعلاقته بالعلوم الأخرى","أهم المفاهيم والمناهج العلمية"]],
+["النمو ونظرياته",["مفهوم وقوانين النمو","مراحل وجوانب النمو","العوامل المؤثرة في النمو","أهم النظريات: فرويد، إريكسون، بياجيه، فيغوتسكي، برونر، كولبرج"]],
+["المرحلة الجنينية (مرحلة الحمل أو ما قبل الميلاد)",["مراحل الحمل الثلاث","العوامل المؤثرة في الجنين","الولادة الطبيعية والقيصرية"]],
+["مرحلة الرضاعة (مرحلة المهد)",["الرضاعة الطبيعية والاصطناعية","النمو العقلي والنفسي والجسمي والمعرفي واللغوي والاجتماعي"]],
+["الطفولة والبلوغ والمراهقة",["تعريف الطفولة والمراهقة","مراحل الطفولة والمراهقة","أشكال ونظريات الطفولة والمراهقة","شخصية الطفل والمراهق"]]
+]}
+]},
+{name:"التربية الإسلامية",symbol:"ت",theme:{accent:"#52734d",soft:"#eaf1e4",panel:"#fafcf6",line:"#d7e4cd"},axes:[
+{name:"فقه أركان الإسلام",chapters:[["مفهوم أركان الإسلام",["مفهومها لغة واصطلاحاً","أهميتها والفرق بين الإسلام والإيمان","مدخل إلى الفقه الإسلامي: مفهومه وخصائصه وموضوعاته ومصادره","التعريف بأبرز أئمة العلم والفقه المجتهدين"]]]},
+{name:"فقه الشهادتين",chapters:[["أحكام الشهادتين",["معنى شهادة أن لا إله إلا الله","معنى شهادة أن محمداً رسول الله ﷺ","شروط الشهادتين","نواقض ومبطلات الشهادتين","أحكام فقهية عامة متعلقة بالشهادتين","مقاصد الشريعة الإسلامية المتعلقة بالشهادتين","فقه المسائل المستجدة المعاصرة المتعلقة بالشهادتين"]]]},
+{name:"فقه الطهارة",chapters:[["أبواب الطهارة",["الطهارة: تعريفها وأقسامها: الحدث والخبث","النجاسة: تعريفها وأنواعها وأحكام الاستنجاء وآداب قضاء الحاجة","المياه: مفهومها وأقسامها والأحكام المتعلقة بها","الوضوء: تعريفه وصفته وحكمه وفرائضه وسننه ومستحباته ومكروهاته ونواقضه ومبطلاته","المسح على الخفين: مفهومه وشروطه وصفته ومبطلاته","الغسل: تعريفه وصفته وحكمه وموجباته وفرائضه وسننه ومستحباته","التيمم: تعريفه وصفته وحكمه وشروطه وفرائضه وسننه ومندوباته ونواقضه","الحيض والنفاس والاستحاضة: تعريفها وأهم الأحكام الفقهية المتعلقة بها","مقاصد الشريعة المتعلقة بالطهارة","المسائل المستجدة المعاصرة المتعلقة بالطهارة"]]]},
+{name:"فقه الصلاة",chapters:[["أبواب الصلاة",["تعريف الصلاة لغة وشرعاً وفضلها وحكمها وأدلتها","شروط الصلاة وأركانها وسننها ومكروهاتها ومبطلاتها","الأذان والإقامة وما يتعلق بهما من أحكام","صلاة الجمعة","صلاة العيدين","صلاة الجنازة","صلاة الكسوف والخسوف","صلاة الاستسقاء","الجمع والقصر","مقاصد الشريعة الإسلامية المتعلقة بالصلاة","المسائل المستجدة المعاصرة المتعلقة بالصلاة","حكم الصلاة في وسائل النقل الحديثة كالطائرات","الصلاة من جهاز أو كيس طبي"]]]}
+]},
+{name:"اللغة الإنجليزية",symbol:"EN",theme:{accent:"#607ba8",soft:"#eaf0fa",panel:"#f9fbff",line:"#d9e2f1"},axes:[
+{name:"English | S1",chapters:[
+["Unit 1: Teacher Roles and Professional Identity",["أدوار المعلم والهوية المهنية"]],
+["Unit 2: Classroom Communication and Interaction",["التواصل والتفاعل داخل الصف"]],
+["Unit 3: Classroom Life and Learner Behavior (Present Focus)",["الحياة الصفية وسلوك المتعلم (التركيز على المضارع)"]],
+["Unit 4: Learning Strategies and Study Skills",["استراتيجيات التعلم ومهارات الدراسة"]],
+["Unit 5: Technology in Language Teaching",["التكنولوجيا في تعليم اللغة"]]
+]}
+]}
 ];
 const subjectsGrid=document.getElementById("subjectsGrid"),subjectSearch=document.getElementById("subjectSearch"),subjectDetail=document.getElementById("subjectDetail");
 function renderSubjects(){const q=(subjectSearch.value||"").trim().toLocaleLowerCase("ar");const list=subjectData.filter(x=>(x.name+" "+x.axes.map(a=>a.name+" "+a.chapters.map(c=>c[0]+" "+c[1].join(" ")).join(" ")).join(" ")).toLocaleLowerCase("ar").includes(q));document.getElementById("subjectCount").textContent=list.length+" من "+subjectData.length+" مقاييس";subjectsGrid.innerHTML=list.length?list.map((x,i)=>'<button class="subject-card" data-subject="'+subjectData.indexOf(x)+'"><span class="subject-symbol">'+x.symbol+'</span><b>'+x.name+'</b><small>'+x.axes.length+' محاور · '+x.axes.reduce((n,a)=>n+a.chapters.length,0)+' وحدات</small><span class="subject-open">عرض البرنامج ←</span></button>').join(""):'<div class="subject-empty">لا توجد مادة أو محور يطابق البحث.</div>';subjectsGrid.querySelectorAll("[data-subject]").forEach(b=>b.addEventListener("click",()=>openSubject(Number(b.dataset.subject))));}
@@ -933,12 +1025,16 @@ subjectSearch.addEventListener("input",renderSubjects);renderSubjects();
 const lessonList=document.getElementById("lessonList");
 let activeLessonCard=null;
 let lessonSubjectDialog=null;
+let lessonDialogPreviousHtmlOverflow="";
+let lessonDialogPreviousBodyOverflow="";
 function closeLessonSubjectDialog(){
  if(!lessonSubjectDialog)return;
  lessonSubjectDialog.classList.remove("is-visible");
  if(activeLessonCard)activeLessonCard.classList.remove("is-selected");
  const old=lessonSubjectDialog;
  lessonSubjectDialog=null;
+ document.documentElement.style.overflow=lessonDialogPreviousHtmlOverflow;
+ document.body.style.overflow=lessonDialogPreviousBodyOverflow;
  window.setTimeout(()=>old.remove(),220);
  if(activeLessonCard){activeLessonCard.focus({preventScroll:true});activeLessonCard=null;}
 }
@@ -949,14 +1045,23 @@ function openLessonSubjectDialog(card){
  activeLessonCard=card;
  card.classList.add("is-selected");
  card.setAttribute("tabindex","0");
- card.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});
  const axes=subject?.axes||[];
- const body=axes.length?axes.map((axis,axisIndex)=>'<section class="lesson-dialog-axis"><div class="lesson-dialog-axis-title"><span>المحور '+(axisIndex+1)+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+axis.chapters.map((chapter,chapterIndex)=>'<details class="lesson-dialog-chapter"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span>'+chapter[0]+'</span><i>＋</i></summary><ul>'+chapter[1].map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details>').join("")+'</div></section>').join(""):'<div class="lesson-dialog-empty">سيتم نشر محتوى هذا المقياس قريباً.</div>';
+ const totalUnits=axes.reduce((sum,axis)=>sum+(axis.chapters?.length||0),0);
+ const body=axes.length?axes.map((axis,axisIndex)=>'<section class="lesson-dialog-axis"><div class="lesson-dialog-axis-title"><span>المحور '+(axisIndex+1)+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+axis.chapters.map((chapter,chapterIndex)=>'<details class="lesson-dialog-chapter"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span>'+chapter[0]+'</span><i>＋</i></summary>'+(chapter[1]?.length?'<ul>'+chapter[1].map(topic=>'<li>'+topic+'</li>').join("")+'</ul>':'')+'</details>').join("")+'</div></section>').join(""):'<div class="lesson-dialog-empty">سيتم نشر محتوى هذا المقياس قريباً.</div>';
+ const theme=subject?.theme||{accent:"#52765e",soft:"#eef4ef",panel:"#fff",line:"#dce7df"};
  const dialog=document.createElement("div");
  dialog.className="lesson-subject-dialog";
- dialog.innerHTML='<div class="lesson-dialog-backdrop" data-dialog-close></div><section class="lesson-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="lessonDialogTitle" tabindex="-1"><button class="lesson-dialog-close" type="button" aria-label="إغلاق" data-dialog-close>×</button><div class="lesson-dialog-kicker">المقياس الدراسي · المجموعة '+currentGroup+'</div><div class="lesson-dialog-heading"><span class="lesson-dialog-symbol">'+(subject?.symbol||"م")+'</span><div><h2 id="lessonDialogTitle">'+title+'</h2><p>'+(axes.length?axes.length+" محاور دراسية":"المحتوى الدراسي")+'</p></div></div><div class="lesson-dialog-content">'+body+'</div></section>';
+ dialog.style.setProperty("--dialog-accent",theme.accent);
+ dialog.style.setProperty("--dialog-soft",theme.soft);
+ dialog.style.setProperty("--dialog-panel",theme.panel);
+ dialog.style.setProperty("--dialog-line",theme.line);
+ dialog.innerHTML='<div class="lesson-dialog-backdrop" data-dialog-close></div><section class="lesson-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="lessonDialogTitle" tabindex="-1"><button class="lesson-dialog-close" type="button" aria-label="إغلاق" data-dialog-close>×</button><div class="lesson-dialog-kicker">المقياس الدراسي · المجموعة '+currentGroup+'</div><div class="lesson-dialog-heading"><span class="lesson-dialog-symbol">'+(subject?.symbol||"م")+'</span><div><h2 id="lessonDialogTitle">'+title+'</h2><p>'+axes.length+' محاور · '+totalUnits+' وحدات / فصول</p></div></div><div class="lesson-dialog-content">'+body+'</div></section>';
  document.body.appendChild(dialog);
  lessonSubjectDialog=dialog;
+ lessonDialogPreviousHtmlOverflow=document.documentElement.style.overflow;
+ lessonDialogPreviousBodyOverflow=document.body.style.overflow;
+ document.documentElement.style.overflow="hidden";
+ document.body.style.overflow="hidden";
  requestAnimationFrame(()=>dialog.classList.add("is-visible"));
  dialog.querySelectorAll("[data-dialog-close]").forEach(el=>el.addEventListener("click",closeLessonSubjectDialog));
  dialog.querySelector(".lesson-dialog-panel").focus({preventScroll:true});
@@ -1134,54 +1239,40 @@ document.addEventListener("keydown",event=>{
 
 
 <style id="lesson-card-hover-and-dialog-20261113">
-/* Desktop hover echoes the lively lift-and-shadow interaction used by the records cards */
-@media(hover:hover) and (pointer:fine){
- #page-lessons .lesson-subject-grid>.lesson-subject-card:hover{
-  transform:translateY(-6px) scale(1.012)!important;
-  border-color:var(--lesson-accent,#a9c4b1)!important;
-  box-shadow:0 16px 30px rgba(37,57,46,.17)!important;
-  filter:brightness(1.025) saturate(1.04);
-  transition:transform .24s cubic-bezier(.2,.8,.2,1),box-shadow .24s,border-color .24s,filter .24s;
- }
-}
-#page-lessons .lesson-subject-grid>.lesson-subject-card.is-selected{
- z-index:80!important;
- transform:translateY(-11px) scale(1.018)!important;
- border-color:var(--lesson-accent,#8eae98)!important;
- box-shadow:0 20px 42px rgba(35,58,43,.2)!important;
- transition:transform .32s cubic-bezier(.2,.85,.25,1),box-shadow .32s,border-color .32s;
-}
 .lesson-subject-dialog{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:18px;opacity:0;visibility:hidden;transition:opacity .22s ease,visibility .22s ease}
 .lesson-subject-dialog.is-visible{opacity:1;visibility:visible}
-.lesson-dialog-backdrop{position:absolute;inset:0;background:rgba(24,37,31,.48);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
-.lesson-dialog-panel{position:relative;z-index:1;width:min(680px,100%);max-height:min(84vh,820px);overflow:auto;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.75);border-radius:24px;padding:25px;background:linear-gradient(150deg,#fbfdfb,#f2f6f3);box-shadow:0 28px 90px rgba(15,30,20,.28);transform:translateY(28px) scale(.965);transition:transform .38s cubic-bezier(.18,.8,.2,1)}
+.lesson-dialog-backdrop{position:absolute;inset:0;background:rgba(19,29,34,.56);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+.lesson-dialog-panel{position:relative;z-index:1;width:min(720px,100%);max-height:min(86vh,860px);overflow:auto;overscroll-behavior:contain;border:1px solid var(--dialog-line,#dce7df);border-radius:25px;padding:25px;background:linear-gradient(145deg,var(--dialog-panel,#fff),var(--dialog-soft,#f2f6f3));box-shadow:0 30px 90px rgba(15,30,25,.32);transform:translateY(22px) scale(.975);transition:transform .34s cubic-bezier(.18,.8,.2,1)}
 .lesson-subject-dialog.is-visible .lesson-dialog-panel{transform:translateY(0) scale(1)}
-.lesson-dialog-close{position:absolute;left:17px;top:16px;width:36px;height:36px;border:1px solid #e1e9e2;border-radius:12px;background:#fff;color:#607568;font-size:25px;line-height:1;cursor:pointer;transition:background .2s,transform .2s}
-.lesson-dialog-close:hover{background:#eaf2ec;transform:rotate(90deg)}
-.lesson-dialog-kicker{color:#789081;font-size:11px;font-weight:800;letter-spacing:.2px;margin:0 0 17px}
-.lesson-dialog-heading{display:flex;align-items:center;gap:14px;padding:0 0 19px;border-bottom:1px solid #e4ebe5}
-.lesson-dialog-symbol{display:grid;place-items:center;flex:0 0 54px;height:54px;border-radius:17px;background:#e6efe8;color:#52765e;font-size:23px;font-weight:900}
-.lesson-dialog-heading h2{margin:0 0 5px;color:#2e4938;font-size:21px;font-weight:900}
-.lesson-dialog-heading p{margin:0;color:#829087;font-size:11px}
-.lesson-dialog-content{padding-top:19px}
-.lesson-dialog-axis{margin:0 0 17px}
-.lesson-dialog-axis-title{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.lesson-dialog-axis-title>span{flex:0 0 auto;padding:6px 9px;border-radius:8px;background:#e7efe9;color:#64816d;font-size:10px;font-weight:800}
-.lesson-dialog-axis-title h3{margin:0;color:#385442;font-size:14px;font-weight:850}
+.lesson-dialog-close{position:absolute;left:17px;top:16px;width:38px;height:38px;border:1px solid var(--dialog-line,#dce7df);border-radius:13px;background:var(--dialog-panel,#fff);color:var(--dialog-accent,#55715e);font-size:25px;line-height:1;cursor:pointer;transition:background .2s,transform .2s}
+.lesson-dialog-close:hover{background:var(--dialog-soft,#eef4ef);transform:rotate(90deg)}
+.lesson-dialog-kicker{display:inline-flex;align-items:center;gap:7px;color:var(--dialog-accent,#55715e);background:var(--dialog-soft,#eef4ef);border:1px solid var(--dialog-line,#dce7df);border-radius:999px;padding:7px 12px;font-size:11px;font-weight:850;margin:0 0 17px}
+.lesson-dialog-heading{display:flex;align-items:center;gap:14px;padding:0 0 20px;border-bottom:1px solid var(--dialog-line,#e4ebe5)}
+.lesson-dialog-symbol{display:grid;place-items:center;flex:0 0 58px;height:58px;border-radius:18px;background:var(--dialog-accent,#52765e);color:#fff;font-size:23px;font-weight:900;box-shadow:0 8px 18px color-mix(in srgb,var(--dialog-accent,#52765e) 22%,transparent)}
+.lesson-dialog-heading h2{margin:0 0 6px;color:var(--dialog-accent,#2e4938);font-size:22px;font-weight:900}
+.lesson-dialog-heading p{margin:0;color:var(--dialog-muted,#829087);font-size:12px}
+.lesson-dialog-content{padding-top:20px}
+.lesson-dialog-axis{margin:0 0 19px;padding:15px;border:1px solid var(--dialog-line,#e5ece6);border-radius:17px;background:color-mix(in srgb,var(--dialog-panel,#fff) 84%,transparent)}
+.lesson-dialog-axis-title{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.lesson-dialog-axis-title>span{flex:0 0 auto;padding:7px 10px;border-radius:9px;background:var(--dialog-accent,#64816d);color:#fff;font-size:10px;font-weight:850}
+.lesson-dialog-axis-title h3{margin:0;color:var(--dialog-accent,#385442);font-size:14px;font-weight:900;line-height:1.7}
 .lesson-dialog-chapters{display:grid;gap:8px}
-.lesson-dialog-chapter{border:1px solid #e5ece6;border-radius:13px;background:#fff;overflow:hidden}
-.lesson-dialog-chapter summary{display:flex;align-items:center;gap:11px;min-height:48px;padding:10px 13px;cursor:pointer;list-style:none;color:#405849;font-size:12px;font-weight:800}
+.lesson-dialog-chapter{border:1px solid var(--dialog-line,#e5ece6);border-radius:13px;background:var(--dialog-panel,#fff);overflow:hidden}
+.lesson-dialog-chapter summary{display:flex;align-items:center;gap:11px;min-height:49px;padding:10px 13px;cursor:pointer;list-style:none;color:var(--dialog-ink,#405849);font-size:12px;font-weight:850}
 .lesson-dialog-chapter summary::-webkit-details-marker{display:none}
-.lesson-dialog-chapter summary b{display:grid;place-items:center;width:27px;height:27px;border-radius:8px;background:#f0f4f0;color:#829287;font-size:10px}
-.lesson-dialog-chapter summary i{margin-right:auto;color:#789181;font-size:16px;font-style:normal;transition:transform .2s}
+.lesson-dialog-chapter summary b{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:var(--dialog-soft,#f0f4f0);color:var(--dialog-accent,#829287);font-size:10px}
+.lesson-dialog-chapter summary i{margin-right:auto;color:var(--dialog-accent,#789181);font-size:17px;font-style:normal;transition:transform .2s}
 .lesson-dialog-chapter[open] summary i{transform:rotate(45deg)}
-.lesson-dialog-chapter ul{margin:0;padding:2px 52px 14px 14px;color:#718078;font-size:11px;line-height:2.1}
-.lesson-dialog-empty{padding:24px;border:1px dashed #d7e2d9;border-radius:14px;color:#7b8a80;text-align:center;font-size:13px}
+.lesson-dialog-chapter ul{margin:0;padding:2px 54px 14px 14px;color:var(--dialog-muted,#718078);font-size:11px;line-height:2.05}
+.lesson-dialog-chapter li{padding:1px 0}
+.lesson-dialog-empty{padding:24px;border:1px dashed var(--dialog-line,#d7e2d9);border-radius:14px;color:var(--dialog-muted,#7b8a80);text-align:center;font-size:13px}
 @media(max-width:600px){
- .lesson-subject-dialog{padding:10px}
- .lesson-dialog-panel{max-height:88vh;padding:19px 15px;border-radius:20px}
- .lesson-dialog-heading h2{font-size:17px}
- .lesson-dialog-symbol{flex-basis:46px;height:46px;border-radius:14px}
+ .lesson-subject-dialog{padding:9px}
+ .lesson-dialog-panel{max-height:90vh;padding:19px 14px;border-radius:21px}
+ .lesson-dialog-heading h2{font-size:18px}
+ .lesson-dialog-symbol{flex-basis:48px;height:48px;border-radius:15px}
+ .lesson-dialog-axis{padding:12px}
+ .lesson-dialog-axis-title{align-items:flex-start}
  .lesson-dialog-axis-title h3{font-size:12px}
  .lesson-dialog-chapter summary{font-size:11px;padding:9px}
  .lesson-dialog-chapter ul{padding-right:46px}
