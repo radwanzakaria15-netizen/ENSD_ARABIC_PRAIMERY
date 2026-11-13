@@ -996,7 +996,7 @@ function openLessonSubjectDialog(card){
    const key=lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex);
    const published=!!PUBLISHED_LESSONS[key];
    const topics=chapter[1]||[];
-   return '<div class="lesson-dialog-unit-wrap"><details class="lesson-dialog-chapter '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?'منشور':'قريباً')+'</span><i>＋</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details><div class="lesson-unit-actions">'+(published?'<a class="lesson-unit-open" href="/api/file?key='+encodeURIComponent(key)+'" target="_blank" rel="noopener">فتح المحاضرة</a>':(LESSON_ADMIN?'':'<span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span>'))+(LESSON_ADMIN?'<label class="lesson-admin-upload">'+(published?'استبدال المحاضرة':'رفع المحاضرة')+'<input type="file" accept="application/pdf,.pdf" data-upload-key="'+key+'"></label>'+(published?'<button class="lesson-admin-delete" type="button" data-delete-key="'+key+'">حذف</button>':''):'')+'</div></div>';
+   return '<div class="lesson-dialog-unit-wrap"><details class="lesson-dialog-chapter '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?'منشور':'قريباً')+'</span><i>＋</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details><div class="lesson-unit-actions">'+(published?'<a class="lesson-unit-open" href="/api/file?key='+encodeURIComponent(key)+'" target="_blank" rel="noopener">فتح المحاضرة</a>':(LESSON_ADMIN?'':'<span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span>'))+(LESSON_ADMIN?'<button class="lesson-admin-upload" type="button" data-pick-upload-key="'+key+'">'+(published?'استبدال المحاضرة':'رفع المحاضرة')+'</button><input class="lesson-upload-input" type="file" accept="application/pdf,.pdf" hidden data-upload-key="'+key+'">'+(published?'<button class="lesson-admin-delete" type="button" data-delete-key="'+key+'">حذف</button>':''):'')+'</div></div>';
   }).join("");
   const hasPublished=axis.chapters.some((chapter,chapterIndex)=>!!PUBLISHED_LESSONS[lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex)]);
   return '<section class="lesson-dialog-axis '+(hasPublished?'has-published':'off')+'"><div class="lesson-dialog-axis-title"><span>المحور '+String(axisIndex+1).padStart(2,"0")+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+units+'</div></section>';
@@ -1030,14 +1030,22 @@ function openLessonSubjectDialog(card){
   try{sessionStorage.removeItem("ensd_arabic_admin_code");}catch(e){}
   openLessonSubjectDialog(card);
  });
- dialog.querySelectorAll("[data-upload-key]").forEach(input=>input.addEventListener("change",async()=>{
+ dialog.querySelectorAll("[data-pick-upload-key]").forEach(button=>button.addEventListener("click",event=>{
+  event.preventDefault();event.stopPropagation();
+  const input=dialog.querySelector('[data-upload-key="'+button.dataset.pickUploadKey+'"]');
+  if(input)input.click();
+ }));
+ dialog.querySelectorAll("[data-upload-key]").forEach(input=>input.addEventListener("change",async(event)=>{
+  event.preventDefault();event.stopPropagation();
   const file=input.files&&input.files[0],key=input.dataset.uploadKey;
   if(!file)return;
   if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){alert("يرجى اختيار ملف PDF فقط.");input.value="";return;}
   if(file.size>4200000){alert("حجم الملف يتجاوز الحد المسموح (4.2 ميغابايت) لضمان نجاح الرفع.");input.value="";return;}
-  const label=input.parentElement;label.classList.add("is-busy");
-  const originalLabel=label.childNodes[0]?.textContent||"رفع المحاضرة";
-  label.childNodes[0].textContent="جارٍ رفع الملف… ";
+  const label=dialog.querySelector('[data-pick-upload-key="'+key+'"]');
+  if(!label)return;
+  label.disabled=true;label.classList.add("is-busy");
+  const originalLabel=label.textContent;
+  label.textContent="جارٍ رفع الملف…";
   try{
    const response=await fetch("/api/file?key="+encodeURIComponent(key),{
     method:"POST",
@@ -1057,9 +1065,9 @@ function openLessonSubjectDialog(card){
    openLessonSubjectDialog(card);
   }catch(error){
    console.error("Lecture upload failed:",error);
-   alert("لم يكتمل رفع الملف ("+error.message+"). تأكد من إعداد ADMIN_CODE وNetlify Blobs ثم أعد المحاولة.");
-   label.classList.remove("is-busy");
-   label.childNodes[0].textContent=originalLabel;
+   alert("لم يكتمل رفع الملف ("+error.message+"). لم يتم تحديث الصفحة؛ يمكنك إعادة المحاولة.");
+   label.disabled=false;label.classList.remove("is-busy");
+   label.textContent=originalLabel;
    input.value="";
   }
  }));
@@ -1157,8 +1165,8 @@ document.addEventListener("keydown",event=>{
 }
 </style>
 
-\n<style id="lesson-visibility-admin-fix-20261113">\n/* Keep unpublished units readable while preserving a quiet visual distinction. */\n.lesson-subject-dialog .lesson-dialog-axis.off .lesson-dialog-axis-title{opacity:1!important;filter:none!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished{opacity:1!important;filter:none!important;background:#f1f4f1!important;border-color:#d8e0d9!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished summary{color:#43584a!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished summary>b{background:#e2e9e3!important;color:#526b59!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished .lesson-unit-status{color:#685a3f!important;background:#f5efdf!important;border-color:#e8dcc0!important}\n.lesson-dialog-unit-wrap{display:grid;gap:7px}\n.lesson-unit-actions{padding:0 8px 5px!important;min-height:0}\n.lesson-admin-upload,.lesson-admin-delete,.lesson-unit-open{min-height:36px!important;font-size:11px!important}\n.lesson-admin-upload{background:#e8efff!important;color:#334d9a!important;border-color:#cbd8ff!important}\n.lesson-admin-upload{position:relative!important;overflow:hidden!important;isolation:isolate;z-index:2!important;pointer-events:auto!important}
-.lesson-admin-upload input[type="file"]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:0!important;display:block!important;cursor:pointer!important;z-index:3!important;font-size:100px!important}
+\n<style id="lesson-visibility-admin-fix-20261113">\n/* Keep unpublished units readable while preserving a quiet visual distinction. */\n.lesson-subject-dialog .lesson-dialog-axis.off .lesson-dialog-axis-title{opacity:1!important;filter:none!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished{opacity:1!important;filter:none!important;background:#f1f4f1!important;border-color:#d8e0d9!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished summary{color:#43584a!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished summary>b{background:#e2e9e3!important;color:#526b59!important}\n.lesson-subject-dialog .lesson-dialog-chapter.is-unpublished .lesson-unit-status{color:#685a3f!important;background:#f5efdf!important;border-color:#e8dcc0!important}\n.lesson-dialog-unit-wrap{display:grid;gap:7px}\n.lesson-unit-actions{padding:0 8px 5px!important;min-height:0}\n.lesson-admin-upload,.lesson-admin-delete,.lesson-unit-open{min-height:36px!important;font-size:11px!important}\n.lesson-admin-upload{background:#e8efff!important;color:#334d9a!important;border-color:#cbd8ff!important}\n.lesson-admin-upload{position:relative!important;z-index:2!important;pointer-events:auto!important}
+.lesson-upload-input{display:none!important}
 .lesson-admin-delete{position:relative!important;z-index:2!important;pointer-events:auto!important}\n.lesson-admin-upload.is-busy{opacity:.65!important;pointer-events:none}\n@media(max-width:700px){.lesson-unit-actions{padding:0 5px 7px!important;gap:7px!important}.lesson-admin-upload,.lesson-admin-delete,.lesson-unit-open{min-height:38px!important;padding:7px 12px!important}}\n</style>\n</body></html>
 
 <style id="lesson-dialog-publication-admin-20261113">
