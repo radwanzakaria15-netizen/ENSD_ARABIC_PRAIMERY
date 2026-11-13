@@ -955,3 +955,28 @@ subjectSearch.addEventListener("input",renderSubjects);renderSubjects();
 }
 </style>
 </body></html>
+
+<style id="lesson-stack-card-selection-20261113">
+/* Keep a generous visible tab for every stacked subject card so each remains selectable */
+#page-lessons .lesson-subject-grid>.lesson-subject-card{
+  margin-bottom:-60px!important;
+  scroll-margin-top:100px;
+  cursor:pointer;
+  -webkit-tap-highlight-color:rgba(90,130,105,.12);
+}
+#page-lessons .lesson-subject-grid>.lesson-subject-card:focus-visible{
+  outline:3px solid rgba(91,139,108,.55)!important;
+  outline-offset:3px!important;
+  z-index:30!important;
+}
+@media(max-width:700px){
+  #page-lessons .lesson-subject-grid>.lesson-subject-card{
+    margin-bottom:-55px!important;
+  }
+}
+@media(max-width:370px){
+  #page-lessons .lesson-subject-grid>.lesson-subject-card{
+    margin-bottom:-55px!important;
+  }
+}
+</style>
