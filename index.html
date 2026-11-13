@@ -929,6 +929,52 @@ function openSubject(i){const x=subjectData[i];if(!x)return;document.getElementB
 document.getElementById("subjectBack").addEventListener("click",()=>{subjectDetail.hidden=true;subjectsGrid.hidden=false;document.querySelector(".subjects-toolbar").hidden=false;subjectDetail.scrollIntoView({behavior:"smooth",block:"start"});});
 subjectSearch.addEventListener("input",renderSubjects);renderSubjects();
 
+/* Interactive lesson subject cards: lift the selected card, then reveal its study outline */
+const lessonList=document.getElementById("lessonList");
+let activeLessonCard=null;
+let lessonSubjectDialog=null;
+function closeLessonSubjectDialog(){
+ if(!lessonSubjectDialog)return;
+ lessonSubjectDialog.classList.remove("is-visible");
+ if(activeLessonCard)activeLessonCard.classList.remove("is-selected");
+ const old=lessonSubjectDialog;
+ lessonSubjectDialog=null;
+ window.setTimeout(()=>old.remove(),220);
+ if(activeLessonCard){activeLessonCard.focus({preventScroll:true});activeLessonCard=null;}
+}
+function openLessonSubjectDialog(card){
+ const title=card.querySelector(".lesson-card-title")?.textContent?.trim()||"المقياس";
+ const subject=subjectData.find(item=>item.name===title);
+ if(lessonSubjectDialog)closeLessonSubjectDialog();
+ activeLessonCard=card;
+ card.classList.add("is-selected");
+ card.setAttribute("tabindex","0");
+ card.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});
+ const axes=subject?.axes||[];
+ const body=axes.length?axes.map((axis,axisIndex)=>'<section class="lesson-dialog-axis"><div class="lesson-dialog-axis-title"><span>المحور '+(axisIndex+1)+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+axis.chapters.map((chapter,chapterIndex)=>'<details class="lesson-dialog-chapter"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span>'+chapter[0]+'</span><i>＋</i></summary><ul>'+chapter[1].map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details>').join("")+'</div></section>').join(""):'<div class="lesson-dialog-empty">سيتم نشر محتوى هذا المقياس قريباً.</div>';
+ const dialog=document.createElement("div");
+ dialog.className="lesson-subject-dialog";
+ dialog.innerHTML='<div class="lesson-dialog-backdrop" data-dialog-close></div><section class="lesson-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="lessonDialogTitle" tabindex="-1"><button class="lesson-dialog-close" type="button" aria-label="إغلاق" data-dialog-close>×</button><div class="lesson-dialog-kicker">المقياس الدراسي · المجموعة '+currentGroup+'</div><div class="lesson-dialog-heading"><span class="lesson-dialog-symbol">'+(subject?.symbol||"م")+'</span><div><h2 id="lessonDialogTitle">'+title+'</h2><p>'+(axes.length?axes.length+" محاور دراسية":"المحتوى الدراسي")+'</p></div></div><div class="lesson-dialog-content">'+body+'</div></section>';
+ document.body.appendChild(dialog);
+ lessonSubjectDialog=dialog;
+ requestAnimationFrame(()=>dialog.classList.add("is-visible"));
+ dialog.querySelectorAll("[data-dialog-close]").forEach(el=>el.addEventListener("click",closeLessonSubjectDialog));
+ dialog.querySelector(".lesson-dialog-panel").focus({preventScroll:true});
+}
+lessonList?.addEventListener("click",event=>{
+ const card=event.target.closest(".lesson-subject-card");
+ if(card&&!card.hidden)openLessonSubjectDialog(card);
+});
+lessonList?.addEventListener("keydown",event=>{
+ if((event.key==="Enter"||event.key===" ")&&event.target.classList.contains("lesson-subject-card")){
+  event.preventDefault();openLessonSubjectDialog(event.target);
+ }
+});
+document.addEventListener("keydown",event=>{
+ if(event.key==="Escape"&&lessonSubjectDialog)closeLessonSubjectDialog();
+});
+
+
 
 </script>
 
@@ -1086,3 +1132,62 @@ subjectSearch.addEventListener("input",renderSubjects);renderSubjects();
 }
 </style>
 
+
+<style id="lesson-card-hover-and-dialog-20261113">
+/* Desktop hover echoes the lively lift-and-shadow interaction used by the records cards */
+@media(hover:hover) and (pointer:fine){
+ #page-lessons .lesson-subject-grid>.lesson-subject-card:hover{
+  transform:translateY(-6px) scale(1.012)!important;
+  border-color:var(--lesson-accent,#a9c4b1)!important;
+  box-shadow:0 16px 30px rgba(37,57,46,.17)!important;
+  filter:brightness(1.025) saturate(1.04);
+  transition:transform .24s cubic-bezier(.2,.8,.2,1),box-shadow .24s,border-color .24s,filter .24s;
+ }
+}
+#page-lessons .lesson-subject-grid>.lesson-subject-card.is-selected{
+ z-index:80!important;
+ transform:translateY(-11px) scale(1.018)!important;
+ border-color:var(--lesson-accent,#8eae98)!important;
+ box-shadow:0 20px 42px rgba(35,58,43,.2)!important;
+ transition:transform .32s cubic-bezier(.2,.85,.25,1),box-shadow .32s,border-color .32s;
+}
+.lesson-subject-dialog{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:18px;opacity:0;visibility:hidden;transition:opacity .22s ease,visibility .22s ease}
+.lesson-subject-dialog.is-visible{opacity:1;visibility:visible}
+.lesson-dialog-backdrop{position:absolute;inset:0;background:rgba(24,37,31,.48);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.lesson-dialog-panel{position:relative;z-index:1;width:min(680px,100%);max-height:min(84vh,820px);overflow:auto;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.75);border-radius:24px;padding:25px;background:linear-gradient(150deg,#fbfdfb,#f2f6f3);box-shadow:0 28px 90px rgba(15,30,20,.28);transform:translateY(28px) scale(.965);transition:transform .38s cubic-bezier(.18,.8,.2,1)}
+.lesson-subject-dialog.is-visible .lesson-dialog-panel{transform:translateY(0) scale(1)}
+.lesson-dialog-close{position:absolute;left:17px;top:16px;width:36px;height:36px;border:1px solid #e1e9e2;border-radius:12px;background:#fff;color:#607568;font-size:25px;line-height:1;cursor:pointer;transition:background .2s,transform .2s}
+.lesson-dialog-close:hover{background:#eaf2ec;transform:rotate(90deg)}
+.lesson-dialog-kicker{color:#789081;font-size:11px;font-weight:800;letter-spacing:.2px;margin:0 0 17px}
+.lesson-dialog-heading{display:flex;align-items:center;gap:14px;padding:0 0 19px;border-bottom:1px solid #e4ebe5}
+.lesson-dialog-symbol{display:grid;place-items:center;flex:0 0 54px;height:54px;border-radius:17px;background:#e6efe8;color:#52765e;font-size:23px;font-weight:900}
+.lesson-dialog-heading h2{margin:0 0 5px;color:#2e4938;font-size:21px;font-weight:900}
+.lesson-dialog-heading p{margin:0;color:#829087;font-size:11px}
+.lesson-dialog-content{padding-top:19px}
+.lesson-dialog-axis{margin:0 0 17px}
+.lesson-dialog-axis-title{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.lesson-dialog-axis-title>span{flex:0 0 auto;padding:6px 9px;border-radius:8px;background:#e7efe9;color:#64816d;font-size:10px;font-weight:800}
+.lesson-dialog-axis-title h3{margin:0;color:#385442;font-size:14px;font-weight:850}
+.lesson-dialog-chapters{display:grid;gap:8px}
+.lesson-dialog-chapter{border:1px solid #e5ece6;border-radius:13px;background:#fff;overflow:hidden}
+.lesson-dialog-chapter summary{display:flex;align-items:center;gap:11px;min-height:48px;padding:10px 13px;cursor:pointer;list-style:none;color:#405849;font-size:12px;font-weight:800}
+.lesson-dialog-chapter summary::-webkit-details-marker{display:none}
+.lesson-dialog-chapter summary b{display:grid;place-items:center;width:27px;height:27px;border-radius:8px;background:#f0f4f0;color:#829287;font-size:10px}
+.lesson-dialog-chapter summary i{margin-right:auto;color:#789181;font-size:16px;font-style:normal;transition:transform .2s}
+.lesson-dialog-chapter[open] summary i{transform:rotate(45deg)}
+.lesson-dialog-chapter ul{margin:0;padding:2px 52px 14px 14px;color:#718078;font-size:11px;line-height:2.1}
+.lesson-dialog-empty{padding:24px;border:1px dashed #d7e2d9;border-radius:14px;color:#7b8a80;text-align:center;font-size:13px}
+@media(max-width:600px){
+ .lesson-subject-dialog{padding:10px}
+ .lesson-dialog-panel{max-height:88vh;padding:19px 15px;border-radius:20px}
+ .lesson-dialog-heading h2{font-size:17px}
+ .lesson-dialog-symbol{flex-basis:46px;height:46px;border-radius:14px}
+ .lesson-dialog-axis-title h3{font-size:12px}
+ .lesson-dialog-chapter summary{font-size:11px;padding:9px}
+ .lesson-dialog-chapter ul{padding-right:46px}
+}
+@media(prefers-reduced-motion:reduce){
+ .lesson-subject-dialog,.lesson-dialog-panel,#page-lessons .lesson-subject-grid>.lesson-subject-card{transition:none!important}
+ .lesson-subject-dialog .lesson-dialog-panel{transform:none!important}
+}
+</style>
