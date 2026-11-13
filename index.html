@@ -1005,3 +1005,67 @@ subjectSearch.addEventListener("input",renderSubjects);renderSubjects();
   }
 }
 </style>
+
+
+<style id="lessons-desktop-mobile-parity-20261113">
+/* Keep the lessons catalogue visually consistent with its mobile layout on desktop */
+@media(min-width:701px){
+  #page-lessons .lessons-panel{
+    width:min(100%,680px)!important;
+    margin-inline:auto!important;
+    padding:11px!important;
+    border-radius:20px!important;
+  }
+  #page-lessons .lessons-heading{
+    min-height:101px!important;
+    padding:16px 14px!important;
+    border-radius:16px!important;
+    margin-bottom:13px!important;
+  }
+  #page-lessons .lessons-heading h3{font-size:18px!important}
+  #page-lessons .lessons-heading p{font-size:10px!important;max-width:230px!important}
+  #page-lessons .lessons-total{
+    width:55px!important;height:55px!important;border-radius:15px!important;
+  }
+  #page-lessons .lesson-group-switch{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;
+  }
+  #page-lessons .lesson-group-option{
+    min-height:61px!important;
+    padding:10px 11px!important;
+  }
+  #page-lessons .lesson-group-option span{font-size:12px!important}
+  #page-lessons .lesson-group-option small{font-size:9px!important}
+  #page-lessons .lesson-group-summary{padding:13px 14px!important}
+  #page-lessons .lesson-subject-grid{
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    gap:0!important;
+    padding:6px 2px 34px!important;
+  }
+  #page-lessons .lesson-subject-grid>.lesson-subject-card{
+    width:100%!important;
+    min-height:124px!important;
+    margin:0 0 -55px!important;
+    padding:10px 10px 9px!important;
+    border-radius:15px!important;
+  }
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(1){top:9px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(2){top:16px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(3){top:23px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(4){top:30px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(5){top:37px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(6){top:44px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(7){top:51px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(8){top:58px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(9){top:65px!important}
+  #page-lessons .lesson-subject-grid>.lesson-subject-card:nth-child(10){top:72px!important}
+  #page-lessons .lesson-card-title{font-size:12px!important;min-height:35px!important}
+  #page-lessons .lesson-card-foot{font-size:9px!important}
+  #page-lessons .lesson-card-foot b{font-size:9px!important}
+}
+</style>
+
