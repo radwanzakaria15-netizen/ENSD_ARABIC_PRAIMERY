@@ -1,4 +1,4 @@
-const KEY_PATTERN = /^[AB]-\\d{2}-\\d{2}-\\d{2}$/;
+const KEY_PATTERN = /^[AB]-\d{2}-\d{2}-\d{2}$/;
 const MAX_FILE_SIZE = 4_200_000;
 
 const json = (value, status = 200) =>
