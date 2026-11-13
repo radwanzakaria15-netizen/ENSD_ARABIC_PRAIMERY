@@ -47,7 +47,7 @@ export default async (req) => {
       return json({ error: "unauthorized" }, 401);
     }
 
-    const store = getStore(STORE_NAME);
+    const store = getStore({ name: STORE_NAME, consistency: "strong" });
 
     if (req.method === "GET") {
       const data = await store.get(key, { type: "arrayBuffer", consistency: "strong" });
