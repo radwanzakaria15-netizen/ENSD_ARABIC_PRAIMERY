@@ -6,15 +6,6 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"],
-    "exclude": [
-      "src/**",
-      "node_modules/**",
-      ".git/**",
-      "package.json",
-      "wrangler.jsonc",
-      "README.md",
-      "netlify.toml"
-    ]
+    "run_worker_first": ["/api/*"]
   }
 }
