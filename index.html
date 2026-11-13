@@ -1142,12 +1142,18 @@ function openLessonSubjectDialog(card){
   if(!code){message.textContent="أدخل رمز الإدارة أولاً.";return;}
   submit.disabled=true;submit.textContent="جارٍ التحقق…";
   try{
-   const response=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":code}});
-   if(!response.ok)throw new Error("رمز غير صحيح");
+   const response=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":code},cache:"no-store"});
+   let result={};try{result=await response.json();}catch(e){}
+   if(!response.ok){
+    if(response.status===401)throw new Error("رمز الإدارة غير صحيح.");
+    if(result.error==="admin_code_not_configured")throw new Error("رمز الإدارة غير مضبوط في إعدادات Cloudflare Worker.");
+    if(result.error==="storage_not_configured")throw new Error("إعدادات التخزين غير مكتملة في Cloudflare.");
+    throw new Error("تعذر الاتصال بخدمة الإدارة ("+response.status+"). افتح رابط منصة Cloudflare Workers وليس GitHub Pages.");
+   }
    LESSON_ADMIN=true;LESSON_ADMIN_CODE=code;
    try{sessionStorage.setItem("ensd_arabic_admin_code",code);}catch(e){}
    openLessonSubjectDialog(card);
-  }catch(error){message.textContent="الرمز غير صحيح أو خدمة الإدارة غير مفعّلة.";submit.disabled=false;submit.textContent="دخول";}
+  }catch(error){message.textContent=error.message||"تعذر التحقق من الرمز.";submit.disabled=false;submit.textContent="دخول";}
  });
  const logout=dialog.querySelector("[data-admin-logout]");
  if(logout)logout.addEventListener("click",()=>{
