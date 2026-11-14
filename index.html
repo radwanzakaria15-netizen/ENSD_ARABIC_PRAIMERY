@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#f4f7f8">
-<title>طلبة العربية | التعليم الابتدائي</title>
+<title>ملحقة العربية | المنصة الجامعية</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1338,7 +1338,7 @@ resourceInitSelects();
 
 window.__academicBridge={
  getSubjects(){return subjectData;},
- setSubjects(items){subjectData.splice(0,subjectData.length,...items);renderSubjects();},
+ setSubjects(items){if(!subjectDetail.hidden){subjectDetail.hidden=true;subjectsGrid.hidden=false;document.querySelector('.subjects-toolbar').hidden=false;}subjectData.splice(0,subjectData.length,...items);renderSubjects();},
  setLessonSubjects(names){lessonSubjects.splice(0,lessonSubjects.length,...names);lessonData.A=names.map(name=>({name,lessons:[]}));lessonData.B=names.map(name=>({name,lessons:[]}));renderLessonSubjects(currentGroup);const total=document.querySelector("#page-lessons .lessons-total b");if(total)total.textContent=String(names.length);const count=document.querySelector("#page-lessons .lesson-summary-count b");if(count)count.textContent=String(names.length);},
  setContext(year,semester){ACADEMIC_YEAR_NUMBER=Number(year)||2;ACADEMIC_SEMESTER_NUMBER=Number(semester)||1;},
  refreshLessons(){renderLessonSubjects(currentGroup);}
