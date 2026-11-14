@@ -180,7 +180,7 @@ async function listObjectsByPrefix(env, prefix) {
   const r=await signedB2Request(env,"GET","",null,{"list-type":"2","max-keys":"1000",prefix,...(token?{"continuation-token":token}:{})});
   if(!r.ok)throw new Error("B2 list failed ("+r.status+")");
   const xml=await r.text();
-  for(const m of xml.matchAll(/<Contents>([\\s\\S]*?)<\/Contents>/g))out.push({key:xmlText(m[1],"Key")});
+  for(const m of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g))out.push({key:xmlText(m[1],"Key")});
   if(xmlText(xml,"IsTruncated")!=="true")break; token=xmlText(xml,"NextContinuationToken"); if(!token)break;
  }
  return out;
