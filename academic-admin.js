@@ -573,7 +573,7 @@
       try {
         const stored = sessionStorage.getItem("ensd_arabic_admin_mod_code") || "";
         if (stored && await checkAdmin(stored)) {
-          adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors(); renderScheduleEditor(); if (dirty && $("academicSaveStatus")) $("academicSaveStatus").textContent = "تم تجهيز المجموعتين A وB والأفواج 01–12 افتراضيًا. اضغط «حفظ التغييرات» لحفظها وإظهارها للطلاب.";
+          adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors(); renderScheduleEditor(); if (dirty && $("academicSaveStatus")) $("academicSaveStatus").textContent = "تم فصل إدارة الأفواج حسب السنة الجامعية. راجع أفواج كل سنة ثم اضغط «حفظ التغييرات» لتثبيت التعديل.";
         }
       } catch {}
     });
