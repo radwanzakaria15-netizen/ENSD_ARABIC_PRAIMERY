@@ -944,7 +944,31 @@ const lessonData={A:lessonSubjects.map(name=>({name,lessons:[]})),B:lessonSubjec
 let PUBLISHED_LESSONS=Object.create(null);
 let LESSON_ADMIN=false;
 let LESSON_ADMIN_CODE="";
-try{LESSON_ADMIN_CODE=sessionStorage.getItem("ensd_arabic_admin_code")||"";}catch(e){}
+let LESSON_ADMIN_GROUP="";
+function lessonAdminStorageKey(group){return "ensd_arabic_admin_code_"+group;}
+async function checkLessonAdmin(code,group){
+ const response=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":code,"x-admin-group":group},cache:"no-store"});
+ return response.ok;
+}
+async function activateLessonAdminForGroup(group){
+ LESSON_ADMIN=false;LESSON_ADMIN_CODE="";LESSON_ADMIN_GROUP="";
+ let stored="";
+ try{
+  stored=sessionStorage.getItem(lessonAdminStorageKey(group))||"";
+  if(!stored&&group==="A")stored=sessionStorage.getItem("ensd_arabic_admin_code")||"";
+ }catch(e){}
+ if(!stored)return;
+ try{
+  const valid=await checkLessonAdmin(stored,group);
+  if(currentGroup!==group)return;
+  if(valid){
+   LESSON_ADMIN=true;LESSON_ADMIN_CODE=stored;LESSON_ADMIN_GROUP=group;
+   try{sessionStorage.setItem(lessonAdminStorageKey(group),stored);if(group==="A")sessionStorage.removeItem("ensd_arabic_admin_code");}catch(e){}
+  }else{
+   try{sessionStorage.removeItem(lessonAdminStorageKey(group));if(group==="A")sessionStorage.removeItem("ensd_arabic_admin_code");}catch(e){}
+  }
+ }catch(e){if(currentGroup===group)LESSON_ADMIN=false;}
+}
 let ACADEMIC_YEAR_NUMBER=2;
 let ACADEMIC_SEMESTER_NUMBER=1;
 function lessonKey(group,subjectIndex,axisIndex,chapterIndex){
@@ -982,17 +1006,11 @@ function renderLessonSubjects(g){
  }).join("");
  filterLessons();
 }
-function setGroup(g){currentGroup=g;try{localStorage.setItem("ensd_student_group",g);}catch(e){}document.querySelectorAll("[data-group]").forEach(b=>b.classList.toggle("active",b.dataset.group===g));const hall=g==="A"?"مدرج أ":"مدرج د";document.getElementById("groupName").textContent="المجموعة "+g;document.getElementById("groupHall").textContent=hall;document.getElementById("lessonGroup").textContent="المجموعة "+g;document.getElementById("lessonHall").textContent=hall;renderLessonSubjects(g);}
+function setGroup(g){currentGroup=g;try{localStorage.setItem("ensd_student_group",g);}catch(e){}document.querySelectorAll("[data-group]").forEach(b=>b.classList.toggle("active",b.dataset.group===g));const hall=g==="A"?"مدرج أ":"مدرج د";document.getElementById("groupName").textContent="المجموعة "+g;document.getElementById("groupHall").textContent=hall;document.getElementById("lessonGroup").textContent="المجموعة "+g;document.getElementById("lessonHall").textContent=hall;renderLessonSubjects(g);activateLessonAdminForGroup(g);}
 document.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>setGroup(b.dataset.group)));
 setGroup(currentGroup);
 refreshPublishedLessons(true).then(async()=>{
- if(LESSON_ADMIN_CODE){
-  try{
-   const check=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":LESSON_ADMIN_CODE}});
-   LESSON_ADMIN=check.ok;
-   if(!LESSON_ADMIN){LESSON_ADMIN_CODE="";sessionStorage.removeItem("ensd_arabic_admin_code");}
-  }catch(e){LESSON_ADMIN=false;}
- }
+ await activateLessonAdminForGroup(currentGroup);
  if(activeLessonCard&&lessonSubjectDialog)openLessonSubjectDialog(activeLessonCard);
 });
 
@@ -1092,7 +1110,7 @@ function openLessonSubjectDialog(card){
   return '<section class="lesson-dialog-axis '+(hasPublished?'has-published':'off')+'"><div class="lesson-dialog-axis-title"><span>المحور '+String(axisIndex+1).padStart(2,"0")+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+units+'</div></section>';
  }).join(""):'<div class="lesson-dialog-empty">لا توجد محاور مسجلة لهذا المقياس حالياً.</div>';
  const dialog=document.createElement("div");dialog.className="lesson-subject-dialog";
- dialog.innerHTML='<div class="lesson-dialog-backdrop" data-dialog-close></div><section class="lesson-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="lessonDialogTitle" tabindex="-1"><button class="lesson-dialog-close" type="button" aria-label="إغلاق" data-dialog-close>×</button><div class="lesson-dialog-kicker">المحاضرات والدروس · المجموعة '+currentGroup+'</div><div class="lesson-dialog-heading"><span class="lesson-dialog-symbol">'+(card.querySelector(".lesson-card-index")?.textContent||"م")+'</span><div><h2 id="lessonDialogTitle">'+title+'</h2><p>المحاور والوحدات والمحاضرات المنشورة</p></div></div><div class="lesson-dialog-content">'+axesMarkup+'</div><div class="lesson-admin-footer">'+(LESSON_ADMIN?'<div class="lesson-admin-active"><span>وضع إدارة المحاضرات مفعّل</span><button type="button" data-admin-logout>تسجيل الخروج</button></div>':'<button type="button" class="lesson-admin-lock" data-admin-toggle><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg><span>إدارة المحاضرات</span></button><div class="lesson-admin-login" data-admin-login hidden><label for="lessonAdminCode">رمز الإدارة</label><div class="lesson-admin-login-row"><input id="lessonAdminCode" type="password" autocomplete="current-password" placeholder="أدخل الرمز"><button type="button" data-admin-submit>دخول</button></div><p class="lesson-admin-message" aria-live="polite"></p></div>')+'</div></section>';
+ dialog.innerHTML='<div class="lesson-dialog-backdrop" data-dialog-close></div><section class="lesson-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="lessonDialogTitle" tabindex="-1"><button class="lesson-dialog-close" type="button" aria-label="إغلاق" data-dialog-close>×</button><div class="lesson-dialog-kicker">المحاضرات والدروس · المجموعة '+currentGroup+'</div><div class="lesson-dialog-heading"><span class="lesson-dialog-symbol">'+(card.querySelector(".lesson-card-index")?.textContent||"م")+'</span><div><h2 id="lessonDialogTitle">'+title+'</h2><p>المحاور والوحدات والمحاضرات المنشورة</p></div></div><div class="lesson-dialog-content">'+axesMarkup+'</div><div class="lesson-admin-footer">'+(LESSON_ADMIN?'<div class="lesson-admin-active"><span>وضع إدارة المحاضرات مفعّل</span><button type="button" data-admin-logout>تسجيل الخروج</button></div>':'<button type="button" class="lesson-admin-lock" data-admin-toggle><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg><span>إدارة المحاضرات</span></button><div class="lesson-admin-login" data-admin-login hidden><label for="lessonAdminCode">رمز إدارة المجموعة '+currentGroup+'</label><div class="lesson-admin-login-row"><input id="lessonAdminCode" type="password" autocomplete="current-password" placeholder="أدخل الرمز"><button type="button" data-admin-submit>دخول</button></div><p class="lesson-admin-message" aria-live="polite"></p></div>')+'</div></section>';
  const cardStyle=getComputedStyle(card);
  ["--lesson-bg","--lesson-border","--lesson-accent","--lesson-chip","--lesson-ink"].forEach(name=>{const value=cardStyle.getPropertyValue(name).trim();if(value)dialog.style.setProperty(name,value);});
  document.body.appendChild(dialog);lessonSubjectDialog=dialog;lockLessonPage();
@@ -1107,7 +1125,7 @@ function openLessonSubjectDialog(card){
   if(!code){message.textContent="أدخل رمز الإدارة أولاً.";return;}
   submit.disabled=true;submit.textContent="جارٍ التحقق…";
   try{
-   const response=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":code},cache:"no-store"});
+   const response=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":code,"x-admin-group":currentGroup},cache:"no-store"});
    let result={};try{result=await response.json();}catch(e){}
    if(!response.ok){
     if(response.status===401)throw new Error("رمز الإدارة غير صحيح.");
@@ -1118,15 +1136,15 @@ function openLessonSubjectDialog(card){
     }
     throw new Error("تعذر الاتصال بخدمة الإدارة ("+response.status+"). افتح رابط منصة Cloudflare Workers وليس GitHub Pages.");
    }
-   LESSON_ADMIN=true;LESSON_ADMIN_CODE=code;
-   try{sessionStorage.setItem("ensd_arabic_admin_code",code);}catch(e){}
+   LESSON_ADMIN=true;LESSON_ADMIN_CODE=code;LESSON_ADMIN_GROUP=currentGroup;
+   try{sessionStorage.setItem(lessonAdminStorageKey(currentGroup),code);if(currentGroup==="A")sessionStorage.removeItem("ensd_arabic_admin_code");}catch(e){}
    openLessonSubjectDialog(card);
   }catch(error){message.textContent=error.message||"تعذر التحقق من الرمز.";submit.disabled=false;submit.textContent="دخول";}
  });
  const logout=dialog.querySelector("[data-admin-logout]");
  if(logout)logout.addEventListener("click",()=>{
-  LESSON_ADMIN=false;LESSON_ADMIN_CODE="";
-  try{sessionStorage.removeItem("ensd_arabic_admin_code");}catch(e){}
+  LESSON_ADMIN=false;LESSON_ADMIN_CODE="";LESSON_ADMIN_GROUP="";
+  try{sessionStorage.removeItem(lessonAdminStorageKey(currentGroup));if(currentGroup==="A")sessionStorage.removeItem("ensd_arabic_admin_code");}catch(e){}
   openLessonSubjectDialog(card);
  });
  dialog.querySelectorAll("[data-pick-upload-key]").forEach(button=>button.addEventListener("click",event=>{
@@ -1153,7 +1171,7 @@ function openLessonSubjectDialog(card){
    for(const file of files){
     const response=await fetch("/api/file?key="+encodeURIComponent(key)+"&name="+encodeURIComponent(file.name),{
      method:"POST",
-     headers:{"x-admin-code":LESSON_ADMIN_CODE,"content-type":file.type||"application/octet-stream"},
+     headers:{"x-admin-code":LESSON_ADMIN_CODE,"x-admin-group":currentGroup,"content-type":file.type||"application/octet-stream"},
      body:file,
      cache:"no-store",
      redirect:"error"
@@ -1194,11 +1212,11 @@ function openLessonSubjectDialog(card){
   button.disabled=true;button.textContent="جارٍ الاستبدال…";
   try{
    const response=await fetch("/api/file?key="+encodeURIComponent(lessonKeyValue)+"&name="+encodeURIComponent(file.name),{
-    method:"POST",headers:{"x-admin-code":LESSON_ADMIN_CODE,"content-type":file.type||"application/octet-stream"},body:file,cache:"no-store",redirect:"error"
+    method:"POST",headers:{"x-admin-code":LESSON_ADMIN_CODE,"x-admin-group":currentGroup,"content-type":file.type||"application/octet-stream"},body:file,cache:"no-store",redirect:"error"
    });
    let result={};try{result=await response.json();}catch(e){throw new Error("استجابة الخادم غير صالحة.");}
    if(!response.ok||result.ok!==true)throw new Error([result.error,result.message].filter(Boolean).join(": ")||("HTTP "+response.status));
-   const remove=await fetch("/api/file?key="+encodeURIComponent(oldKey),{method:"DELETE",headers:{"x-admin-code":LESSON_ADMIN_CODE}});
+   const remove=await fetch("/api/file?key="+encodeURIComponent(oldKey),{method:"DELETE",headers:{"x-admin-code":LESSON_ADMIN_CODE,"x-admin-group":currentGroup}});
    if(!remove.ok)throw new Error("تم رفع الملف الجديد، لكن تعذر حذف النسخة القديمة.");
    await refreshPublishedLessons(false);renderLessonSubjects(currentGroup);openLessonSubjectDialog(card);
   }catch(error){
@@ -1212,7 +1230,7 @@ function openLessonSubjectDialog(card){
   if(!confirm("هل تريد حذف هذا الملف فقط؟"))return;
   button.disabled=true;button.textContent="جارٍ الحذف…";
   try{
-   const response=await fetch("/api/file?key="+encodeURIComponent(key),{method:"DELETE",headers:{"x-admin-code":LESSON_ADMIN_CODE}});
+   const response=await fetch("/api/file?key="+encodeURIComponent(key),{method:"DELETE",headers:{"x-admin-code":LESSON_ADMIN_CODE,"x-admin-group":currentGroup}});
    if(!response.ok){let reason="";try{const detail=await response.json();reason=[detail.error,detail.message].filter(Boolean).join(": ");}catch(e){}throw new Error(reason||("HTTP "+response.status));}
    await refreshPublishedLessons(false);
    renderLessonSubjects(currentGroup);
@@ -1241,7 +1259,7 @@ const RESOURCE_YEARS=["السنة 1","السنة 2","السنة 3","السنة 4
 const RESOURCE_SEMESTERS=["السداسي 1","السداسي 2"];
 const RESOURCE_SUBJECTS=Array.isArray(lessonSubjects)?lessonSubjects.slice():["علم الأحياء","الصرف العربي","قضايا النقد","الرياضيات","الذكاء الاصطناعي في التعلم","علم نفس النمو: الطفل والمراهق","التربية الإسلامية","النحو العربي","اللغة الإنجليزية","لسانيات عامة"];
 let RESOURCE_ITEMS=[],RESOURCE_ADMIN_CODE="";
-try{RESOURCE_ADMIN_CODE=sessionStorage.getItem("ensd_arabic_admin_code")||"";}catch(e){}
+try{RESOURCE_ADMIN_CODE=sessionStorage.getItem("ensd_arabic_resource_admin_code")||"";}catch(e){}
 const resourceEscape=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const resourceColor=(value,group)=>{const source=group==="subject"?RESOURCE_SUBJECTS:group==="semester"?RESOURCE_SEMESTERS:RESOURCE_KINDS;const index=source.indexOf(value);return index<0?1:index+1};
 function resourceOptions(id,values,placeholder){const el=document.getElementById(id);if(!el)return;el.innerHTML='<option value="">'+placeholder+'</option>'+values.map(v=>'<option value="'+resourceEscape(v)+'">'+resourceEscape(v)+'</option>').join("");}
@@ -1321,8 +1339,8 @@ document.getElementById("resourceUploadForm").addEventListener("submit",async ev
  finally{button.disabled=false;button.textContent="إرسال للمراجعة";}
 });
 async function loadPendingResources(){const area=document.getElementById("resourcePendingList");if(!RESOURCE_ADMIN_CODE){area.innerHTML="";return;}try{const r=await fetch("/api/resources?status=pending",{headers:{"x-admin-code":RESOURCE_ADMIN_CODE},cache:"no-store"});if(!r.ok)throw new Error("تعذر جلب المشاركات");const items=await r.json();area.innerHTML=items.length?items.map(item=>'<article class="resource-pending-card"><div><b>'+resourceEscape(item.title||item.fileName)+'</b><p>'+resourceEscape(item.subject)+' · '+resourceEscape(item.year)+' · '+resourceEscape(item.semester)+' · '+resourceEscape(item.kind)+'</p><small>'+resourceEscape(item.fileName)+'</small><span>بانتظار المراجعة</span></div><div><button type="button" data-resource-approve="'+resourceEscape(item.id)+'">موافقة ونشر</button><button type="button" class="reject" data-resource-reject="'+resourceEscape(item.id)+'">رفض</button></div></article>').join(""):'<div class="resource-empty">لا توجد مشاركات بانتظار المراجعة.</div>';document.getElementById("resourceAdminLogin").hidden=true;document.getElementById("resourceAdminLogout").hidden=false;}catch(e){area.innerHTML='<div class="resource-empty">تعذر تحميل قائمة المراجعة. تحقق من رمز الإدارة.</div>';}}
-document.getElementById("resourceAdminLogin").addEventListener("click",async()=>{const code=document.getElementById("resourceAdminCode").value.trim();if(!code)return;const b=document.getElementById("resourceAdminLogin");b.disabled=true;b.textContent="جارٍ التحقق...";try{const r=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":code},cache:"no-store"});if(!r.ok)throw new Error("رمز الإدارة غير صحيح أو الخدمة غير متاحة.");RESOURCE_ADMIN_CODE=code;try{sessionStorage.setItem("ensd_arabic_admin_code",code)}catch(e){}await loadPendingResources();}catch(e){document.getElementById("resourcePendingList").innerHTML='<div class="resource-empty">'+resourceEscape(e.message)+'</div>';}finally{b.disabled=false;b.textContent="دخول الإدارة";}});
-document.getElementById("resourceAdminLogout").addEventListener("click",()=>{RESOURCE_ADMIN_CODE="";try{sessionStorage.removeItem("ensd_arabic_admin_code")}catch(e){}document.getElementById("resourcePendingList").innerHTML="";document.getElementById("resourceAdminLogin").hidden=false;document.getElementById("resourceAdminLogout").hidden=true;});
+document.getElementById("resourceAdminLogin").addEventListener("click",async()=>{const code=document.getElementById("resourceAdminCode").value.trim();if(!code)return;const b=document.getElementById("resourceAdminLogin");b.disabled=true;b.textContent="جارٍ التحقق...";try{const r=await fetch("/api/lessons",{method:"POST",headers:{"x-admin-code":code,"x-admin-group":"A"},cache:"no-store"});if(!r.ok)throw new Error("رمز المجموعة A غير صحيح أو الخدمة غير متاحة.");RESOURCE_ADMIN_CODE=code;try{sessionStorage.setItem("ensd_arabic_resource_admin_code",code)}catch(e){}await loadPendingResources();}catch(e){document.getElementById("resourcePendingList").innerHTML='<div class="resource-empty">'+resourceEscape(e.message)+'</div>';}finally{b.disabled=false;b.textContent="دخول الإدارة";}});
+document.getElementById("resourceAdminLogout").addEventListener("click",()=>{RESOURCE_ADMIN_CODE="";try{sessionStorage.removeItem("ensd_arabic_resource_admin_code")}catch(e){}document.getElementById("resourcePendingList").innerHTML="";document.getElementById("resourceAdminLogin").hidden=false;document.getElementById("resourceAdminLogout").hidden=true;});
 document.getElementById("resourcePendingList").addEventListener("click",event=>{const approve=event.target.closest("[data-resource-approve]"),reject=event.target.closest("[data-resource-reject]"),button=approve||reject;if(!button)return;const id=button.dataset.resourceApprove||button.dataset.resourceReject,action=approve?"approve":"reject";const run=async()=>{button.disabled=true;button.textContent="جارٍ التنفيذ...";try{const r=await fetch("/api/resources?action="+action+"&id="+encodeURIComponent(id),{method:"POST",headers:{"x-admin-code":RESOURCE_ADMIN_CODE},cache:"no-store"});if(!r.ok)throw new Error("تعذر تنفيذ العملية.");await loadPendingResources();if(approve)await loadResources();}catch(e){button.disabled=false;button.textContent=approve?"موافقة ونشر":"رفض";showDialog({type:"warning",title:"تعذر الاتصال",message:"لم نتمكن من إتمام العملية. تحقق من الاتصال ثم حاول مجددًا.",confirmText:"حسنًا"});}};if(reject)showDialog({type:"danger",title:"تأكيد الحذف",message:"هل تريد رفض هذه المشاركة وحذف المورد نهائيًا؟",confirmText:"تأكيد الحذف",cancelText:"إلغاء",onConfirm:run});else run();});
 resourceInitSelects();
  function resourcePaintSelect(el,group){
