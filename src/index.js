@@ -517,9 +517,9 @@ export default {
             element.setAttribute("src", "/academic-admin.js?v=abeb130");
           }
         })
-        .on("body", {
+        .on('script[src*="/schedule-view.js"]', {
           element(element) {
-            element.append('<script defer src="/schedule-view.js?v=e4ed065"></script>', { html: true });
+            element.setAttribute("src", "/schedule-view.js?v=e4ed065");
           }
         })
         .transform(response);
