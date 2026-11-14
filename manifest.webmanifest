@@ -1,0 +1,12 @@
+{
+  "name": "فضاء طلبة العربية",
+  "short_name": "طلبة العربية",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f4",
+  "theme_color": "#718f83",
+  "description": "الدروس والتوقيت والموارد والإعلانات لطلبة اللغة العربية."
+}
