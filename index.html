@@ -1336,7 +1336,7 @@ resourceInitSelects();
 
 let ACADEMIC_YEAR_NUMBER=2;
 let ACADEMIC_SEMESTER_NUMBER=1;
-window.__academicBridge={
+window.__academicBridge={\n getSubjects(){return subjectData;},
  setSubjects(items){subjectData.splice(0,subjectData.length,...items);renderSubjects();},
  setLessonSubjects(names){lessonSubjects.splice(0,lessonSubjects.length,...names);lessonData.A=names.map(name=>({name,lessons:[]}));lessonData.B=names.map(name=>({name,lessons:[]}));renderLessonSubjects(currentGroup);const total=document.querySelector("#page-lessons .lessons-total b");if(total)total.textContent=String(names.length);const count=document.querySelector("#page-lessons .lesson-summary-count b");if(count)count.textContent=String(names.length);},
  setContext(year,semester){ACADEMIC_YEAR_NUMBER=Number(year)||2;ACADEMIC_SEMESTER_NUMBER=Number(semester)||1;},
