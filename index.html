@@ -1229,6 +1229,37 @@ function renderResourceItems(){
  list.innerHTML=items.map(item=>'<article class="resource-card"><div class="resource-card-top"><span class="resource-tag subject-tag tone-'+resourceColor(item.subject,"subject")+'">'+resourceEscape(item.subject)+'</span><span class="resource-tag semester-tag tone-'+resourceColor(item.semester,"semester")+'">'+resourceEscape(item.semester)+'</span><span class="resource-tag kind-tag tone-'+resourceColor(item.kind,"kind")+'">'+resourceEscape(item.kind)+'</span></div><div class="resource-card-body"><div class="resource-file-icon '+(item.contentType==="application/pdf"?"pdf":"word")+'">'+(item.contentType==="application/pdf"?"PDF":"DOC")+'</div><div class="resource-card-main"><h4>'+resourceEscape(item.title||item.fileName)+'</h4><small>'+resourceEscape(item.fileName)+'</small></div><div class="resource-card-actions"><a href="'+resourceFileUrl(item)+'" target="_blank" rel="noopener">فتح</a><a href="'+resourceFileUrl(item,true)+'">تحميل</a></div></div></article>').join("");
 }
 async function loadResources(){const list=document.getElementById("resourceList");list.innerHTML='<div class="resource-empty">جارٍ تحديث المكتبة...</div>';try{const r=await fetch("/api/resources",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);RESOURCE_ITEMS=await r.json();if(!Array.isArray(RESOURCE_ITEMS))throw new Error("invalid response");renderResourceItems();}catch(e){list.innerHTML='<div class="resource-empty">تعذر تحميل الموارد. تحقق من اتصال المنصة ثم حاول التحديث.</div>';}}
+
+// Keep modal roots as direct body children so fixed overlays are viewport-relative,
+// never constrained by transformed/filtered page sections.
+["resourceBrowseModal","resourceUploadModal"].forEach(id=>{const modal=document.getElementById(id);if(modal&&modal.parentElement!==document.body)document.body.appendChild(modal);});
+function resourceBuildCustomSelect(select){
+ if(!select||select.dataset.customReady)return;
+ select.dataset.customReady="1";
+ const wrap=document.createElement("div");wrap.className="resource-select-wrap";
+ const trigger=document.createElement("button");trigger.type="button";trigger.className="resource-select-trigger";trigger.setAttribute("aria-haspopup","listbox");trigger.setAttribute("aria-expanded","false");
+ const label=document.createElement("span");label.className="resource-select-value";
+ const arrow=document.createElement("span");arrow.className="resource-select-arrow";arrow.setAttribute("aria-hidden","true");arrow.textContent="⌄";
+ trigger.append(label,arrow);
+ const menu=document.createElement("div");menu.className="resource-select-menu";menu.setAttribute("role","listbox");menu.hidden=true;
+ const sync=()=>{const opt=select.options[select.selectedIndex];label.textContent=opt?opt.text: select.getAttribute("aria-label")||"اختر";trigger.classList.toggle("has-value",!!select.value);menu.querySelectorAll("[role=option]").forEach(b=>{const yes=b.dataset.value===select.value;b.classList.toggle("selected",yes);b.setAttribute("aria-selected",String(yes));});};
+ const close=()=>{menu.hidden=true;trigger.setAttribute("aria-expanded","false");trigger.classList.remove("opened");};
+ const open=()=>{document.querySelectorAll(".resource-select-menu:not([hidden])").forEach(m=>{if(m!==menu){m.hidden=true;m.previousElementSibling?.setAttribute("aria-expanded","false");}});menu.innerHTML="";
+  Array.from(select.options).forEach(opt=>{const b=document.createElement("button");b.type="button";b.className="resource-select-option";b.setAttribute("role","option");b.dataset.value=opt.value;b.textContent=opt.text;b.addEventListener("click",()=>{select.value=opt.value;select.dispatchEvent(new Event("change",{bubbles:true}));sync();close();trigger.focus();});menu.appendChild(b);});
+  menu.hidden=false;trigger.setAttribute("aria-expanded","true");trigger.classList.add("opened");
+  const r=trigger.getBoundingClientRect(),spaceBelow=innerHeight-r.bottom,spaceAbove=r.top,maxH=Math.min(300,Math.max(150,Math.max(spaceBelow,spaceAbove)-12));
+  menu.style.maxHeight=maxH+"px";menu.style.left=Math.max(10,Math.min(r.left,innerWidth-r.width-10))+"px";menu.style.width=Math.min(r.width,innerWidth-20)+"px";
+  if(spaceBelow>=Math.min(220,maxH)){menu.style.top=(r.bottom+7)+"px";menu.style.bottom="auto";}else{menu.style.bottom=(innerHeight-r.top+7)+"px";menu.style.top="auto";}
+  sync();
+ };
+ wrap.append(trigger);select.parentNode.insertBefore(wrap,select);wrap.appendChild(select);document.body.appendChild(menu);
+ select.classList.add("resource-native-select");select.tabIndex=-1;select.setAttribute("aria-hidden","true");
+ trigger.addEventListener("click",()=>menu.hidden?open():close());
+ select.addEventListener("change",sync);document.addEventListener("pointerdown",e=>{if(!wrap.contains(e.target)&&!menu.contains(e.target))close();});
+ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!menu.hidden){close();trigger.focus();}});
+ sync();
+}
+["resourceFilterSubject","resourceUploadSubject","resourceFilterYear","resourceUploadYear","resourceFilterSemester","resourceUploadSemester","resourceFilterKind","resourceUploadKind"].forEach(id=>resourceBuildCustomSelect(document.getElementById(id)));
 function resourceOpenModal(id){const modal=document.getElementById(id);modal.classList.add("is-open");modal.setAttribute("aria-hidden","false");document.body.classList.add("resource-modal-open");modal.querySelector(".resource-modal-panel").focus();}
 function resourceCloseModal(modal){modal.classList.remove("is-open");modal.setAttribute("aria-hidden","true");if(!document.querySelector(".resource-modal.is-open"))document.body.classList.remove("resource-modal-open");}
 document.getElementById("resourceBrowseOpen").addEventListener("click",()=>{resourceOpenModal("resourceBrowseModal");loadResources();});
@@ -1966,6 +1997,37 @@ body.resource-modal-open{overflow:hidden}
  .resource-modal-filters select{font-size:10px}
 }
 @media(prefers-reduced-motion:reduce){.resource-modal-panel{animation:none!important}}
+</style>
+
+
+<style id="resource-overlay-select-accessibility-fix-20261114">
+/* Modal and backdrop are viewport-level siblings, independent of transformed ancestors */
+.resource-modal{position:fixed!important;inset:0!important;width:100vw;height:100vh;height:100dvh;z-index:2147483000!important;box-sizing:border-box;overflow:hidden!important;padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 16px)!important}
+.resource-modal-backdrop{position:fixed!important;inset:0!important;width:100vw;height:100vh;height:100dvh;z-index:0!important;border-radius:0!important;transform:none!important;clip-path:none!important}
+.resource-modal-panel{position:relative!important;z-index:1!important;max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 26px)!important;overscroll-behavior:contain!important;padding-bottom:18px!important}
+.resource-submit-row{position:sticky!important;bottom:0!important;margin:14px -27px -18px!important;padding:12px 27px calc(12px + env(safe-area-inset-bottom))!important;background:linear-gradient(180deg,rgba(248,251,249,.94),#f8fbf9 30%)!important;box-shadow:0 -8px 20px rgba(30,65,51,.055);z-index:12!important}
+.resource-select-wrap{position:relative;width:100%;min-width:0}
+.resource-modal-filters select.resource-native-select{position:absolute!important;width:1px!important;height:1px!important;min-height:1px!important;opacity:0!important;pointer-events:none!important;left:0!important;bottom:0!important;padding:0!important;border:0!important}
+.resource-select-trigger{width:100%;min-height:45px;display:flex;align-items:center;justify-content:space-between;gap:9px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--resource-accent,#82a999) 30%,#e5ece8);border-right:4px solid var(--resource-accent,#82a999);border-radius:11px;background:linear-gradient(110deg,color-mix(in srgb,var(--resource-accent,#82a999) 9%,#fff),#fff);color:#40594f;text-align:right;font:inherit;font-size:13px;font-weight:750;cursor:pointer;transition:border-color .18s,box-shadow .18s}
+.resource-select-trigger.has-value{background:linear-gradient(110deg,color-mix(in srgb,var(--resource-accent,#82a999) 13%,#fff),#fff)}
+.resource-select-trigger:focus-visible,.resource-select-trigger.opened{outline:none;border-color:var(--resource-accent,#82a999);box-shadow:0 0 0 3px color-mix(in srgb,var(--resource-accent,#82a999) 17%,transparent)}
+.resource-select-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resource-select-arrow{flex:0 0 auto;color:var(--resource-accent,#73998a);font-size:20px;line-height:14px;transition:transform .18s}
+.resource-select-trigger.opened .resource-select-arrow{transform:rotate(180deg)}
+.resource-select-menu{position:fixed;z-index:2147483647;display:grid;gap:4px;padding:7px;border:1px solid #dce8e1;border-radius:15px;background:rgba(255,255,255,.98);box-shadow:0 16px 45px rgba(20,48,39,.2);overflow-y:auto;overscroll-behavior:contain;backdrop-filter:blur(14px)}
+.resource-select-menu[hidden]{display:none!important}
+.resource-select-option{width:100%;min-height:42px;padding:10px 12px;border:0;border-radius:10px;background:transparent;color:#4a6157;text-align:right;font:inherit;font-size:13px;font-weight:650;cursor:pointer}
+.resource-select-option:active{background:#edf5f0}
+.resource-select-option.selected{background:color-mix(in srgb,#78a990 17%,white);color:#2f725b;font-weight:850}
+@media(max-width:600px){
+ .resource-modal{align-items:flex-start!important;padding:calc(env(safe-area-inset-top) + 8px) 9px calc(env(safe-area-inset-bottom) + 18px)!important}
+ .resource-modal-panel{max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 26px)!important;padding:18px 13px 16px!important}
+ .resource-submit-row{bottom:0!important;margin:12px -13px -16px!important;padding:10px 13px calc(12px + env(safe-area-inset-bottom))!important}
+ .resource-submit-row button{width:100%;min-height:46px}
+ .resource-select-trigger{min-height:43px;padding:9px 9px;font-size:11px}
+ .resource-select-option{min-height:44px;font-size:12px}
+}
+@supports not (height:100dvh){.resource-modal,.resource-modal-backdrop{height:100vh}.resource-modal-panel{max-height:calc(100vh - 30px)!important}}
 </style>
 
 </body>
