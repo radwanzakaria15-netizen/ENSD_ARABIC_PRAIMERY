@@ -6,8 +6,11 @@
   if (!chooser || !view || chooser.dataset.dynamicScheduleReady) return;
   chooser.dataset.dynamicScheduleReady = "1";
 
-  let groups = [];
+  let years = [];
+  let activeYearId = "";
   let activeGroup = null;
+  const selectedYear = () => years.find(year => year.id === activeYearId) || years[0] || null;
+  const selectedGroups = () => selectedYear()?.groups || [];
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -18,8 +21,29 @@
 
   function renderGroups() {
     chooser.replaceChildren();
+    if (!years.length) {
+      chooser.append(el("p", "", "لا توجد سنوات جامعية مهيأة للتوقيت الدراسي."));
+      return;
+    }
+    const yearBar = el("div", "schedule-year-picker");
+    yearBar.style.cssText = "display:flex;align-items:center;gap:10px;margin:0 0 18px;flex-wrap:wrap";
+    const yearLabel = el("label", "", "السنة الجامعية");
+    yearLabel.htmlFor = "studentScheduleYear";
+    yearLabel.style.cssText = "font-weight:700";
+    const yearSelect = el("select");
+    yearSelect.id = "studentScheduleYear";
+    yearSelect.style.cssText = "min-width:190px;min-height:42px;padding:8px 12px;border:1px solid #d5e0d8;border-radius:10px;background:#fff;color:inherit;font:inherit";
+    years.forEach(year => yearSelect.add(new Option(year.name, year.id)));
+    yearSelect.value = activeYearId;
+    yearSelect.addEventListener("change", () => {
+      activeYearId = yearSelect.value;
+      renderGroups();
+    });
+    yearBar.append(yearLabel, yearSelect);
+    chooser.append(yearBar);
+    const groups = selectedGroups();
     if (!groups.length) {
-      chooser.append(el("p", "", "لم تُضف مجموعات أو أفواج بعد."));
+      chooser.append(el("p", "", "لم تُضف مجموعات أو أفواج لهذه السنة بعد."));
       return;
     }
     const grid = el("div", "schedule-groups");
@@ -141,20 +165,32 @@
         return;
       }
       const result = await response.json();
-      const savedGroups = result.config?.groups;
-      if (!Array.isArray(savedGroups)) {
-        groups = [];
+      const savedYears = result.config?.years;
+      if (!Array.isArray(savedYears)) {
+        years = [];
         renderGroups();
-        if (result.config) chooser.append(el("p", "schedule-load-note", "لم يعثر الموقع على بيانات المجموعات والأفواج المحفوظة في البرنامج الأكاديمي."));
+        if (result.config) chooser.append(el("p", "schedule-load-note", "لم يعثر الموقع على بيانات السنوات الجامعية."));
         return;
       }
-      const validGroups = savedGroups.filter(group =>
-        group && typeof group.id === "string" &&
-        typeof group.name === "string" && Array.isArray(group.fogs)
-      );
-      const signature = JSON.stringify(validGroups);
+      const hasYearGroups = savedYears.some(year => Array.isArray(year.groups));
+      const legacyGroups = Array.isArray(result.config?.groups) ? result.config.groups : [];
+      years = savedYears.filter(year => year && typeof year.id === "string" && typeof year.name === "string")
+        .map(year => ({
+          id: year.id,
+          name: year.name,
+          groups: Array.isArray(year.groups) ? year.groups.filter(group =>
+            group && typeof group.id === "string" &&
+            typeof group.name === "string" && Array.isArray(group.fogs)
+          ) : []
+        }));
+      // عرض مؤقت متوافق مع البيانات القديمة قبل أن يحفظ المدير عملية الترحيل.
+      if (!hasYearGroups && legacyGroups.length && years.length) {
+        const target = years.find(year => /الثانية|second|year-2/i.test(year.name + " " + year.id)) || years[0];
+        target.groups = legacyGroups;
+      }
+      if (!years.some(year => year.id === activeYearId)) activeYearId = years.find(year => /الثانية|second|year-2/i.test(year.name + " " + year.id))?.id || years[0]?.id || "";
+      const signature = JSON.stringify(years);
       if (signature !== lastLoaded) {
-        groups = validGroups;
         lastLoaded = signature;
         renderGroups();
       }
