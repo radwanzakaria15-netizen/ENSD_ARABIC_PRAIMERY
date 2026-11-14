@@ -112,8 +112,8 @@
     applyCurrent();
   }
   async function checkAdmin(code) {
-    const response = await fetch("/api/lessons", {
-      method: "POST", headers: { "x-admin-code": code }
+    const response = await fetch("/api/academic", {
+      method: "POST", headers: { "x-academic-admin-code": code }
     });
     return response.ok;
   }
@@ -207,7 +207,7 @@
     try {
       const response = await fetch("/api/academic", {
         method: "PUT",
-        headers: { "content-type": "application/json", "x-admin-code": adminCode },
+        headers: { "content-type": "application/json", "x-academic-admin-code": adminCode },
         body: JSON.stringify(config)
       });
       const result = await response.json().catch(() => ({}));
