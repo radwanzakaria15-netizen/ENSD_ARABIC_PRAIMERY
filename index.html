@@ -1013,12 +1013,12 @@ function openLessonSubjectDialog(card){
      ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.8h8l4.2 4.3v14.1H6z"/><path d="M14 2.8v4.5h4.2M8.5 13h7M8.5 16h7"/></svg>'
      :'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.8h8l4.2 4.3v14.1H6z"/><path d="M14 2.8v4.5h4.2M8.5 13l2 4 2-4 2 4 2-4"/></svg>';
     const openLink=isPdf?'<a class="lesson-file-open" href="/api/file?key='+fileKey+'" target="_blank" rel="noopener">فتح</a>':'';
-    return '<div class="lesson-file-row"><span class="lesson-file-type '+(isPdf?'is-pdf':'is-word')+'">'+icon+'<small>'+kind+'</small></span><span class="lesson-file-name" title="'+name+'">'+name+'</span><div class="lesson-file-actions">'+openLink+'<a class="lesson-file-download" href="/api/file?key='+fileKey+'&download=1" download>تحميل</a>'+(LESSON_ADMIN?'<button class="lesson-file-delete" type="button" data-delete-key="'+escapeLessonHTML(file.key)+'" aria-label="حذف '+name+'">حذف</button>':'')+'</div></div>';
+    return '<div class="lesson-file-row"><span class="lesson-file-type '+(isPdf?'is-pdf':'is-word')+'">'+icon+'<small>'+kind+'</small></span><span class="lesson-file-name" title="'+name+'">'+name+'</span><div class="lesson-file-actions">'+openLink+'<a class="lesson-file-download" href="/api/file?key='+fileKey+'&download=1" download>تحميل</a>'+(LESSON_ADMIN?'<button class="lesson-file-replace" type="button" data-replace-trigger="'+fileKey+'" aria-label="استبدال '+name+'">استبدال</button><input class="lesson-file-replace-input" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-replace-file="'+fileKey+'" data-replace-key="'+escapeLessonHTML(file.key)+'" data-replace-lesson-key="'+escapeLessonHTML(file.lessonKey||"")+'"><button class="lesson-file-delete" type="button" data-delete-key="'+escapeLessonHTML(file.key)+'" aria-label="حذف '+name+'">حذف</button>':'')+'</div></div>';
    }).join("");
    return '<div class="lesson-dialog-unit-wrap"><details class="lesson-dialog-chapter '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?files.length+" "+(files.length===1?"ملف منشور":"ملفات منشورة"):"قريباً")+'</span><i>＋</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul></details>'+(published?'<div class="lesson-file-list">'+filesMarkup+'</div>':'')+(LESSON_ADMIN?'<div class="lesson-unit-actions"><span class="lesson-upload-control"><button class="lesson-admin-upload" type="button" data-pick-upload-key="'+key+'">＋ إضافة ملفات</button><input class="lesson-upload-input" type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="اختيار ملفات للمحور" data-upload-key="'+key+'"></span></div>':(!published?'<div class="lesson-unit-actions"><span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span></div>':''))+'</div>';
   }).join("");
   const hasPublished=axis.chapters.some((chapter,chapterIndex)=>(PUBLISHED_LESSONS[lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex)]||[]).length>0);
-  return '<section class="lesson-dialog-axis '+(hasPublished?'has-published':'off')+'"><div class="lesson-dialog-axis-title"><span>المحور '+String(axisIndex+1).padStart(2,"0")+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+units+'</div></section>';
+  return '<details class="lesson-dialog-axis '+(hasPublished?'has-published':'off')+'"><summary class="lesson-dialog-axis-title"><span>المحور '+String(axisIndex+1).padStart(2,"0")+'</span><h3>'+axis.name+'</h3><i aria-hidden="true">⌄</i></summary><div class="lesson-dialog-chapters">'+units+'</div></details>';
  }).join(""):'<div class="lesson-dialog-empty">لا توجد محاور مسجلة لهذا المقياس حالياً.</div>';
  const dialog=document.createElement("div");dialog.className="lesson-subject-dialog";
  dialog.innerHTML='<div class="lesson-dialog-backdrop" data-dialog-close></div><section class="lesson-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="lessonDialogTitle" tabindex="-1"><button class="lesson-dialog-close" type="button" aria-label="إغلاق" data-dialog-close>×</button><div class="lesson-dialog-kicker">المحاضرات والدروس · المجموعة '+currentGroup+'</div><div class="lesson-dialog-heading"><span class="lesson-dialog-symbol">'+(card.querySelector(".lesson-card-index")?.textContent||"م")+'</span><div><h2 id="lessonDialogTitle">'+title+'</h2><p>المحاور والوحدات والمحاضرات المنشورة</p></div></div><div class="lesson-dialog-content">'+axesMarkup+'</div><div class="lesson-admin-footer">'+(LESSON_ADMIN?'<div class="lesson-admin-active"><span>وضع إدارة المحاضرات مفعّل</span><button type="button" data-admin-logout>تسجيل الخروج</button></div>':'<button type="button" class="lesson-admin-lock" data-admin-toggle><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg><span>إدارة المحاضرات</span></button><div class="lesson-admin-login" data-admin-login hidden><label for="lessonAdminCode">رمز الإدارة</label><div class="lesson-admin-login-row"><input id="lessonAdminCode" type="password" autocomplete="current-password" placeholder="أدخل الرمز"><button type="button" data-admin-submit>دخول</button></div><p class="lesson-admin-message" aria-live="polite"></p></div>')+'</div></section>';
@@ -1107,6 +1107,33 @@ function openLessonSubjectDialog(card){
    renderLessonSubjects(currentGroup);
    openLessonSubjectDialog(card);
    alert("تم رفع "+uploaded+" من "+files.length+" ملف. تعذر إكمال البقية: "+error.message);
+  }
+ }));
+ dialog.querySelectorAll("[data-replace-trigger]").forEach(button=>button.addEventListener("click",()=>{
+  const input=dialog.querySelector('[data-replace-file="'+button.dataset.replaceTrigger+'"]');
+  if(input)input.click();
+ }));
+ dialog.querySelectorAll("[data-replace-file]").forEach(input=>input.addEventListener("change",async()=>{
+  const file=input.files?.[0],oldKey=input.dataset.replaceKey,lessonKeyValue=input.dataset.replaceLessonKey;
+  if(!file)return;
+  if(!/\\.(pdf|doc|docx)$/i.test(file.name)){alert("يمكن استبدال الملف بملف PDF أو Word فقط.");input.value="";return;}
+  if(file.size>4200000){alert("حجم الملف يتجاوز الحد المسموح (4.2 ميغابايت).");input.value="";return;}
+  const button=input.closest(".lesson-file-actions")?.querySelector(".lesson-file-replace");
+  if(!button)return;
+  button.disabled=true;button.textContent="جارٍ الاستبدال…";
+  try{
+   const response=await fetch("/api/file?key="+encodeURIComponent(lessonKeyValue)+"&name="+encodeURIComponent(file.name),{
+    method:"POST",headers:{"x-admin-code":LESSON_ADMIN_CODE,"content-type":file.type||"application/octet-stream"},body:file,cache:"no-store",redirect:"error"
+   });
+   let result={};try{result=await response.json();}catch(e){throw new Error("استجابة الخادم غير صالحة.");}
+   if(!response.ok||result.ok!==true)throw new Error([result.error,result.message].filter(Boolean).join(": ")||("HTTP "+response.status));
+   const remove=await fetch("/api/file?key="+encodeURIComponent(oldKey),{method:"DELETE",headers:{"x-admin-code":LESSON_ADMIN_CODE}});
+   if(!remove.ok)throw new Error("تم رفع الملف الجديد، لكن تعذر حذف النسخة القديمة.");
+   await refreshPublishedLessons(false);renderLessonSubjects(currentGroup);openLessonSubjectDialog(card);
+  }catch(error){
+   console.error("Lesson file replace failed:",error);
+   await refreshPublishedLessons(false);renderLessonSubjects(currentGroup);openLessonSubjectDialog(card);
+   alert("تعذر إكمال الاستبدال: "+(error.message||"خطأ غير معروف"));
   }
  }));
  dialog.querySelectorAll("[data-delete-key]").forEach(button=>button.addEventListener("click",async()=>{
@@ -1575,6 +1602,99 @@ document.addEventListener("keydown",event=>{
   .lesson-file-row{flex-wrap:wrap}
   .lesson-file-name{flex:1 1 calc(100% - 52px)}
   .lesson-file-actions{width:100%;padding-right:47px}
+}
+</style>
+
+
+<style id="lesson-dialog-lively-folders-replace-20261114">
+/* Lively, compact subject dialog */
+.lesson-dialog-panel{
+  width:min(720px,100%)!important;
+  max-height:min(88dvh,860px)!important;
+  padding:clamp(17px,3.5vw,29px)!important;
+  border:1px solid rgba(255,255,255,.92)!important;
+  border-radius:27px!important;
+  background:
+    radial-gradient(ellipse at 100% 0%,rgba(220,237,224,.8),transparent 38%),
+    radial-gradient(ellipse at 0% 100%,rgba(232,239,250,.62),transparent 34%),
+    linear-gradient(145deg,#fbfdfb,#f4f8f5 70%,#f8faf9)!important;
+  box-shadow:0 30px 90px rgba(26,48,34,.25),0 5px 18px rgba(26,48,34,.08)!important;
+}
+.lesson-dialog-kicker{
+  display:inline-flex;align-items:center;gap:7px;
+  margin:0 0 15px!important;padding:7px 11px;
+  border:1px solid var(--lesson-border,#e0e9e2);border-radius:30px;
+  background:rgba(255,255,255,.76);font-size:10px!important;
+}
+.lesson-dialog-heading{
+  align-items:center!important;gap:14px!important;padding-bottom:18px!important;
+  border-bottom:1px solid rgba(110,139,117,.18)!important;
+}
+.lesson-dialog-symbol{
+  flex:0 0 58px!important;height:58px!important;border-radius:19px!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 7px 18px rgba(51,84,60,.1);
+}
+.lesson-dialog-heading h2{font-size:clamp(17px,3vw,22px)!important;letter-spacing:-.35px}
+.lesson-dialog-heading p{font-size:11px!important;line-height:1.7}
+.lesson-dialog-content{display:grid!important;gap:11px!important;padding-top:17px!important}
+.lesson-dialog-axis{
+  display:block;margin:0!important;padding:0!important;
+  overflow:hidden;border:1px solid rgba(137,164,143,.26);
+  border-radius:17px;background:rgba(255,255,255,.78);
+  box-shadow:0 5px 17px rgba(38,65,45,.045);
+  transition:border-color .2s,box-shadow .2s,background .2s;
+}
+.lesson-dialog-axis[open]{
+  border-color:rgba(112,151,120,.55);
+  background:rgba(255,255,255,.96);
+  box-shadow:0 9px 24px rgba(38,65,45,.075);
+}
+.lesson-dialog-axis-title{
+  display:flex!important;align-items:center!important;gap:11px!important;
+  min-height:61px;margin:0!important;padding:11px 14px!important;
+  cursor:pointer;list-style:none;
+}
+.lesson-dialog-axis-title::-webkit-details-marker{display:none}
+.lesson-dialog-axis-title>span{
+  display:grid;place-items:center;min-width:72px;min-height:31px;
+  padding:5px 10px!important;border:1px solid rgba(130,164,137,.2);
+  border-radius:10px!important;background:linear-gradient(135deg,#eaf3ec,#f3f7f2)!important;
+  color:#55745d!important;font-size:10px!important;font-weight:900;
+}
+.lesson-dialog-axis-title h3{flex:1;min-width:0;font-size:13px!important;line-height:1.7}
+.lesson-dialog-axis-title>i{
+  display:grid;place-items:center;flex:0 0 29px;width:29px;height:29px;
+  border:1px solid #e2ebe3;border-radius:10px;background:#f7faf7;
+  color:#64806b;font-size:18px;font-style:normal;transition:transform .22s,background .22s;
+}
+.lesson-dialog-axis[open]>.lesson-dialog-axis-title>i{transform:rotate(180deg);background:#eaf3ec}
+.lesson-dialog-axis.off>.lesson-dialog-axis-title{opacity:.62;filter:grayscale(.35)}
+.lesson-dialog-axis>.lesson-dialog-chapters{padding:0 12px 13px;gap:8px}
+.lesson-dialog-chapter{border-radius:13px!important}
+.lesson-file-row{border-radius:14px!important;box-shadow:0 4px 13px rgba(37,62,43,.055)!important}
+.lesson-file-actions .lesson-file-replace{
+  background:#f0f5ed!important;border-color:#dce8d8!important;color:#55754d!important;
+}
+.lesson-file-actions .lesson-file-replace:hover{background:#e5f0e1!important;border-color:#c6d9c0!important}
+.lesson-file-replace-input{display:none!important}
+.lesson-file-actions button:disabled{opacity:.55;pointer-events:none}
+.lesson-admin-footer{margin-top:16px!important;padding-top:13px!important}
+.lesson-dialog-close{
+  width:38px!important;height:38px!important;border-radius:13px!important;
+  box-shadow:0 4px 12px rgba(34,55,40,.07);
+}
+@media(max-width:600px){
+ .lesson-dialog-panel{max-height:91dvh!important;padding:17px 13px!important;border-radius:22px!important}
+ .lesson-dialog-axis-title{min-height:57px;padding:9px 10px!important;gap:8px!important}
+ .lesson-dialog-axis-title>span{min-width:65px;font-size:9px!important}
+ .lesson-dialog-axis-title h3{font-size:12px!important}
+ .lesson-dialog-axis>.lesson-dialog-chapters{padding:0 7px 10px}
+ .lesson-dialog-heading{padding-left:37px!important}
+ .lesson-dialog-symbol{flex-basis:47px!important;height:47px!important}
+ .lesson-file-actions{width:100%;padding-right:47px}
+}
+@media(prefers-reduced-motion:reduce){
+ .lesson-dialog-axis,.lesson-dialog-axis-title>i{transition:none!important}
 }
 </style>
 
