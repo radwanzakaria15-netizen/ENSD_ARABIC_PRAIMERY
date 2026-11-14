@@ -514,7 +514,7 @@ export default {
       return new HTMLRewriter()
         .on('script[src="/academic-admin.js"]', {
           element(element) {
-            element.setAttribute("src", "/academic-admin.js?v=3ead982");
+            element.setAttribute("src", "/academic-admin.js?v=e0c587c");
           }
         })
         .on("body", {
