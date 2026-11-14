@@ -190,136 +190,9 @@
     option($("academicEditTopic"), topics, String(topicIndex()), "لا توجد موضوعات");
     renderProgramImageEditor();
   }
-  function ensureScheduleEditor() {
-    if ($("academicScheduleEditor")) return $("academicScheduleEditor");
-    const host = document.createElement("section");
-    host.id = "academicScheduleEditor";
-    host.style.cssText = "margin:22px 0;padding:18px;border:1px solid #d9e2dc;border-radius:16px;background:#f7faf8;color:#26352d";
-    host.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b style="font-size:17px">إدارة المجموعات والتوقيت</b><div style="font-size:13px;color:#66756b;margin-top:5px">أضف المجموعات والأفواج وارفع صورة توقيت مستقلة لكل فوج.</div></div><button type="button" id="academicAddGroup" class="academic-action-button">إضافة مجموعة</button></div><div id="academicGroupsList" style="display:grid;gap:12px;margin-top:15px"></div><div id="academicGroupsStatus" role="status" style="font-size:13px;margin-top:10px;color:#66756b"></div>';
-    const editor = $("academicEditor");
-    if (editor) editor.insertAdjacentElement("afterbegin", host);
-    $("academicAddGroup")?.addEventListener("click", () => {
-      const name = safePrompt("اسم المجموعة الجديدة (مثال: المجموعة A)");
-      if (!name) return;
-      config.groups ||= [];
-      const group = { id: id(), name, fogs: [] };
-      config.groups.push(group);
-      markDirty(); renderScheduleEditor();
-    });
-    host.addEventListener("click", event => {
-      const button = event.target.closest("[data-schedule-action]");
-      if (!button) return;
-      const [action, groupId, fogId] = button.dataset.scheduleAction.split("|");
-      const group = (config.groups || []).find(item => item.id === groupId);
-      const fog = group?.fogs.find(item => item.id === fogId);
-      if (action === "add-fog" && group) {
-        const name = safePrompt("اسم الفوج الجديد (مثال: الفوج 01)");
-        if (!name) return;
-        group.fogs.push({ id: id(), name, scheduleImage: "" });
-      } else if (action === "rename-group" && group) {
-        const name = safePrompt("اسم المجموعة", group.name); if (!name) return; group.name = name;
-      } else if (action === "delete-group" && group) {
-        if (!confirm("حذف المجموعة «" + group.name + "» وكل أفواجها؟")) return;
-        config.groups = config.groups.filter(item => item.id !== groupId);
-      } else if (action === "rename-fog" && fog) {
-        const name = safePrompt("اسم الفوج", fog.name); if (!name) return; fog.name = name;
-      } else if (action === "delete-fog" && fog) {
-        if (!confirm("حذف «" + fog.name + "»؟")) return;
-        group.fogs = group.fogs.filter(item => item.id !== fogId);
-      } else return;
-      markDirty(); renderScheduleEditor();
-    });
-    host.addEventListener("change", event => {
-      const input = event.target.closest("[data-schedule-upload]");
-      if (input) uploadScheduleImage(input);
-    });
-    return host;
-  }
-  function renderScheduleEditor() {
-    const host = ensureScheduleEditor();
-    const list = $("academicGroupsList");
-    if (!host || !list) return;
-    list.replaceChildren();
-    const groups = config.groups || [];
-    if (!groups.length) {
-      const empty = document.createElement("p");
-      empty.textContent = "لم تُضف أي مجموعة بعد. اضغط «إضافة مجموعة» للبدء.";
-      empty.style.cssText = "margin:0;padding:14px;background:white;border-radius:10px;color:#66756b;font-size:14px";
-      list.append(empty); return;
-    }
-    groups.forEach(group => {
-      const card = document.createElement("div");
-      card.style.cssText = "padding:14px;background:white;border:1px solid #e1e8e3;border-radius:12px";
-      const header = document.createElement("div");
-      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap";
-      const heading = document.createElement("b"); heading.textContent = group.name;
-      const actions = document.createElement("div");
-      actions.innerHTML = '<button type="button" data-schedule-action="add-fog|' + group.id + '" class="academic-action-button">إضافة فوج</button> <button type="button" data-schedule-action="rename-group|' + group.id + '" class="academic-action-button">تعديل الاسم</button> <button type="button" data-schedule-action="delete-group|' + group.id + '" class="academic-action-button">حذف المجموعة</button>';
-      header.append(heading, actions); card.append(header);
-      const fogList = document.createElement("div");
-      fogList.style.cssText = "display:grid;gap:10px;margin-top:12px";
-      (group.fogs || []).forEach(fog => {
-        const row = document.createElement("div");
-        row.style.cssText = "padding:12px;border-radius:10px;background:#f7faf8;display:grid;gap:9px";
-        const top = document.createElement("div");
-        top.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap";
-        const name = document.createElement("b"); name.textContent = fog.name;
-        const tools = document.createElement("div");
-        tools.innerHTML = '<button type="button" data-schedule-action="rename-fog|' + group.id + '|' + fog.id + '" class="academic-action-button">تعديل</button> <button type="button" data-schedule-action="delete-fog|' + group.id + '|' + fog.id + '" class="academic-action-button">حذف</button>';
-        top.append(name, tools); row.append(top);
-        const label = document.createElement("label");
-        label.textContent = fog.scheduleImage ? "استبدال صورة التوقيت" : "رفع صورة التوقيت";
-        label.style.cssText = "font-size:13px;color:#53665a";
-        const file = document.createElement("input");
-        file.type = "file"; file.accept = "image/png,image/jpeg,image/webp";
-        file.dataset.scheduleUpload = group.id + "|" + fog.id;
-        label.append(file); row.append(label);
-        if (fog.scheduleImage) {
-          const img = document.createElement("img");
-          img.src = fog.scheduleImage; img.alt = "توقيت " + fog.name;
-          img.style.cssText = "max-width:220px;width:100%;height:auto;object-fit:contain;border:1px solid #e1e8e3;border-radius:8px;background:white";
-          row.append(img);
-          const remove = document.createElement("button");
-          remove.type = "button"; remove.textContent = "إزالة صورة التوقيت";
-          remove.className = "academic-action-button";
-          remove.addEventListener("click", () => { fog.scheduleImage = ""; markDirty(); renderScheduleEditor(); });
-          row.append(remove);
-        } else {
-          const hint = document.createElement("small"); hint.textContent = "لم تُرفع صورة لهذا الفوج.";
-          hint.style.color = "#77847b"; row.append(hint);
-        }
-        fogList.append(row);
-      });
-      if (!(group.fogs || []).length) {
-        const hint = document.createElement("small"); hint.textContent = "لا توجد أفواج في هذه المجموعة بعد."; hint.style.color = "#77847b"; fogList.append(hint);
-      }
-      card.append(fogList); list.append(card);
-    });
-  }
-  async function uploadScheduleImage(input) {
-    const [groupId, fogId] = input.dataset.scheduleUpload.split("|");
-    const group = (config.groups || []).find(item => item.id === groupId);
-    const fog = group?.fogs.find(item => item.id === fogId);
-    const file = input.files?.[0];
-    if (!file || !fog) return;
-    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { alert("اختر صورة PNG أو JPG أو WEBP."); input.value = ""; return; }
-    if (file.size > 8 * 1024 * 1024) { alert("حجم الصورة كبير؛ الحد الأقصى 8 ميغابايت."); input.value = ""; return; }
-    const status = $("academicGroupsStatus"); if (status) status.textContent = "جارٍ رفع صورة توقيت " + fog.name + "...";
-    input.disabled = true;
-    try {
-      const response = await fetch("/api/academic-image", { method: "POST", headers: { "content-type": file.type, "x-academic-admin-code": adminCode }, body: file });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.url) throw new Error(result.error || "upload_failed");
-      fog.scheduleImage = result.url; markDirty(); renderScheduleEditor();
-      if ($("academicGroupsStatus")) $("academicGroupsStatus").textContent = "تم رفع الصورة. اضغط «حفظ التغييرات» لحفظ التوقيت.";
-    } catch (error) {
-      if ($("academicGroupsStatus")) $("academicGroupsStatus").textContent = error.message === "unauthorized" ? "انتهت صلاحية الدخول؛ سجّل الدخول مجددًا." : "تعذر رفع الصورة. تحقق من التخزين وحاول مجددًا.";
-    } finally { input.value = ""; }
-  }
   function refreshAll() {
     refreshPublicSelectors();
     refreshEditorSelectors();
-    renderScheduleEditor();
     applyCurrent();
   }
   async function checkAdmin(code) {
@@ -350,8 +223,6 @@
       try { sessionStorage.setItem("ensd_arabic_admin_mod_code", code); } catch {}
       $("academicEditor").hidden = false;
       status.textContent = "تم تسجيل الدخول.";
-      ensureScheduleEditor();
-      renderScheduleEditor();
       refreshEditorSelectors();
     } catch {
       status.textContent = "تعذر الاتصال. تحقق من اتصال الإنترنت وحاول مجددًا.";
@@ -454,8 +325,6 @@
     refreshAll();
     ensureProgramImageEditor();
     renderProgramImageEditor();
-    ensureScheduleEditor();
-    renderScheduleEditor();
     $("academicYearSelect")?.addEventListener("change", event => {
       activeYearId = event.target.value; activeSemesterId = selectedYear()?.semesters[0]?.id || ""; refreshAll();
     });
