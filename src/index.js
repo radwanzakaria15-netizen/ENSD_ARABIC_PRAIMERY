@@ -107,7 +107,7 @@ async function signedB2Request(env, method, key = "", body = null, extraQuery = 
 }
 
 function xmlText(xml, tag) {
-  const match = xml.match(new RegExp("<" + tag + ">([\\s\\S]*?)</" + tag + ">"));
+  const match = xml.match(new RegExp("<" + tag + ">([\s\S]*?)</" + tag + ">"));
   return match ? match[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'") : "";
 }
@@ -180,7 +180,7 @@ async function listObjectsByPrefix(env, prefix) {
   const r=await signedB2Request(env,"GET","",null,{"list-type":"2","max-keys":"1000",prefix,...(token?{"continuation-token":token}:{})});
   if(!r.ok)throw new Error("B2 list failed ("+r.status+")");
   const xml=await r.text();
-  for(const m of xml.matchAll(/<Contents>([\\s\\S]*?)<\\/Contents>/g))out.push({key:xmlText(m[1],"Key")});
+  for(const m of xml.matchAll(/<Contents>([\\s\\S]*?)<\/Contents>/g))out.push({key:xmlText(m[1],"Key")});
   if(xmlText(xml,"IsTruncated")!=="true")break; token=xmlText(xml,"NextContinuationToken"); if(!token)break;
  }
  return out;
@@ -237,7 +237,7 @@ async function handleResourceFile(request,env){
   if(!approved&&!pending)return json({error:"not_found"},404);
   const r=await signedB2Request(env,"GET",key);if(!r.ok)return json({error:"not_found"},404);
   const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
-  return new Response(r.body,{headers:{"content-type":type,"content-disposition":(type==="application/pdf"&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\\x20-\\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
+  return new Response(r.body,{headers:{"content-type":type,"content-disposition":(type==="application/pdf"&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\x20-\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
  }
  return json({error:"method_not_allowed"},405);
 }
@@ -254,14 +254,14 @@ async function handleApi(request, env) {
       : json({ error: "unauthorized" }, 401);
   }
 
-  if (url.pathname === "/api/resources") return handleResources(request, env);
-  if (url.pathname === "/api/resource") return handleResourceFile(request, env);
-
   const requiredStorageSettings = ["B2_ENDPOINT", "B2_BUCKET", "B2_REGION", "B2_KEY_ID", "B2_APPLICATION_KEY"];
   const missingStorageSettings = requiredStorageSettings.filter((name) => !String(env[name] || "").trim());
   if (missingStorageSettings.length) {
     return json({ error: "storage_not_configured", missing: missingStorageSettings }, 503);
   }
+
+  if (url.pathname === "/api/resources") return handleResources(request, env);
+  if (url.pathname === "/api/resource") return handleResourceFile(request, env);
 
   if (url.pathname === "/api/lessons") {
     if (request.method === "GET") {
