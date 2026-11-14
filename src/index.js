@@ -173,6 +173,75 @@ async function listLessons(env) {
   return files;
 }
 
+
+async function listObjectsByPrefix(env, prefix) {
+ const out=[]; let token="";
+ for(let page=0;page<20;page++){
+  const r=await signedB2Request(env,"GET","",null,{"list-type":"2","max-keys":"1000",prefix,...(token?{"continuation-token":token}:{})});
+  if(!r.ok)throw new Error("B2 list failed ("+r.status+")");
+  const xml=await r.text();
+  for(const m of xml.matchAll(/<Contents>([\\s\\S]*?)<\\/Contents>/g))out.push({key:xmlText(m[1],"Key")});
+  if(xmlText(xml,"IsTruncated")!=="true")break; token=xmlText(xml,"NextContinuationToken"); if(!token)break;
+ }
+ return out;
+}
+async function readResourceMeta(env,key){const r=await signedB2Request(env,"GET",key);if(!r.ok)return null;try{return await r.json()}catch{return null}}
+async function deleteResourceObject(env,key){const r=await signedB2Request(env,"DELETE",key);if(!r.ok&&r.status!==404)throw new Error("B2 delete failed ("+r.status+")")}
+async function handleResources(request,env){
+ const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=isAdmin(request,env);
+ if(request.method==="GET"){
+  const status=u.searchParams.get("status")==="pending"&&admin?"pending":"approved";
+  if(u.searchParams.get("status")==="pending"&&!admin)return json({error:"unauthorized"},401);
+  try{const objects=await listObjectsByPrefix(env,"resources/"+status+"/"),items=[];
+   for(const o of objects){if(!o.key.endsWith(".json"))continue;const m=await readResourceMeta(env,o.key);if(m?.id&&m.fileKey)items.push({...m,status})}
+   items.sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));return json(items);
+  }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
+ }
+ if(request.method==="POST"&&action){
+  if(!admin)return json({error:"unauthorized"},401);
+  if(!/^[a-f0-9-]{36}$/i.test(id))return json({error:"invalid_resource_id"},400);
+  const base="resources/pending/"+id,meta=await readResourceMeta(env,base+".json");
+  if(!meta)return json({error:"not_found"},404);
+  try{
+   if(action==="approve"){
+    const src=await signedB2Request(env,"GET",meta.fileKey);if(!src.ok)throw new Error("Pending file missing");
+    const data=await src.arrayBuffer(),fileKey="resources/approved/"+id+"__"+safeFileName(meta.fileName);
+    const put=await signedB2Request(env,"PUT",fileKey,data,{},meta.contentType);if(!put.ok)throw new Error("Could not publish resource");
+    const approved={...meta,fileKey,status:"approved",approvedAt:new Date().toISOString()};
+    const saved=await signedB2Request(env,"PUT","resources/approved/"+id+".json",encoder.encode(JSON.stringify(approved)),{},"application/json");
+    if(!saved.ok)throw new Error("Could not save resource metadata");
+   }else if(action!=="reject")return json({error:"invalid_action"},400);
+   await deleteResourceObject(env,meta.fileKey);await deleteResourceObject(env,base+".json");return json({ok:true,action,id});
+  }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
+ }
+ return json({error:"method_not_allowed"},405);
+}
+async function handleResourceFile(request,env){
+ const u=new URL(request.url),key=u.searchParams.get("key")||"";
+ if(request.method==="POST"){
+  const name=safeFileName(u.searchParams.get("name")),type=contentTypeForName(name);
+  if(type==="application/octet-stream")return json({error:"unsupported_file_type"},400);
+  const meta={id:crypto.randomUUID(),title:String(u.searchParams.get("title")||"").trim().slice(0,120),year:String(u.searchParams.get("year")||""),semester:String(u.searchParams.get("semester")||""),specialty:String(u.searchParams.get("specialty")||"").trim().slice(0,100),subject:String(u.searchParams.get("subject")||"").trim().slice(0,100),kind:String(u.searchParams.get("kind")||""),contributor:String(u.searchParams.get("contributor")||"").trim().slice(0,60),fileName:name,contentType:type,createdAt:new Date().toISOString()};
+  if(!meta.title||!/^السنة [1-6]$/.test(meta.year)||!/^السداسي [12]$/.test(meta.semester)||!meta.specialty||!meta.subject||!["كتاب","درس ومحاضرة","ملخص","تمارين محلولة","سلسلة تمارين","امتحانات سابقة","مراجع أخرى"].includes(meta.kind))return json({error:"invalid_resource_metadata"},400);
+  const data=await request.arrayBuffer();if(!data.byteLength)return json({error:"empty_file"},400);if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
+  const b=new Uint8Array(data),pdf=type==="application/pdf"&&new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-"),doc=type==="application/msword"&&b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]),docx=type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&b[0]===0x50&&b[1]===0x4B;
+  if(!(pdf||doc||docx))return json({error:"file_type_mismatch"},400);
+  const base="resources/pending/"+meta.id;meta.fileKey=base+"__"+name;
+  const put=await signedB2Request(env,"PUT",meta.fileKey,data,{},type);if(!put.ok)return json({error:"storage_error"},502);
+  const save=await signedB2Request(env,"PUT",base+".json",encoder.encode(JSON.stringify(meta)),{},"application/json");
+  if(!save.ok){await deleteResourceObject(env,meta.fileKey);return json({error:"storage_error"},502)}
+  return json({ok:true,pending:true,id:meta.id});
+ }
+ if(request.method==="GET"){
+  const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&isAdmin(request,env);
+  if(!approved&&!pending)return json({error:"not_found"},404);
+  const r=await signedB2Request(env,"GET",key);if(!r.ok)return json({error:"not_found"},404);
+  const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
+  return new Response(r.body,{headers:{"content-type":type,"content-disposition":(type==="application/pdf"&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\\x20-\\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
+ }
+ return json({error:"method_not_allowed"},405);
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
@@ -184,6 +253,9 @@ async function handleApi(request, env) {
       ? json({ ok: true })
       : json({ error: "unauthorized" }, 401);
   }
+
+  if (url.pathname === "/api/resources") return handleResources(request, env);
+  if (url.pathname === "/api/resource") return handleResourceFile(request, env);
 
   const requiredStorageSettings = ["B2_ENDPOINT", "B2_BUCKET", "B2_REGION", "B2_KEY_ID", "B2_APPLICATION_KEY"];
   const missingStorageSettings = requiredStorageSettings.filter((name) => !String(env[name] || "").trim());
