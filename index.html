@@ -945,6 +945,8 @@ let PUBLISHED_LESSONS=Object.create(null);
 let LESSON_ADMIN=false;
 let LESSON_ADMIN_CODE="";
 try{LESSON_ADMIN_CODE=sessionStorage.getItem("ensd_arabic_admin_code")||"";}catch(e){}
+let ACADEMIC_YEAR_NUMBER=2;
+let ACADEMIC_SEMESTER_NUMBER=1;
 function lessonKey(group,subjectIndex,axisIndex,chapterIndex){
  const prefix=ACADEMIC_YEAR_NUMBER===2&&ACADEMIC_SEMESTER_NUMBER===1?group:"Y"+ACADEMIC_YEAR_NUMBER+"S"+ACADEMIC_SEMESTER_NUMBER+group;
  return prefix+"-"+String(subjectIndex+1).padStart(2,"0")+"-"+String(axisIndex+1).padStart(2,"0")+"-"+String(chapterIndex+1).padStart(2,"0");
@@ -1334,15 +1336,16 @@ resourceInitSelects();
  loadResources();if(RESOURCE_ADMIN_CODE)loadPendingResources();
 
 
-let ACADEMIC_YEAR_NUMBER=2;
-let ACADEMIC_SEMESTER_NUMBER=1;
-window.__academicBridge={\n getSubjects(){return subjectData;},
+window.__academicBridge={
+ getSubjects(){return subjectData;},
  setSubjects(items){subjectData.splice(0,subjectData.length,...items);renderSubjects();},
  setLessonSubjects(names){lessonSubjects.splice(0,lessonSubjects.length,...names);lessonData.A=names.map(name=>({name,lessons:[]}));lessonData.B=names.map(name=>({name,lessons:[]}));renderLessonSubjects(currentGroup);const total=document.querySelector("#page-lessons .lessons-total b");if(total)total.textContent=String(names.length);const count=document.querySelector("#page-lessons .lesson-summary-count b");if(count)count.textContent=String(names.length);},
  setContext(year,semester){ACADEMIC_YEAR_NUMBER=Number(year)||2;ACADEMIC_SEMESTER_NUMBER=Number(semester)||1;},
  refreshLessons(){renderLessonSubjects(currentGroup);}
 };
-</script>\n<script src="/academic-admin.js" defer></script>\n
+</script>
+<script src="/academic-admin.js" defer></script>
+
 
 <style id="lesson-stack-visible-on-load-20261113">
 /* Keep the subject cards visibly stacked as soon as the lessons page opens */
