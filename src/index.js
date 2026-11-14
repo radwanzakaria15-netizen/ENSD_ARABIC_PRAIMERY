@@ -506,6 +506,17 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    if ((url.pathname === "/" || url.pathname === "/index.html") &&
+        (response.headers.get("content-type") || "").includes("text/html")) {
+      return new HTMLRewriter()
+        .on("body", {
+          element(element) {
+            element.append('<script defer src="/schedule-view.js?v=55621d0"></script>', { html: true });
+          }
+        })
+        .transform(response);
+    }
+    return response;
   },
 };
