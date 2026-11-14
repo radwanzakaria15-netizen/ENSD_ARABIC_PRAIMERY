@@ -510,6 +510,11 @@ export default {
     if ((url.pathname === "/" || url.pathname === "/index.html") &&
         (response.headers.get("content-type") || "").includes("text/html")) {
       return new HTMLRewriter()
+        .on('script[src="/academic-admin.js"]', {
+          element(element) {
+            element.setAttribute("src", "/academic-admin.js?v=3feb563");
+          }
+        })
         .on("body", {
           element(element) {
             element.append('<script defer src="/schedule-view.js?v=55621d0"></script>', { html: true });
