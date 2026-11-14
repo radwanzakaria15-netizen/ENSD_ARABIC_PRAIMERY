@@ -222,7 +222,7 @@
         #academicScheduleManager .asm-status{display:block;margin-top:10px;color:#53685b;font-size:.88rem}
       </style>
       <h3>إدارة التوقيت الدراسي</h3>
-      <p class="asm-note">تحكم في المجموعات والقاعات والأفواج، وارفع صورة توقيت مستقلة لكل فوج. اضغط «حفظ التغييرات» أعلى/أسفل لوحة البرنامج لنشر التعديلات للطلاب.</p>
+      <p class="asm-note">تحكم في المجموعات والقاعات والأفواج، وارفع صورة توقيت مستقلة لكل فوج. بعد الانتهاء اضغط «حفظ التغييرات» أسفل هذا القسم لنشر التعديلات للطلاب.</p>
       <div class="asm-grid">
         <div><label for="asmGroupSelect">المجموعة</label><select id="asmGroupSelect"></select>
           <div class="asm-actions"><button type="button" id="asmAddGroup">+ إضافة مجموعة</button><button type="button" id="asmEditGroup">تعديل الاسم/القاعة</button><button type="button" class="asm-danger" id="asmDeleteGroup">حذف المجموعة</button></div>
@@ -233,7 +233,9 @@
       </div>
       <div style="margin-top:16px"><label for="asmScheduleFile">صورة توقيت الفوج المختار (PNG / JPG / WEBP)</label><input id="asmScheduleFile" type="file" accept="image/png,image/jpeg,image/webp"><div class="asm-preview" id="asmSchedulePreview"></div><div class="asm-actions"><button type="button" class="asm-danger" id="asmRemoveSchedule">حذف صورة التوقيت</button></div><span class="asm-status" id="asmScheduleStatus" role="status"></span></div>
     `;
-    $("academicEditor")?.append(host);
+    const saveRow = $("academicSave")?.closest(".academic-save-row");
+    if (saveRow) saveRow.before(host);
+    else $("academicEditor")?.append(host);
     $("asmGroupSelect")?.addEventListener("change", () => {
       scheduleGroupId = $("asmGroupSelect").value;
       scheduleFogId = config.groups.find(g => g.id === scheduleGroupId)?.fogs?.[0]?.id || "";
