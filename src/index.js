@@ -243,8 +243,17 @@ async function handleResourceFile(request,env){
 }
 
 
+function isAcademicAdmin(request, env) {
+  const expected = String(env.ACADEMIC_ADMIN_CODE || "").trim();
+  const supplied = String(request.headers.get("x-academic-admin-code") || "").trim();
+  return Boolean(expected) && supplied === expected;
+}
+
 async function handleAcademic(request, env) {
   const key = "academic/config.json";
+  if (request.method === "POST") {
+    return isAcademicAdmin(request, env) ? json({ ok: true }) : json({ error: "unauthorized" }, 401);
+  }
   if (request.method === "GET") {
     try {
       const response = await signedB2Request(env, "GET", key);
@@ -257,7 +266,7 @@ async function handleAcademic(request, env) {
     }
   }
   if (request.method === "PUT") {
-    if (!isAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
     let config;
     try { config = await request.json(); }
     catch { return json({ error: "invalid_json" }, 400); }
