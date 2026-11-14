@@ -5,24 +5,79 @@ const encoder = new TextEncoder();
 const json = (value, status = 200) =>
   Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
-function isAdmin(request, env) {
-  const expected = String(env.ADMIN_CODE_A || "").trim();
-  const supplied = String(request.headers.get("x-admin-code") || "").trim();
-  return Boolean(expected) && supplied === expected;
+const ADMIN_SESSION_COOKIE = "__Host-admin_session";
+const ADMIN_SESSION_TTL = 8 * 60 * 60;
+function cookieValue(request, name) {
+  const header = request.headers.get("cookie") || "";
+  for (const part of header.split(";")) { const index=part.indexOf("="); if(index>0 && part.slice(0,index).trim()===name) return part.slice(index+1).trim(); }
+  return "";
 }
+function base64urlEncode(bytes) {
+  let binary=""; for(const byte of bytes) binary+=String.fromCharCode(byte);
+  return btoa(binary).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+}
+function base64urlDecode(value) {
+  const normalized=value.replace(/-/g,"+").replace(/_/g,"/");
+  const binary=atob(normalized+"=".repeat((4-normalized.length%4)%4));
+  return Uint8Array.from(binary,c=>c.charCodeAt(0));
+}
+async function sessionSignature(env,value) {
+  const secret=String(env.ADMIN_SESSION_SECRET||"");
+  if(secret.length<32) throw new Error("ADMIN_SESSION_SECRET must contain at least 32 characters");
+  const key=await crypto.subtle.importKey("raw",encoder.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  return base64urlEncode(new Uint8Array(await crypto.subtle.sign("HMAC",key,encoder.encode(value))));
+}
+function safeEqual(a,b) {
+  if(a.length!==b.length)return false;let diff=0;
+  for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);
+  return diff===0;
+}
+async function readAdminSession(request,env) {
+  try {
+    const token=cookieValue(request,ADMIN_SESSION_COOKIE),parts=token.split(".");
+    if(parts.length!==2||!parts[0]||!parts[1])return null;
+    if(!safeEqual(parts[1],await sessionSignature(env,parts[0])))return null;
+    const data=JSON.parse(new TextDecoder().decode(base64urlDecode(parts[0])));
+    return data&&Number.isFinite(data.exp)&&data.exp>Date.now()/1000?data:null;
+  } catch { return null; }
+}
+async function hasAdminSession(request,env,role) {
+  const session=await readAdminSession(request,env);return Boolean(session&&(Array.isArray(session.roles)?session.roles.includes(role):session.role===role));
+}
+function sessionCookie(token,maxAge=ADMIN_SESSION_TTL) {
+  return ADMIN_SESSION_COOKIE+"="+token+"; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age="+maxAge;
+}
+async function handleAdminSession(request,env) {
+  if(request.method==="GET"){
+    const role=new URL(request.url).searchParams.get("role")||"";
+    return await hasAdminSession(request,env,role)?json({ok:true,role}):json({error:"unauthorized"},401);
+  }
+  if(request.method==="DELETE")return new Response(JSON.stringify({ok:true}),{headers:{"content-type":"application/json","set-cookie":sessionCookie("",0),"cache-control":"no-store"}});
+  if(request.method!=="POST")return json({error:"method_not_allowed"},405);
+  const origin=request.headers.get("origin");
+  if(origin&&origin!==new URL(request.url).origin)return json({error:"invalid_origin"},403);
+  let body;try{body=await request.json()}catch{return json({error:"invalid_json"},400)}
+  const role=String(body?.role||""),code=String(body?.code||"").trim();
+  const secretName=role==="academic"?"ADMIN_CODE_MOD":role==="lesson-A"||role==="resources"?"ADMIN_CODE_A":role==="lesson-B"?"ADMIN_CODE_B":"";
+  if(!secretName)return json({error:"invalid_role"},400);
+  const expected=String(env[secretName]||"").trim();
+  if(!expected)return json({error:"admin_code_not_configured"},503);
+  if(!code||!safeEqual(code,expected))return json({error:"unauthorized"},401);
+  if(String(env.ADMIN_SESSION_SECRET||"").length<32)return json({error:"session_secret_not_configured"},503);
+  const previous=await readAdminSession(request,env);const roles=[...new Set([...(Array.isArray(previous?.roles)?previous.roles:previous?.role?[previous.role]:[]),role])];
+  const payload=base64urlEncode(encoder.encode(JSON.stringify({roles,exp:Math.floor(Date.now()/1000)+ADMIN_SESSION_TTL})));
+  const signature=await sessionSignature(env,payload);
+  return new Response(JSON.stringify({ok:true,role}),{headers:{"content-type":"application/json","set-cookie":sessionCookie(payload+"."+signature),"cache-control":"no-store"}});
+}
+
+async function isAdmin(request,env){return hasAdminSession(request,env,"resources");}
 
 function lessonGroupFromKey(key) {
   const match = /^(?:([AB])|Y[1-6]S[1-4]([AB]))-/.exec(String(key || ""));
   return match ? (match[1] || match[2]) : null;
 }
 
-function isLessonAdmin(request, env, group) {
-  if (group !== "A" && group !== "B") return false;
-  const expected = String(env[group === "A" ? "ADMIN_CODE_A" : "ADMIN_CODE_B"] || "").trim();
-  const supplied = String(request.headers.get("x-admin-code") || "").trim();
-  const suppliedGroup = String(request.headers.get("x-admin-group") || "").trim().toUpperCase();
-  return Boolean(expected) && supplied === expected && suppliedGroup === group;
-}
+async function isLessonAdmin(request,env,group){if(group!=="A"&&group!=="B")return false;return hasAdminSession(request,env,"lesson-"+group);}
 
 function hex(bytes) {
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -201,7 +256,7 @@ async function listObjectsByPrefix(env, prefix) {
 async function readResourceMeta(env,key){const r=await signedB2Request(env,"GET",key);if(!r.ok)return null;try{return await r.json()}catch{return null}}
 async function deleteResourceObject(env,key){const r=await signedB2Request(env,"DELETE",key);if(!r.ok&&r.status!==404)throw new Error("B2 delete failed ("+r.status+")")}
 async function handleResources(request,env){
- const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=isAdmin(request,env);
+ const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=await isAdmin(request,env);
  if(request.method==="GET"){
   const status=u.searchParams.get("status")==="pending"&&admin?"pending":"approved";
   if(u.searchParams.get("status")==="pending"&&!admin)return json({error:"unauthorized"},401);
@@ -246,7 +301,7 @@ async function handleResourceFile(request,env){
   return json({ok:true,pending:true,id:meta.id});
  }
  if(request.method==="GET"){
-  const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&isAdmin(request,env);
+  const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&await isAdmin(request,env);
   if(!approved&&!pending)return json({error:"not_found"},404);
   const r=await signedB2Request(env,"GET",key);if(!r.ok)return json({error:"not_found"},404);
   const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
@@ -256,16 +311,12 @@ async function handleResourceFile(request,env){
 }
 
 
-function isAcademicAdmin(request, env) {
-  const expected = String(env.ADMIN_CODE_MOD || "").trim();
-  const supplied = String(request.headers.get("x-academic-admin-code") || "").trim();
-  return Boolean(expected) && supplied === expected;
-}
+async function isAcademicAdmin(request,env){return hasAdminSession(request,env,"academic");}
 
 async function handleAcademic(request, env) {
   const key = "academic/config.json";
   if (request.method === "POST") {
-    return isAcademicAdmin(request, env) ? json({ ok: true }) : json({ error: "unauthorized" }, 401);
+    return await isAcademicAdmin(request, env) ? json({ ok: true }) : json({ error: "unauthorized" }, 401);
   }
   if (request.method === "GET") {
     try {
@@ -279,7 +330,7 @@ async function handleAcademic(request, env) {
     }
   }
   if (request.method === "PUT") {
-    if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    if (!(await isAcademicAdmin(request, env))) return json({ error: "unauthorized" }, 401);
     let config;
     try { config = await request.json(); }
     catch { return json({ error: "invalid_json" }, 400); }
@@ -362,7 +413,7 @@ async function handleAcademicImage(request, env) {
   const key = url.searchParams.get("key") || "";
   const validKey = /^academic\/images\/[a-f0-9-]{36}\.(?:jpg|png|webp)$/.test(key);
   if (request.method === "POST") {
-    if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    if (!(await isAcademicAdmin(request, env))) return json({ error: "unauthorized" }, 401);
     const type = String(request.headers.get("content-type") || "").toLowerCase().split(";")[0].trim();
     const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" })[type];
     if (!extension) return json({ error: "unsupported_image_type" }, 400);
@@ -389,7 +440,7 @@ async function handleAcademicImage(request, env) {
     return new Response(image.body, { headers: { "content-type": type, "cache-control": "public, max-age=86400", "x-content-type-options": "nosniff" } });
   }
   if (request.method === "DELETE") {
-    if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    if (!(await isAcademicAdmin(request, env))) return json({ error: "unauthorized" }, 401);
     const removed = await signedB2Request(env, "DELETE", key);
     if (!removed.ok && removed.status !== 404) return json({ error: "image_delete_failed" }, 502);
     return json({ ok: true });
@@ -400,16 +451,13 @@ async function handleAcademicImage(request, env) {
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
+  if (url.pathname === "/api/admin/session") return handleAdminSession(request, env);
   if (url.pathname === "/api/lessons" && request.method === "POST") {
-    const group = String(request.headers.get("x-admin-group") || "").trim().toUpperCase();
+    const group = String(new URL(request.url).searchParams.get("group") || "").trim().toUpperCase();
     if (group !== "A" && group !== "B") return json({ error: "invalid_lesson_group" }, 400);
     const secretName = group === "A" ? "ADMIN_CODE_A" : "ADMIN_CODE_B";
-    if (!String(env[secretName] || "").trim()) {
-      return json({ error: "admin_code_not_configured", group }, 503);
-    }
-    return isLessonAdmin(request, env, group)
-      ? json({ ok: true, group })
-      : json({ error: "unauthorized" }, 401);
+    if (!String(env[secretName] || "").trim()) return json({ error: "admin_code_not_configured", group }, 503);
+    return await isLessonAdmin(request, env, group) ? json({ ok: true, group }) : json({ error: "unauthorized" }, 401);
   }
 
   const requiredStorageSettings = ["B2_ENDPOINT", "B2_BUCKET", "B2_REGION", "B2_KEY_ID", "B2_APPLICATION_KEY"];
@@ -442,7 +490,7 @@ async function handleApi(request, env) {
   }
 
   const lessonGroup = lessonGroupFromKey(key);
-  if (request.method !== "GET" && !isLessonAdmin(request, env, lessonGroup)) {
+  if (request.method !== "GET" && !(await isLessonAdmin(request, env, lessonGroup))) {
     const secretName = lessonGroup === "A" ? "ADMIN_CODE_A" : lessonGroup === "B" ? "ADMIN_CODE_B" : "";
     if (!secretName || !String(env[secretName] || "").trim()) return json({ error: "admin_code_not_configured" }, 503);
     return json({ error: "unauthorized" }, 401);
@@ -507,7 +555,7 @@ async function handleApi(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
+    if (url.pathname === "/api/admin/session" || url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
     const response = await env.ASSETS.fetch(request);
     if ((url.pathname === "/" || url.pathname === "/index.html") &&
         (response.headers.get("content-type") || "").includes("text/html")) {

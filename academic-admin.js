@@ -170,7 +170,7 @@
     try {
       const response = await fetch("/api/academic-image", {
         method: "POST",
-        headers: { "content-type": file.type, "x-academic-admin-code": adminCode },
+        headers: { "content-type": file.type },
         body: file
       });
       const result = await response.json().catch(() => ({}));
@@ -400,7 +400,7 @@
     if (file.size > 8 * 1024 * 1024) { status.textContent = "الحد الأقصى لحجم الصورة 8 ميغابايت."; event.target.value = ""; return; }
     status.dataset.busy = "1"; status.textContent = "جارٍ رفع صورة التوقيت..."; event.target.disabled = true;
     try {
-      const response = await fetch("/api/academic-image", { method: "POST", headers: { "content-type": file.type, "x-academic-admin-code": adminCode }, body: file });
+      const response = await fetch("/api/academic-image", { method: "POST", headers: { "content-type": file.type }, body: file });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.url) throw new Error(result.error || "upload_failed");
       fog.scheduleImage = result.url; markDirty(); renderScheduleEditor();
@@ -411,9 +411,9 @@
   }
 
   async function checkAdmin(code) {
-    const response = await fetch("/api/academic", {
-      method: "POST", headers: { "x-academic-admin-code": code },
-      cache: "no-store"
+    const response = await fetch("/api/admin/session", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "academic", code }), cache: "no-store"
     });
     const result = await response.json().catch(() => ({}));
     return { ok: response.ok, status: response.status, error: result.error || "" };
@@ -431,11 +431,10 @@
           404: "مسار التحقق غير موجود في نسخة Worker المنشورة. أعد نشر آخر نسخة.",
         };
         status.textContent = messages[result.status] || ("فشل التحقق (HTTP " + result.status + "). " + (result.error || "تحقق من نشر Worker."));
-        try { sessionStorage.removeItem("ensd_arabic_admin_mod_code"); } catch {}
+        
         return;
       }
-      adminCode = code;
-      try { sessionStorage.setItem("ensd_arabic_admin_mod_code", code); } catch {}
+      adminCode = "session";
       $("academicEditor").hidden = false;
       status.textContent = "تم تسجيل الدخول.";
       refreshEditorSelectors();
@@ -522,7 +521,7 @@
     try {
       const response = await fetch("/api/academic", {
         method: "PUT",
-        headers: { "content-type": "application/json", "x-academic-admin-code": adminCode },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(config)
       });
       const result = await response.json().catch(() => ({}));
@@ -571,9 +570,9 @@
     $("academicAdmin")?.addEventListener("toggle", async () => {
       if (!$("academicAdmin").open || adminCode) return;
       try {
-        const stored = sessionStorage.getItem("ensd_arabic_admin_mod_code") || "";
-        if (stored && await checkAdmin(stored)) {
-          adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors(); renderScheduleEditor(); if (dirty && $("academicSaveStatus")) $("academicSaveStatus").textContent = "تم فصل إدارة الأفواج حسب السنة الجامعية. راجع أفواج كل سنة ثم اضغط «حفظ التغييرات» لتثبيت التعديل.";
+        const response = await fetch("/api/admin/session?role=academic", { cache: "no-store" });
+        if (response.ok) {
+          adminCode = "session"; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors(); renderScheduleEditor(); if (dirty && $("academicSaveStatus")) $("academicSaveStatus").textContent = "تم فصل إدارة الأفواج حسب السنة الجامعية. راجع أفواج كل سنة ثم اضغط «حفظ التغييرات» لتثبيت التعديل.";
         }
       } catch {}
     });
