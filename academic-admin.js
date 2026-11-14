@@ -243,14 +243,19 @@
     $("asmAddGroup")?.addEventListener("click", () => {
       const name = safePrompt("اسم المجموعة أو القاعة (مثال: المجموعة A · مدرج أ)");
       if (!name) return;
-      const item = { id: id(), name, fogs: [] };
+      const hall = safePrompt("اسم المدرج أو القاعة (مثال: مدرج أ)", "");
+      if (hall === null) return;
+      const item = { id: id(), name, hall, code: String.fromCharCode(65 + config.groups.length), fogs: [] };
       config.groups.push(item); scheduleGroupId = item.id; scheduleFogId = "";
       markDirty(); renderScheduleEditor();
     });
     $("asmEditGroup")?.addEventListener("click", () => {
       const group = currentScheduleGroup(); if (!group) return;
-      const name = safePrompt("اسم المجموعة/القاعة", group.name);
-      if (!name) return; group.name = name; markDirty(); renderScheduleEditor();
+      const name = safePrompt("اسم المجموعة (مثال: المجموعة A)", group.name);
+      if (!name) return;
+      const hall = safePrompt("اسم المدرج أو القاعة", group.hall || "");
+      if (hall === null) return;
+      group.name = name; group.hall = hall; markDirty(); renderScheduleEditor();
     });
     $("asmDeleteGroup")?.addEventListener("click", () => {
       const group = currentScheduleGroup(); if (!group) return;
