@@ -25,9 +25,23 @@
     const result = window.prompt(message, value);
     return result === null ? null : clean(result);
   };
+  function createDefaultScheduleGroups() {
+    const makeGroup = (name, hall, code, firstFog) => ({
+      id: id(), name, hall, code,
+      fogs: Array.from({ length: 6 }, (_, index) => ({
+        id: id(),
+        name: String(firstFog + index).padStart(2, "0"),
+        scheduleImage: ""
+      }))
+    });
+    return [
+      makeGroup("المجموعة A", "مدرج أ", "A", 1),
+      makeGroup("المجموعة B", "مدرج د", "B", 7)
+    ];
+  }
   const defaultConfig = () => ({
     version: 1,
-    groups: [],
+    groups: createDefaultScheduleGroups(),
     years: [{
       id: "year-2", name: "السنة الثانية",
       semesters: [{
@@ -378,6 +392,9 @@
       status.textContent = "تم تسجيل الدخول.";
       refreshEditorSelectors();
       renderScheduleEditor();
+      if (dirty && $("academicSaveStatus")) {
+        $("academicSaveStatus").textContent = "تم تجهيز المجموعتين A وB والأفواج 01–12 افتراضيًا. اضغط «حفظ التغييرات» لحفظها وإظهارها للطلاب.";
+      }
     } catch {
       status.textContent = "تعذر الاتصال. تحقق من اتصال الإنترنت وحاول مجددًا.";
     }
@@ -476,7 +493,13 @@
         if (result.config?.years?.length) config = result.config;
       }
     } catch {}
-    config.groups ||= [];
+    // الإعداد الافتراضي: مجموعتان وستة أفواج في كل مجموعة.
+    // تُنشأ هذه البنية تلقائيًا أيضًا للإعدادات القديمة التي لا تحتوي مجموعات.
+    if (!Array.isArray(config.groups) || config.groups.length === 0) {
+      config.groups = createDefaultScheduleGroups();
+      dirty = true;
+    }
+    config.groups.forEach(group => { group.fogs ||= []; });
     scheduleGroupId = config.groups[0]?.id || "";
     scheduleFogId = config.groups[0]?.fogs?.[0]?.id || "";
     refreshAll();
@@ -501,7 +524,7 @@
       try {
         const stored = sessionStorage.getItem("ensd_arabic_admin_mod_code") || "";
         if (stored && await checkAdmin(stored)) {
-          adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors(); renderScheduleEditor();
+          adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors(); renderScheduleEditor(); if (dirty && $("academicSaveStatus")) $("academicSaveStatus").textContent = "تم تجهيز المجموعتين A وB والأفواج 01–12 افتراضيًا. اضغط «حفظ التغييرات» لحفظها وإظهارها للطلاب.";
         }
       } catch {}
     });
