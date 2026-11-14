@@ -299,7 +299,7 @@ async function handleAcademic(request, env) {
         }
         ids.add(semester.id);
         for (const subject of semester.subjects) {
-          if (!subject || !validText(subject.id, 80) || !validText(subject.name, 120) || !validText(subject.symbol, 8) || ids.has(subject.id) || !Array.isArray(subject.axes) || subject.axes.length > 100) {
+          if (!subject || !validText(subject.id, 80) || !validText(subject.name, 120) || !validText(subject.symbol, 8) || ids.has(subject.id) || !Array.isArray(subject.axes) || subject.axes.length > 100 || (subject.programImage && (typeof subject.programImage !== "string" || subject.programImage.length > 220 || !subject.programImage.startsWith("/api/academic-image?key=academic%2Fimages%2F")))) {
             return json({ error: "invalid_subject_entry" }, 400);
           }
           ids.add(subject.id);
@@ -332,6 +332,47 @@ async function handleAcademic(request, env) {
   return json({ error: "method_not_allowed" }, 405);
 }
 
+
+async function handleAcademicImage(request, env) {
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key") || "";
+  const validKey = /^academic\/images\/[a-f0-9-]{36}\.(?:jpg|png|webp)$/.test(key);
+  if (request.method === "POST") {
+    if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    const type = String(request.headers.get("content-type") || "").toLowerCase().split(";")[0].trim();
+    const extension = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" })[type];
+    if (!extension) return json({ error: "unsupported_image_type" }, 400);
+    const data = await request.arrayBuffer();
+    if (!data.byteLength) return json({ error: "empty_image" }, 400);
+    if (data.byteLength > 8_000_000) return json({ error: "image_too_large" }, 413);
+    const bytes = new Uint8Array(data);
+    const jpeg = type === "image/jpeg" && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    const png = type === "image/png" && bytes.length >= 8 && [137,80,78,71,13,10,26,10].every((v,i)=>bytes[i]===v);
+    const webp = type === "image/webp" && new TextDecoder().decode(bytes.slice(0,4)) === "RIFF" && new TextDecoder().decode(bytes.slice(8,12)) === "WEBP";
+    if (!(jpeg || png || webp)) return json({ error: "invalid_image_data" }, 400);
+    const imageKey = "academic/images/" + crypto.randomUUID() + "." + extension;
+    const saved = await signedB2Request(env, "PUT", imageKey, data, {}, type);
+    if (!saved.ok) return json({ error: "image_storage_failed" }, 502);
+    return json({ ok: true, key: imageKey, url: "/api/academic-image?key=" + encodeURIComponent(imageKey) });
+  }
+  if (!validKey) return json({ error: "not_found" }, 404);
+  if (request.method === "GET") {
+    const image = await signedB2Request(env, "GET", key);
+    if (image.status === 404) return json({ error: "not_found" }, 404);
+    if (!image.ok) return json({ error: "image_read_failed" }, 502);
+    const extension = key.split(".").pop();
+    const type = extension === "jpg" ? "image/jpeg" : extension === "png" ? "image/png" : "image/webp";
+    return new Response(image.body, { headers: { "content-type": type, "cache-control": "public, max-age=86400", "x-content-type-options": "nosniff" } });
+  }
+  if (request.method === "DELETE") {
+    if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    const removed = await signedB2Request(env, "DELETE", key);
+    if (!removed.ok && removed.status !== 404) return json({ error: "image_delete_failed" }, 502);
+    return json({ ok: true });
+  }
+  return json({ error: "method_not_allowed" }, 405);
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
@@ -354,6 +395,7 @@ async function handleApi(request, env) {
   }
 
   if (url.pathname === "/api/academic") return handleAcademic(request, env);
+  if (url.pathname === "/api/academic-image") return handleAcademicImage(request, env);
   if (url.pathname === "/api/resources") return handleResources(request, env);
   if (url.pathname === "/api/resource") return handleResourceFile(request, env);
 
