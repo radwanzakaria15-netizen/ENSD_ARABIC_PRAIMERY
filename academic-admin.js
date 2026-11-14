@@ -189,12 +189,158 @@
     const topics = (ch?.topics || []).map((name, index) => ({ id: String(index), name }));
     option($("academicEditTopic"), topics, String(topicIndex()), "لا توجد موضوعات");
     renderProgramImageEditor();
+    if ($("academicScheduleManager")) renderScheduleEditor();
   }
   function refreshAll() {
     refreshPublicSelectors();
     refreshEditorSelectors();
     applyCurrent();
   }
+
+  // إدارة قسم التوقيت الدراسي من لوحة البرنامج الأكاديمي.
+  let scheduleGroupId = "", scheduleFogId = "";
+  function ensureScheduleEditor() {
+    let host = $("academicScheduleManager");
+    if (host) return host;
+    host = document.createElement("section");
+    host.id = "academicScheduleManager";
+    host.className = "academic-schedule-manager";
+    host.innerHTML = `
+      <style>
+        #academicScheduleManager{margin:22px 0;padding:18px;border:1px solid #dce5df;border-radius:18px;background:#f7faf8;color:#24352d}
+        #academicScheduleManager h3{margin:0 0 8px;font-size:1.12rem}
+        #academicScheduleManager .asm-note{margin:0 0 16px;color:#66766d;font-size:.9rem;line-height:1.7}
+        #academicScheduleManager .asm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+        #academicScheduleManager label{display:block;margin-bottom:6px;font-size:.88rem;font-weight:700}
+        #academicScheduleManager select,#academicScheduleManager input[type=file]{width:100%;min-height:42px;padding:9px;border:1px solid #d4ded7;border-radius:10px;background:white;color:inherit}
+        #academicScheduleManager .asm-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+        #academicScheduleManager button{border:0;border-radius:10px;padding:9px 13px;background:#e2eee6;color:#234b36;font:inherit;font-weight:700;cursor:pointer}
+        #academicScheduleManager button.asm-danger{background:#f7e9e7;color:#8b3931}
+        #academicScheduleManager button:disabled{opacity:.5;cursor:not-allowed}
+        #academicScheduleManager .asm-preview{margin-top:12px;min-height:40px}
+        #academicScheduleManager .asm-preview img{display:block;max-width:220px;max-height:170px;object-fit:contain;border:1px solid #dce5df;border-radius:10px;background:white}
+        #academicScheduleManager .asm-status{display:block;margin-top:10px;color:#53685b;font-size:.88rem}
+      </style>
+      <h3>إدارة التوقيت الدراسي</h3>
+      <p class="asm-note">تحكم في المجموعات والقاعات والأفواج، وارفع صورة توقيت مستقلة لكل فوج. اضغط «حفظ التغييرات» أعلى/أسفل لوحة البرنامج لنشر التعديلات للطلاب.</p>
+      <div class="asm-grid">
+        <div><label for="asmGroupSelect">المجموعة</label><select id="asmGroupSelect"></select>
+          <div class="asm-actions"><button type="button" id="asmAddGroup">+ إضافة مجموعة</button><button type="button" id="asmEditGroup">تعديل الاسم/القاعة</button><button type="button" class="asm-danger" id="asmDeleteGroup">حذف المجموعة</button></div>
+        </div>
+        <div><label for="asmFogSelect">الفوج</label><select id="asmFogSelect"></select>
+          <div class="asm-actions"><button type="button" id="asmAddFog">+ إضافة فوج</button><button type="button" id="asmEditFog">تعديل اسم الفوج</button><button type="button" class="asm-danger" id="asmDeleteFog">حذف الفوج</button></div>
+        </div>
+      </div>
+      <div style="margin-top:16px"><label for="asmScheduleFile">صورة توقيت الفوج المختار (PNG / JPG / WEBP)</label><input id="asmScheduleFile" type="file" accept="image/png,image/jpeg,image/webp"><div class="asm-preview" id="asmSchedulePreview"></div><div class="asm-actions"><button type="button" class="asm-danger" id="asmRemoveSchedule">حذف صورة التوقيت</button></div><span class="asm-status" id="asmScheduleStatus" role="status"></span></div>
+    `;
+    $("academicEditor")?.append(host);
+    $("asmGroupSelect")?.addEventListener("change", () => {
+      scheduleGroupId = $("asmGroupSelect").value;
+      scheduleFogId = config.groups.find(g => g.id === scheduleGroupId)?.fogs?.[0]?.id || "";
+      renderScheduleEditor();
+    });
+    $("asmFogSelect")?.addEventListener("change", () => { scheduleFogId = $("asmFogSelect").value; renderScheduleEditor(); });
+    $("asmAddGroup")?.addEventListener("click", () => {
+      const name = safePrompt("اسم المجموعة أو القاعة (مثال: المجموعة A · مدرج أ)");
+      if (!name) return;
+      const item = { id: id(), name, fogs: [] };
+      config.groups.push(item); scheduleGroupId = item.id; scheduleFogId = "";
+      markDirty(); renderScheduleEditor();
+    });
+    $("asmEditGroup")?.addEventListener("click", () => {
+      const group = currentScheduleGroup(); if (!group) return;
+      const name = safePrompt("اسم المجموعة/القاعة", group.name);
+      if (!name) return; group.name = name; markDirty(); renderScheduleEditor();
+    });
+    $("asmDeleteGroup")?.addEventListener("click", () => {
+      const group = currentScheduleGroup(); if (!group) return;
+      if (!confirm("حذف «" + group.name + "» وجميع الأفواج التابعة لها؟")) return;
+      config.groups = config.groups.filter(g => g.id !== group.id);
+      scheduleGroupId = config.groups[0]?.id || ""; scheduleFogId = config.groups[0]?.fogs?.[0]?.id || "";
+      markDirty(); renderScheduleEditor();
+    });
+    $("asmAddFog")?.addEventListener("click", () => {
+      const group = currentScheduleGroup(); if (!group) { alert("أضف مجموعة أولًا."); return; }
+      const name = safePrompt("اسم الفوج (مثال: 01)");
+      if (!name) return;
+      const fog = { id: id(), name, scheduleImage: "" };
+      group.fogs ||= []; group.fogs.push(fog); scheduleFogId = fog.id;
+      markDirty(); renderScheduleEditor();
+    });
+    $("asmEditFog")?.addEventListener("click", () => {
+      const fog = currentScheduleFog(); if (!fog) return;
+      const name = safePrompt("اسم الفوج", fog.name);
+      if (!name) return; fog.name = name; markDirty(); renderScheduleEditor();
+    });
+    $("asmDeleteFog")?.addEventListener("click", () => {
+      const group = currentScheduleGroup(), fog = currentScheduleFog(); if (!group || !fog) return;
+      if (!confirm("حذف الفوج «" + fog.name + "»؟")) return;
+      group.fogs = group.fogs.filter(f => f.id !== fog.id);
+      scheduleFogId = group.fogs[0]?.id || ""; markDirty(); renderScheduleEditor();
+    });
+    $("asmScheduleFile")?.addEventListener("change", uploadScheduleImage);
+    $("asmRemoveSchedule")?.addEventListener("click", () => {
+      const fog = currentScheduleFog(); if (!fog?.scheduleImage) return;
+      if (!confirm("حذف صورة توقيت هذا الفوج؟")) return;
+      fog.scheduleImage = ""; markDirty(); renderScheduleEditor();
+      $("asmScheduleStatus").textContent = "حُذفت الصورة من الإعدادات؛ اضغط «حفظ التغييرات» لتطبيق الحذف.";
+    });
+    return host;
+  }
+  const currentScheduleGroup = () => config?.groups?.find(g => g.id === scheduleGroupId) || null;
+  const currentScheduleFog = () => currentScheduleGroup()?.fogs?.find(f => f.id === scheduleFogId) || null;
+  function renderScheduleEditor() {
+    const host = ensureScheduleEditor(); if (!host || !config) return;
+    config.groups ||= [];
+    if (!config.groups.some(g => g.id === scheduleGroupId)) scheduleGroupId = config.groups[0]?.id || "";
+    const group = currentScheduleGroup();
+    const gs = $("asmGroupSelect"), fs = $("asmFogSelect");
+    if (gs) {
+      gs.replaceChildren();
+      if (!config.groups.length) gs.add(new Option("لا توجد مجموعات", ""));
+      config.groups.forEach(g => gs.add(new Option(g.name, g.id)));
+      gs.value = scheduleGroupId;
+    }
+    if (group && !group.fogs.some(f => f.id === scheduleFogId)) scheduleFogId = group.fogs[0]?.id || "";
+    if (fs) {
+      fs.replaceChildren();
+      if (!group || !group.fogs.length) fs.add(new Option("لا توجد أفواج", ""));
+      (group?.fogs || []).forEach(f => fs.add(new Option(f.name, f.id)));
+      fs.value = scheduleFogId;
+    }
+    const fog = currentScheduleFog(), preview = $("asmSchedulePreview");
+    if ($("asmScheduleFile")) $("asmScheduleFile").disabled = !fog;
+    if ($("asmRemoveSchedule")) $("asmRemoveSchedule").hidden = !fog?.scheduleImage;
+    ["asmEditGroup","asmDeleteGroup"].forEach(x => { if ($(x)) $(x).disabled = !group; });
+    ["asmAddFog"].forEach(x => { if ($(x)) $(x).disabled = !group; });
+    ["asmEditFog","asmDeleteFog"].forEach(x => { if ($(x)) $(x).disabled = !fog; });
+    if (preview) {
+      preview.replaceChildren();
+      if (fog?.scheduleImage) {
+        const img = document.createElement("img"); img.src = fog.scheduleImage; img.alt = "معاينة توقيت " + fog.name; preview.append(img);
+      } else {
+        const note = document.createElement("small"); note.textContent = fog ? "لم تُرفع صورة توقيت لهذا الفوج بعد." : "اختر مجموعة وفوجًا أو أضفهما أولًا."; preview.append(note);
+      }
+    }
+    if ($("asmScheduleStatus") && !$("asmScheduleStatus").dataset.busy) $("asmScheduleStatus").textContent = "";
+  }
+  async function uploadScheduleImage(event) {
+    const file = event.target.files?.[0], fog = currentScheduleFog(), status = $("asmScheduleStatus");
+    if (!file || !fog) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { status.textContent = "اختر صورة PNG أو JPG أو WEBP."; event.target.value = ""; return; }
+    if (file.size > 8 * 1024 * 1024) { status.textContent = "الحد الأقصى لحجم الصورة 8 ميغابايت."; event.target.value = ""; return; }
+    status.dataset.busy = "1"; status.textContent = "جارٍ رفع صورة التوقيت..."; event.target.disabled = true;
+    try {
+      const response = await fetch("/api/academic-image", { method: "POST", headers: { "content-type": file.type, "x-academic-admin-code": adminCode }, body: file });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.url) throw new Error(result.error || "upload_failed");
+      fog.scheduleImage = result.url; markDirty(); renderScheduleEditor();
+      status.textContent = "تم رفع الصورة. اضغط «حفظ التغييرات» لنشرها للطلاب.";
+    } catch (error) {
+      status.textContent = error.message === "unauthorized" ? "انتهت صلاحية الدخول؛ سجّل الدخول مجددًا." : "تعذر رفع الصورة. تحقق من إعدادات التخزين وحاول مجددًا.";
+    } finally { delete status.dataset.busy; event.target.disabled = false; event.target.value = ""; }
+  }
+
   async function checkAdmin(code) {
     const response = await fetch("/api/academic", {
       method: "POST", headers: { "x-academic-admin-code": code },
@@ -224,6 +370,7 @@
       $("academicEditor").hidden = false;
       status.textContent = "تم تسجيل الدخول.";
       refreshEditorSelectors();
+      renderScheduleEditor();
     } catch {
       status.textContent = "تعذر الاتصال. تحقق من اتصال الإنترنت وحاول مجددًا.";
     }
@@ -322,6 +469,9 @@
         if (result.config?.years?.length) config = result.config;
       }
     } catch {}
+    config.groups ||= [];
+    scheduleGroupId = config.groups[0]?.id || "";
+    scheduleFogId = config.groups[0]?.fogs?.[0]?.id || "";
     refreshAll();
     ensureProgramImageEditor();
     renderProgramImageEditor();
@@ -344,7 +494,7 @@
       try {
         const stored = sessionStorage.getItem("ensd_arabic_admin_mod_code") || "";
         if (stored && await checkAdmin(stored)) {
-          adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors();
+          adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors(); renderScheduleEditor();
         }
       } catch {}
     });
