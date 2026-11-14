@@ -514,12 +514,12 @@ export default {
       return new HTMLRewriter()
         .on('script[src="/academic-admin.js"]', {
           element(element) {
-            element.setAttribute("src", "/academic-admin.js?v=abeb130");
+            element.setAttribute("src", "/academic-admin.js?v=99bff0f");
           }
         })
         .on('script[src*="/schedule-view.js"]', {
           element(element) {
-            element.setAttribute("src", "/schedule-view.js?v=e4ed065");
+            element.setAttribute("src", "/schedule-view.js?v=2322187");
           }
         })
         .transform(response);
