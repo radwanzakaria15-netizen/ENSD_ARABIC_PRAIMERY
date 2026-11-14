@@ -946,7 +946,8 @@ let LESSON_ADMIN=false;
 let LESSON_ADMIN_CODE="";
 try{LESSON_ADMIN_CODE=sessionStorage.getItem("ensd_arabic_admin_code")||"";}catch(e){}
 function lessonKey(group,subjectIndex,axisIndex,chapterIndex){
- return group+"-"+String(subjectIndex+1).padStart(2,"0")+"-"+String(axisIndex+1).padStart(2,"0")+"-"+String(chapterIndex+1).padStart(2,"0");
+ const prefix=ACADEMIC_YEAR_NUMBER===2&&ACADEMIC_SEMESTER_NUMBER===1?group:"Y"+ACADEMIC_YEAR_NUMBER+"S"+ACADEMIC_SEMESTER_NUMBER+group;
+ return prefix+"-"+String(subjectIndex+1).padStart(2,"0")+"-"+String(axisIndex+1).padStart(2,"0")+"-"+String(chapterIndex+1).padStart(2,"0");
 }
 async function refreshPublishedLessons(updateCards=true){
  try{
@@ -972,7 +973,7 @@ function renderLessonSubjects(g){
  const list=document.getElementById("lessonList");
  const items=lessonData[g]||[];
  list.innerHTML=items.map((item,index)=>{
-  const prefix=g+"-"+String(index+1).padStart(2,"0")+"-";
+  const prefix=lessonKey(g,index,0,0).replace(/-\d{2}-\d{2}$/,"-");
   const count=Object.keys(PUBLISHED_LESSONS).filter(key=>key.startsWith(prefix)).length;
   const status=count?count+" "+(count===1?"محاضرة منشورة":"محاضرات منشورة"):"قريباً";
   return '<article class="lesson-subject-card lesson-visual-'+lessonVisuals[index]+'" data-watermark="'+["BIO","ص","ق","∑","AI","ع","إ","ن","Aa","ل"][index]+'" data-search="'+item.name+'"><div class="lesson-card-top"><span class="lesson-card-index">'+String(index+1).padStart(2,"0")+'</span><span class="lesson-card-status '+(count?"has-lessons":"")+'">'+status+'</span></div><div class="lesson-card-title">'+item.name+'</div><div class="lesson-card-foot"><span>مقياس دراسي</span><b>'+(count?count+" محاضرة":"لم تنشر المحاضرات")+'</b></div></article>';
