@@ -334,7 +334,7 @@ async function handleAcademic(request, env) {
           if (!fog || !validText(fog.id, 80) || !validText(fog.name, 100) || ids.has(fog.id) ||
               (fog.scheduleImage !== undefined && fog.scheduleImage !== "" &&
                (typeof fog.scheduleImage !== "string" || fog.scheduleImage.length > 220 ||
-                !/^\\/api\\/academic-image\\?key=academic%2Fimages%2F[a-f0-9-]{36}\\.(?:jpg|png|webp)$/.test(fog.scheduleImage)))) {
+                !/^\/api\/academic-image\?key=academic%2Fimages%2F[a-f0-9-]{36}\.(?:jpg|png|webp)$/.test(fog.scheduleImage)))) {
             return json({ error: "invalid_academic_fog_entry" }, 400);
           }
           ids.add(fog.id);
