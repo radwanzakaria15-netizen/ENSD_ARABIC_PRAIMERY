@@ -121,7 +121,7 @@
   chooser.addEventListener("click", event => {
     const button = event.target.closest("[data-dynamic-group-id]");
     if (!button) return;
-    const group = groups.find(item => item.id === button.dataset.dynamicGroupId);
+    const group = selectedGroups().find(item => item.id === button.dataset.dynamicGroupId);
     const fog = group?.fogs?.find(item => item.id === button.dataset.dynamicFogId);
     if (group && fog) openFog(group, fog);
   });
