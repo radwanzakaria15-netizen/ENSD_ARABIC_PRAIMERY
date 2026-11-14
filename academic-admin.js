@@ -32,7 +32,7 @@
       semesters: [{
         id: "semester-1", name: "السداسي الأول",
         subjects: (window.__academicBridge?.getSubjects?.() || []).map((subject, si) => ({
-          id: "subject-" + (si + 1), name: subject.name, symbol: subject.symbol || "م",
+          id: "subject-" + (si + 1), name: subject.name, symbol: subject.symbol || "م", programImage: subject.programImage || "",
           axes: (subject.axes || []).map((axis, ai) => ({
             id: "axis-" + (si + 1) + "-" + (ai + 1), name: axis.name,
             chapters: (axis.chapters || []).map((chapter, ci) => ({
@@ -74,7 +74,7 @@
     window.__academicBridge?.setContext(yearNumber, semesterNumber);
     const subjects = sem.subjects || [];
     window.__academicBridge?.setSubjects(subjects.map(subject => ({
-      name: subject.name, symbol: subject.symbol || "م",
+      name: subject.name, symbol: subject.symbol || "م", programImage: subject.programImage || "",
       axes: (subject.axes || []).map(axis => ({
         name: axis.name,
         chapters: (axis.chapters || []).map(chapter => [chapter.name, (chapter.topics || []).slice()])
@@ -91,6 +91,88 @@
     if (!yr.semesters.some(item => item.id === activeSemesterId)) activeSemesterId = yr.semesters[0]?.id || "";
     option($("academicSemesterSelect"), yr.semesters, activeSemesterId);
   }
+  function ensureProgramImageEditor() {
+    let host = $("academicProgramImageEditor");
+    if (host) return host;
+    host = document.createElement("section");
+    host.id = "academicProgramImageEditor";
+    host.className = "academic-program-image-editor";
+    host.innerHTML = '<div class="academic-program-image-copy"><b>صورة برنامج المقياس</b><small>ارفع صورة البرنامج للمقياس المختار. تظهر للطلبة قبل المحور الأول.</small></div><input id="academicProgramImageFile" type="file" accept="image/png,image/jpeg,image/webp"><div class="academic-program-image-preview" id="academicProgramImagePreview"></div><button type="button" id="academicProgramImageRemove" class="academic-program-image-remove">إزالة الصورة</button><span id="academicProgramImageStatus" role="status"></span>';
+    $("academicEditSubject")?.closest(".academic-select-grid")?.insertAdjacentElement("afterend", host);
+    $("academicProgramImageFile")?.addEventListener("change", uploadProgramImage);
+    $("academicProgramImageRemove")?.addEventListener("click", () => {
+      const subject = editSubject();
+      if (!subject?.programImage) return;
+      subject.programImage = "";
+      markDirty();
+      renderProgramImageEditor();
+    });
+    return host;
+  }
+  function renderProgramImageEditor() {
+    const host = ensureProgramImageEditor();
+    if (!host) return;
+    const subject = editSubject();
+    const preview = $("academicProgramImagePreview");
+    const remove = $("academicProgramImageRemove");
+    const input = $("academicProgramImageFile");
+    const status = $("academicProgramImageStatus");
+    if (input) input.disabled = !subject;
+    if (remove) remove.hidden = !subject?.programImage;
+    if (status && !status.dataset.busy) status.textContent = subject ? "" : "اختر مقياسًا أولًا.";
+    if (preview) {
+      preview.replaceChildren();
+      if (subject?.programImage) {
+        const img = document.createElement("img");
+        img.src = subject.programImage;
+        img.alt = "معاينة صورة برنامج " + subject.name;
+        preview.append(img);
+      } else {
+        const empty = document.createElement("span");
+        empty.textContent = "لم تُرفع صورة لهذا المقياس بعد.";
+        preview.append(empty);
+      }
+    }
+  }
+  async function uploadProgramImage(event) {
+    const file = event.target.files?.[0];
+    const subject = editSubject();
+    const status = $("academicProgramImageStatus");
+    if (!file || !subject) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+      status.textContent = "اختر صورة بصيغة PNG أو JPG أو WEBP.";
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      status.textContent = "حجم الصورة كبير؛ الحد الأقصى 8 ميغابايت.";
+      event.target.value = "";
+      return;
+    }
+    status.dataset.busy = "1";
+    status.textContent = "جارٍ رفع الصورة...";
+    event.target.disabled = true;
+    try {
+      const response = await fetch("/api/academic-image", {
+        method: "POST",
+        headers: { "content-type": file.type, "x-academic-admin-code": adminCode },
+        body: file
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.url) throw new Error(result.error || "upload_failed");
+      subject.programImage = result.url;
+      markDirty();
+      status.textContent = "تم رفع الصورة. اضغط «حفظ التغييرات» لنشرها.";
+      renderProgramImageEditor();
+      status.textContent = "تم رفع الصورة. اضغط «حفظ التغييرات» لنشرها.";
+    } catch (error) {
+      status.textContent = error.message === "unauthorized" ? "انتهت صلاحية الدخول؛ سجّل الدخول مجددًا." : "تعذر رفع الصورة. تحقق من التخزين وحاول مجددًا.";
+    } finally {
+      delete status.dataset.busy;
+      event.target.disabled = false;
+      event.target.value = "";
+    }
+  }
   function refreshEditorSelectors() {
     const y = editYear() || config.years[0];
     if (!y) return;
@@ -105,6 +187,7 @@
     const ch = editChapter();
     const topics = (ch?.topics || []).map((name, index) => ({ id: String(index), name }));
     option($("academicEditTopic"), topics, String(topicIndex()), "لا توجد موضوعات");
+    renderProgramImageEditor();
   }
   function refreshAll() {
     refreshPublicSelectors();
@@ -239,6 +322,8 @@
       }
     } catch {}
     refreshAll();
+    ensureProgramImageEditor();
+    renderProgramImageEditor();
     $("academicYearSelect")?.addEventListener("change", event => {
       activeYearId = event.target.value; activeSemesterId = selectedYear()?.semesters[0]?.id || ""; refreshAll();
     });
