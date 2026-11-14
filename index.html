@@ -1708,22 +1708,22 @@ document.addEventListener("keydown",event=>{
 .lesson-dialog-lesson>summary,.lesson-dialog-lesson-head{display:flex;align-items:center;gap:10px;min-height:52px;padding:10px 12px;list-style:none}
 .lesson-dialog-lesson>summary{cursor:pointer}
 .lesson-dialog-lesson>summary::-webkit-details-marker{display:none}
-.lesson-dialog-lesson>summary>b{display:grid;place-items:center;flex:0 0 29px;width:29px;height:29px;border-radius:9px;background:#edf3ee;color:#67806d;font-size:10px}
-.lesson-dialog-lesson>summary .lesson-dialog-unit-name{flex:1;min-width:0;color:#405849;font-size:12px;font-weight:850}
-.lesson-dialog-lesson>summary .lesson-unit-status{font-size:10px}
+.lesson-dialog-lesson>summary>b,.lesson-dialog-lesson-head>b{display:grid;place-items:center;flex:0 0 29px;width:29px;height:29px;border-radius:9px;background:#edf3ee;color:#67806d;font-size:10px}
+.lesson-dialog-lesson>summary .lesson-dialog-unit-name,.lesson-dialog-lesson-head .lesson-dialog-unit-name{flex:1;min-width:0;color:#405849;font-size:12px;font-weight:850}
+.lesson-dialog-lesson>summary .lesson-unit-status,.lesson-dialog-lesson-head .lesson-unit-status{font-size:10px}
 .lesson-dialog-lesson>summary>i{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:1px solid #e2ebe3;border-radius:9px;background:#f7faf7;color:#64806b;font-size:18px;font-style:normal;transition:transform .2s,background .2s}
 .lesson-dialog-lesson[open]>summary>i{transform:rotate(180deg);background:#eaf3ec}
 .lesson-dialog-lesson>ul{padding-top:2px!important;padding-bottom:9px!important}
 .lesson-dialog-lesson>.lesson-file-list{padding-top:0}
 .lesson-dialog-lesson>.lesson-unit-actions{padding-bottom:12px}
-.lesson-dialog-lesson.is-unpublished{opacity:.72}
+.lesson-dialog-lesson.is-unpublished{opacity:1}
 .lesson-dialog-axis-title{cursor:default!important;min-height:48px!important;padding:7px 2px!important}
 .lesson-dialog-axis-title>span{min-height:29px}
 .lesson-dialog-axis>.lesson-dialog-chapters{padding:0!important}
 @media(max-width:600px){
- .lesson-dialog-lesson>summary{gap:7px;padding:9px}
- .lesson-dialog-lesson>summary .lesson-dialog-unit-name{font-size:11px}
- .lesson-dialog-lesson>summary .lesson-unit-status{font-size:9px}
+ .lesson-dialog-lesson>summary,.lesson-dialog-lesson-head{gap:7px;padding:9px}
+ .lesson-dialog-lesson>summary .lesson-dialog-unit-name,.lesson-dialog-lesson-head .lesson-dialog-unit-name{font-size:11px}
+ .lesson-dialog-lesson>summary .lesson-unit-status,.lesson-dialog-lesson-head .lesson-unit-status{font-size:9px}
 }
 </style>
 
