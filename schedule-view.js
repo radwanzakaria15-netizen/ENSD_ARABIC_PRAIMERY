@@ -165,6 +165,8 @@
     }, 180);
   };
   window.addEventListener("pageshow", scheduleRefresh);
+  // حدّث بيانات المجموعات عند انتقال المستخدم بين أقسام الموقع بالنقر على قائمة التنقل.
+  document.addEventListener("click", scheduleRefresh, true);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") scheduleRefresh();
   });
