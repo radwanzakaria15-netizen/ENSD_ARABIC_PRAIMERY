@@ -212,7 +212,27 @@
   }
 
   // إدارة قسم التوقيت الدراسي من لوحة البرنامج الأكاديمي.
-  let scheduleGroupId = "", scheduleFogId = "";
+  let scheduleYearId = "year-2", scheduleGroupId = "", scheduleFogId = "";
+  const scheduleYear = () => config?.years?.find(item => item.id === scheduleYearId) || config?.years?.[0] || null;
+  const scheduleGroups = () => scheduleYear()?.groups || [];
+  function prepareYearSchedules() {
+    if (!config || !Array.isArray(config.years)) return;
+    const hasYearSchedules = config.years.some(item => Array.isArray(item.groups));
+    if (!hasYearSchedules) {
+      const legacyGroups = Array.isArray(config.groups) ? config.groups : [];
+      const target = config.years.find(item => /الثانية|second|year-2/i.test(String(item.name) + " " + String(item.id)))
+        || config.years.find(item => item.id === activeYearId) || config.years[0];
+      config.years.forEach(item => { item.groups = []; });
+      if (target) target.groups = legacyGroups;
+      dirty = true;
+    } else {
+      config.years.forEach(item => { if (!Array.isArray(item.groups)) item.groups = []; });
+    }
+    config.years.forEach(item => (item.groups || []).forEach(group => { group.fogs ||= []; }));
+    if (!config.years.some(item => item.id === scheduleYearId)) {
+      scheduleYearId = config.years.find(item => /الثانية|second|year-2/i.test(String(item.name) + " " + String(item.id)))?.id || config.years[0]?.id || "";
+    }
+  }
   function ensureScheduleEditor() {
     let host = $("academicScheduleManager");
     if (host) return host;
@@ -238,6 +258,7 @@
       <h3>إدارة التوقيت الدراسي</h3>
       <p class="asm-note">تحكم في المجموعات والقاعات والأفواج، وارفع صورة توقيت مستقلة لكل فوج. بعد الانتهاء اضغط «حفظ التغييرات» أسفل هذا القسم لنشر التعديلات للطلاب.</p>
       <div class="asm-grid">
+        <div><label for="asmYearSelect">السنة الجامعية</label><select id="asmYearSelect"></select></div>
         <div><label for="asmGroupSelect">المجموعة</label><select id="asmGroupSelect"></select>
           <div class="asm-actions"><button type="button" id="asmAddGroup">+ إضافة مجموعة</button><button type="button" id="asmEditGroup">تعديل الاسم/القاعة</button><button type="button" class="asm-danger" id="asmDeleteGroup">حذف المجموعة</button></div>
         </div>
@@ -250,9 +271,15 @@
     const saveRow = $("academicSave")?.closest(".academic-save-row");
     if (saveRow) saveRow.before(host);
     else $("academicEditor")?.append(host);
+    $("asmYearSelect")?.addEventListener("change", () => {
+      scheduleYearId = $("asmYearSelect").value;
+      scheduleGroupId = scheduleGroups()[0]?.id || "";
+      scheduleFogId = scheduleGroups()[0]?.fogs?.[0]?.id || "";
+      renderScheduleEditor();
+    });
     $("asmGroupSelect")?.addEventListener("change", () => {
       scheduleGroupId = $("asmGroupSelect").value;
-      scheduleFogId = config.groups.find(g => g.id === scheduleGroupId)?.fogs?.[0]?.id || "";
+      scheduleFogId = scheduleGroups().find(g => g.id === scheduleGroupId)?.fogs?.[0]?.id || "";
       renderScheduleEditor();
     });
     $("asmFogSelect")?.addEventListener("change", () => { scheduleFogId = $("asmFogSelect").value; renderScheduleEditor(); });
@@ -261,8 +288,9 @@
       if (!name) return;
       const hall = safePrompt("اسم المدرج أو القاعة (مثال: مدرج أ)", "");
       if (hall === null) return;
-      const item = { id: id(), name, hall, code: String.fromCharCode(65 + config.groups.length), fogs: [] };
-      config.groups.push(item); scheduleGroupId = item.id; scheduleFogId = "";
+      const groups = scheduleGroups();
+      const item = { id: id(), name, hall, code: String.fromCharCode(65 + groups.length), fogs: [] };
+      groups.push(item); scheduleGroupId = item.id; scheduleFogId = "";
       markDirty(); renderScheduleEditor();
     });
     $("asmEditGroup")?.addEventListener("click", () => {
@@ -276,8 +304,10 @@
     $("asmDeleteGroup")?.addEventListener("click", () => {
       const group = currentScheduleGroup(); if (!group) return;
       if (!confirm("حذف «" + group.name + "» وجميع الأفواج التابعة لها؟")) return;
-      config.groups = config.groups.filter(g => g.id !== group.id);
-      scheduleGroupId = config.groups[0]?.id || ""; scheduleFogId = config.groups[0]?.fogs?.[0]?.id || "";
+      const groups = scheduleGroups();
+      const remaining = groups.filter(g => g.id !== group.id);
+      scheduleYear().groups = remaining;
+      scheduleGroupId = remaining[0]?.id || ""; scheduleFogId = remaining[0]?.fogs?.[0]?.id || "";
       markDirty(); renderScheduleEditor();
     });
     $("asmAddFog")?.addEventListener("click", () => {
@@ -319,18 +349,24 @@
       return "";
     } catch { return ""; }
   }
-  const currentScheduleGroup = () => config?.groups?.find(g => g.id === scheduleGroupId) || null;
+  const currentScheduleGroup = () => scheduleGroups().find(g => g.id === scheduleGroupId) || null;
   const currentScheduleFog = () => currentScheduleGroup()?.fogs?.find(f => f.id === scheduleFogId) || null;
   function renderScheduleEditor() {
     const host = ensureScheduleEditor(); if (!host || !config) return;
-    config.groups ||= [];
-    if (!config.groups.some(g => g.id === scheduleGroupId)) scheduleGroupId = config.groups[0]?.id || "";
+    prepareYearSchedules();
+    const groups = scheduleGroups();
+    if (!groups.some(g => g.id === scheduleGroupId)) scheduleGroupId = groups[0]?.id || "";
     const group = currentScheduleGroup();
-    const gs = $("asmGroupSelect"), fs = $("asmFogSelect");
+    const ys = $("asmYearSelect"), gs = $("asmGroupSelect"), fs = $("asmFogSelect");
+    if (ys) {
+      ys.replaceChildren();
+      config.years.forEach(y => ys.add(new Option(y.name, y.id)));
+      ys.value = scheduleYearId;
+    }
     if (gs) {
       gs.replaceChildren();
-      if (!config.groups.length) gs.add(new Option("لا توجد مجموعات", ""));
-      config.groups.forEach(g => gs.add(new Option(g.name, g.id)));
+      if (!groups.length) gs.add(new Option("لا توجد مجموعات", ""));
+      groups.forEach(g => gs.add(new Option(g.name, g.id)));
       gs.value = scheduleGroupId;
     }
     if (group && !group.fogs.some(f => f.id === scheduleFogId)) scheduleFogId = group.fogs[0]?.id || "";
@@ -428,7 +464,7 @@
     if (!value) return;
     if (kind === "year") {
       if (editing) editYear().name = value;
-      else { const item = { id: id(), name: value, semesters: [] }; config.years.push(item); $("academicEditYear").value = item.id; activeYearId = item.id; }
+      else { const item = { id: id(), name: value, semesters: [], groups: [] }; config.years.push(item); $("academicEditYear").value = item.id; activeYearId = item.id; scheduleYearId = item.id; }
     } else if (kind === "semester") {
       const y = editYear(); if (!y) return;
       if (editing) editSemester().name = value;
@@ -505,15 +541,10 @@
         if (result.config?.years?.length) config = result.config;
       }
     } catch {}
-    // الإعداد الافتراضي: مجموعتان وستة أفواج في كل مجموعة.
-    // تُنشأ هذه البنية تلقائيًا أيضًا للإعدادات القديمة التي لا تحتوي مجموعات.
-    if (!Array.isArray(config.groups) || config.groups.length === 0) {
-      config.groups = createDefaultScheduleGroups();
-      dirty = true;
-    }
-    config.groups.forEach(group => { group.fogs ||= []; });
-    scheduleGroupId = config.groups[0]?.id || "";
-    scheduleFogId = config.groups[0]?.fogs?.[0]?.id || "";
+    // ترحيل قائمة الأفواج القديمة إلى السنة الثانية مرة واحدة، ثم فصل أفواج كل سنة.
+    prepareYearSchedules();
+    scheduleGroupId = scheduleGroups()[0]?.id || "";
+    scheduleFogId = scheduleGroups()[0]?.fogs?.[0]?.id || "";
     refreshAll();
     ensureProgramImageEditor();
     renderProgramImageEditor();
@@ -523,7 +554,13 @@
     $("academicSemesterSelect")?.addEventListener("change", event => {
       activeSemesterId = event.target.value; refreshAll();
     });
-    $("academicEditYear")?.addEventListener("change", refreshEditorSelectors);
+    $("academicEditYear")?.addEventListener("change", () => {
+      refreshEditorSelectors();
+      scheduleYearId = $("academicEditYear").value;
+      scheduleGroupId = scheduleGroups()[0]?.id || "";
+      scheduleFogId = scheduleGroups()[0]?.fogs?.[0]?.id || "";
+      renderScheduleEditor();
+    });
     $("academicEditSemester")?.addEventListener("change", refreshEditorSelectors);
     $("academicEditSubject")?.addEventListener("change", refreshEditorSelectors);
     $("academicEditAxis")?.addEventListener("change", refreshEditorSelectors);
