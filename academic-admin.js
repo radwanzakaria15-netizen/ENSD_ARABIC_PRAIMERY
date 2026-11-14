@@ -124,7 +124,7 @@
     try {
       if (!await checkAdmin(code)) { status.textContent = "رمز الإدارة غير صحيح."; return; }
       adminCode = code;
-      try { sessionStorage.setItem("ensd_arabic_admin_code", code); } catch {}
+      try { sessionStorage.setItem("ensd_arabic_admin_mod_code", code); } catch {}
       $("academicEditor").hidden = false;
       status.textContent = "تم تسجيل الدخول.";
       refreshEditorSelectors();
@@ -244,7 +244,7 @@
     $("academicAdmin")?.addEventListener("toggle", async () => {
       if (!$("academicAdmin").open || adminCode) return;
       try {
-        const stored = sessionStorage.getItem("ensd_arabic_admin_code") || "";
+        const stored = sessionStorage.getItem("ensd_arabic_admin_mod_code") || "";
         if (stored && await checkAdmin(stored)) {
           adminCode = stored; $("academicEditor").hidden = false; $("academicAdminLoginStatus").textContent = "تم التحقق من جلسة الإدارة."; refreshEditorSelectors();
         }
