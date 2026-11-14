@@ -319,6 +319,28 @@ async function handleAcademic(request, env) {
         }
       }
     }
+    // المجموعات والأفواج اختيارية للتوافق مع الإعدادات الأكاديمية القديمة.
+    if (config.groups !== undefined) {
+      if (!Array.isArray(config.groups) || config.groups.length > 30) {
+        return json({ error: "invalid_academic_groups" }, 400);
+      }
+      for (const group of config.groups) {
+        if (!group || !validText(group.id, 80) || !validText(group.name, 100) ||
+            ids.has(group.id) || !Array.isArray(group.fogs) || group.fogs.length > 50) {
+          return json({ error: "invalid_academic_group_entry" }, 400);
+        }
+        ids.add(group.id);
+        for (const fog of group.fogs) {
+          if (!fog || !validText(fog.id, 80) || !validText(fog.name, 100) || ids.has(fog.id) ||
+              (fog.scheduleImage !== undefined && fog.scheduleImage !== "" &&
+               (typeof fog.scheduleImage !== "string" || fog.scheduleImage.length > 220 ||
+                !/^\\/api\\/academic-image\\?key=academic%2Fimages%2F[a-f0-9-]{36}\\.(?:jpg|png|webp)$/.test(fog.scheduleImage)))) {
+            return json({ error: "invalid_academic_fog_entry" }, 400);
+          }
+          ids.add(fog.id);
+        }
+      }
+    }
     const body = encoder.encode(JSON.stringify({ ...config, updatedAt: new Date().toISOString() }));
     if (body.byteLength > 500_000) return json({ error: "academic_config_too_large" }, 413);
     try {
