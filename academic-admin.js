@@ -113,23 +113,35 @@
   }
   async function checkAdmin(code) {
     const response = await fetch("/api/academic", {
-      method: "POST", headers: { "x-academic-admin-code": code }
+      method: "POST", headers: { "x-academic-admin-code": code },
+      cache: "no-store"
     });
-    return response.ok;
+    const result = await response.json().catch(() => ({}));
+    return { ok: response.ok, status: response.status, error: result.error || "" };
   }
   async function login(code) {
     const status = $("academicAdminLoginStatus");
     if (!code) { status.textContent = "أدخل رمز الإدارة."; return; }
     status.textContent = "جارٍ التحقق...";
     try {
-      if (!await checkAdmin(code)) { status.textContent = "رمز الإدارة غير صحيح."; return; }
+      const result = await checkAdmin(code);
+      if (!result.ok) {
+        const messages = {
+          401: "الرمز غير مطابق للرمز المحفوظ في Worker (ADMIN_CODE_MOD).",
+          503: "إعدادات التخزين أو إعداد Worker غير مكتملة؛ تحقق من نشر Worker وإعداداته.",
+          404: "مسار التحقق غير موجود في نسخة Worker المنشورة. أعد نشر آخر نسخة.",
+        };
+        status.textContent = messages[result.status] || ("فشل التحقق (HTTP " + result.status + "). " + (result.error || "تحقق من نشر Worker."));
+        try { sessionStorage.removeItem("ensd_arabic_admin_mod_code"); } catch {}
+        return;
+      }
       adminCode = code;
       try { sessionStorage.setItem("ensd_arabic_admin_mod_code", code); } catch {}
       $("academicEditor").hidden = false;
       status.textContent = "تم تسجيل الدخول.";
       refreshEditorSelectors();
     } catch {
-      status.textContent = "تعذر الاتصال. حاول مجددًا.";
+      status.textContent = "تعذر الاتصال. تحقق من اتصال الإنترنت وحاول مجددًا.";
     }
   }
   function addOrEdit(kind, editing) {
