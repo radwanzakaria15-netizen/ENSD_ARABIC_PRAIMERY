@@ -27,9 +27,11 @@
       const card = el("section", "schedule-group-card");
       const head = el("div", "schedule-group-head");
       const copy = el("div");
-      copy.append(el("span", "schedule-overline", "GROUP " + String(index + 1).padStart(2, "0")));
+      copy.append(el("span", "schedule-overline", "GROUP " + String(group.code || String.fromCharCode(65 + index))));
       copy.append(el("h4", "", group.name));
-      copy.append(el("p", "", "اختر الفوج لعرض التوقيت"));
+      const fogs = group.fogs || [];
+      const range = fogs.length ? "الأفواج " + fogs[0].name + " إلى " + fogs[fogs.length - 1].name : "لا توجد أفواج";
+      copy.append(el("p", "", (group.hall ? group.hall + " · " : "") + range));
       head.append(copy, el("span", "schedule-group-number", String((index + 1)).padStart(2, "0")));
       card.append(head);
       const fogGrid = el("div", "schedule-cohort-grid");
@@ -56,7 +58,7 @@
     void view.offsetWidth;
     view.classList.add("schedule-enter");
     $("scheduleGroupName").textContent = fog.name;
-    $("scheduleGroupHall").textContent = group.name;
+    $("scheduleGroupHall").textContent = group.hall || group.name;
     const img = $("scheduleImage");
     const frame = img?.closest(".schedule-image-frame");
     let empty = $("scheduleNoImage");
