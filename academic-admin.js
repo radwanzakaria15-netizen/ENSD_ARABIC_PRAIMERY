@@ -308,6 +308,17 @@
     });
     return host;
   }
+  function legacyScheduleImage(group, fog) {
+    try {
+      if (typeof scheduleImages === "undefined" || !scheduleImages) return "";
+      const number = Number(fog?.name);
+      const code = String(group?.code || "").toUpperCase();
+      if (!Number.isInteger(number) || number < 1 || number > 12) return "";
+      if (code === "A" && number >= 1 && number <= 6) return scheduleImages[String(number)] || "";
+      if (code === "B" && number >= 7 && number <= 12) return scheduleImages[String(number)] || "";
+      return "";
+    } catch { return ""; }
+  }
   const currentScheduleGroup = () => config?.groups?.find(g => g.id === scheduleGroupId) || null;
   const currentScheduleFog = () => currentScheduleGroup()?.fogs?.find(f => f.id === scheduleFogId) || null;
   function renderScheduleEditor() {
@@ -337,8 +348,9 @@
     ["asmEditFog","asmDeleteFog"].forEach(x => { if ($(x)) $(x).disabled = !fog; });
     if (preview) {
       preview.replaceChildren();
-      if (fog?.scheduleImage) {
-        const img = document.createElement("img"); img.src = fog.scheduleImage; img.alt = "معاينة توقيت " + fog.name; preview.append(img);
+      const imageUrl = fog?.scheduleImage || legacyScheduleImage(group, fog);
+      if (imageUrl) {
+        const img = document.createElement("img"); img.src = imageUrl; img.alt = "معاينة توقيت " + fog.name; preview.append(img);
       } else {
         const note = document.createElement("small"); note.textContent = fog ? "لم تُرفع صورة توقيت لهذا الفوج بعد." : "اختر مجموعة وفوجًا أو أضفهما أولًا."; preview.append(note);
       }
