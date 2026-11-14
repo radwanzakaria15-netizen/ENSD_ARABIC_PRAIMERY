@@ -326,6 +326,8 @@ async function handleAcademic(request, env) {
       }
       for (const group of config.groups) {
         if (!group || !validText(group.id, 80) || !validText(group.name, 100) ||
+            (group.hall !== undefined && (typeof group.hall !== "string" || group.hall.length > 100)) ||
+            (group.code !== undefined && (typeof group.code !== "string" || group.code.length > 12)) ||
             ids.has(group.id) || !Array.isArray(group.fogs) || group.fogs.length > 50) {
           return json({ error: "invalid_academic_group_entry" }, 400);
         }
@@ -512,12 +514,12 @@ export default {
       return new HTMLRewriter()
         .on('script[src="/academic-admin.js"]', {
           element(element) {
-            element.setAttribute("src", "/academic-admin.js?v=3feb563");
+            element.setAttribute("src", "/academic-admin.js?v=3ead982");
           }
         })
         .on("body", {
           element(element) {
-            element.append('<script defer src="/schedule-view.js?v=55621d0"></script>', { html: true });
+            element.append('<script defer src="/schedule-view.js?v=540cbe4"></script>', { html: true });
           }
         })
         .transform(response);
