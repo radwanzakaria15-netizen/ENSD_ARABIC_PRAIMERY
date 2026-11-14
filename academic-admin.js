@@ -62,8 +62,15 @@
   function applyCurrent() {
     const sem = selectedSemester(), yr = selectedYear();
     if (!sem || !yr) return;
-    const yearNumber = Number((yr.name.match(/[1-6]/) || [2])[0]) || 2;
-    const semesterNumber = Number((sem.name.match(/[1-4]/) || [1])[0]) || 1;
+    const ordinal = (value, words, fallback) => {
+      const digit = String(value).match(/[1-6]/);
+      if (digit) return Number(digit[0]);
+      const text = String(value);
+      const index = words.findIndex(word => text.includes(word));
+      return index >= 0 ? index + 1 : fallback;
+    };
+    const yearNumber = ordinal(yr.name, ["الأولى","الثانية","الثالثة","الرابعة","الخامسة","السادسة"], 2);
+    const semesterNumber = ordinal(sem.name, ["الأول","الثاني","الثالث","الرابع"], 1);
     window.__academicBridge?.setContext(yearNumber, semesterNumber);
     const subjects = sem.subjects || [];
     window.__academicBridge?.setSubjects(subjects.map(subject => ({
