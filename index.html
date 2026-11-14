@@ -1003,7 +1003,6 @@ function openLessonSubjectDialog(card){
    const key=lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex);
    const files=PUBLISHED_LESSONS[key]||[];
    const published=files.length>0;
-   const topics=chapter[1]||[];
    const filesMarkup=files.map(file=>{
     const fileKey=encodeURIComponent(file.key);
     const name=escapeLessonHTML(file.name||"ملف مرفق");
@@ -1015,7 +1014,11 @@ function openLessonSubjectDialog(card){
     const openLink=isPdf?'<a class="lesson-file-open" href="/api/file?key='+fileKey+'" target="_blank" rel="noopener">فتح</a>':'';
     return '<div class="lesson-file-row"><span class="lesson-file-type '+(isPdf?'is-pdf':'is-word')+'">'+icon+'<small>'+kind+'</small></span><span class="lesson-file-name" title="'+name+'">'+name+'</span><div class="lesson-file-actions">'+openLink+'<a class="lesson-file-download" href="/api/file?key='+fileKey+'&download=1" download>تحميل</a>'+(LESSON_ADMIN?'<button class="lesson-file-replace" type="button" data-replace-trigger="'+fileKey+'" aria-label="استبدال '+name+'">استبدال</button><input class="lesson-file-replace-input" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-replace-file="'+fileKey+'" data-replace-key="'+escapeLessonHTML(file.key)+'" data-replace-lesson-key="'+escapeLessonHTML(file.lessonKey||"")+'"><button class="lesson-file-delete" type="button" data-delete-key="'+escapeLessonHTML(file.key)+'" aria-label="حذف '+name+'">حذف</button>':'')+'</div></div>';
    }).join("");
-   return '<details class="lesson-dialog-chapter lesson-dialog-lesson '+(published?'is-published':'is-unpublished')+'"><summary><b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?files.length+" "+(files.length===1?"ملف منشور":"ملفات منشورة"):"قريباً")+'</span><i aria-hidden="true">⌄</i></summary><ul>'+topics.map(topic=>'<li>'+topic+'</li>').join("")+'</ul>'+(published?'<div class="lesson-file-list">'+filesMarkup+'</div>':'')+(LESSON_ADMIN?'<div class="lesson-unit-actions"><span class="lesson-upload-control"><button class="lesson-admin-upload" type="button" data-pick-upload-key="'+key+'">＋ إضافة ملفات</button><input class="lesson-upload-input" type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="اختيار ملفات للمحور" data-upload-key="'+key+'"></span></div>':(!published?'<div class="lesson-unit-actions"><span class="lesson-unit-soon">لم تُنشر المحاضرة بعد</span></div>':''))+'</details>';
+   const uploadMarkup=LESSON_ADMIN?'<div class="lesson-unit-actions"><span class="lesson-upload-control"><button class="lesson-admin-upload" type="button" data-pick-upload-key="'+key+'">＋ إضافة ملفات</button><input class="lesson-upload-input" type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="اختيار ملفات للدرس" data-upload-key="'+key+'"></span></div>':'';
+   const lessonHead='<b>'+String(chapterIndex+1).padStart(2,"0")+'</b><span class="lesson-dialog-unit-name">'+chapter[0]+'</span><span class="lesson-unit-status">'+(published?files.length+" "+(files.length===1?"ملف منشور":"ملفات منشورة"):"لا توجد ملفات")+'</span>';
+   return published
+    ?'<details class="lesson-dialog-chapter lesson-dialog-lesson is-published"><summary>'+lessonHead+'<i aria-hidden="true">⌄</i></summary><div class="lesson-file-list">'+filesMarkup+'</div>'+uploadMarkup+'</details>'
+    :'<div class="lesson-dialog-chapter lesson-dialog-lesson is-unpublished"><div class="lesson-dialog-lesson-head">'+lessonHead+'</div>'+uploadMarkup+'</div>';
   }).join("");
   const hasPublished=axis.chapters.some((chapter,chapterIndex)=>(PUBLISHED_LESSONS[lessonKey(currentGroup,subjectIndex,axisIndex,chapterIndex)]||[]).length>0);
   return '<section class="lesson-dialog-axis '+(hasPublished?'has-published':'off')+'"><div class="lesson-dialog-axis-title"><span>المحور '+String(axisIndex+1).padStart(2,"0")+'</span><h3>'+axis.name+'</h3></div><div class="lesson-dialog-chapters">'+units+'</div></section>';
@@ -1702,7 +1705,8 @@ document.addEventListener("keydown",event=>{
 <style id="lesson-per-lesson-file-folders-20261114">
 /* Each individual lesson expands to reveal its own documents */
 .lesson-dialog-lesson{display:block!important;margin:0 0 9px!important;border:1px solid #e3ebe4!important;border-radius:14px!important;background:#fff!important;overflow:hidden}
-.lesson-dialog-lesson>summary{display:flex;align-items:center;gap:10px;min-height:52px;padding:10px 12px;cursor:pointer;list-style:none}
+.lesson-dialog-lesson>summary,.lesson-dialog-lesson-head{display:flex;align-items:center;gap:10px;min-height:52px;padding:10px 12px;list-style:none}
+.lesson-dialog-lesson>summary{cursor:pointer}
 .lesson-dialog-lesson>summary::-webkit-details-marker{display:none}
 .lesson-dialog-lesson>summary>b{display:grid;place-items:center;flex:0 0 29px;width:29px;height:29px;border-radius:9px;background:#edf3ee;color:#67806d;font-size:10px}
 .lesson-dialog-lesson>summary .lesson-dialog-unit-name{flex:1;min-width:0;color:#405849;font-size:12px;font-weight:850}
