@@ -50,6 +50,18 @@
     chooser.append(grid);
   }
 
+  function legacyScheduleImage(group, fog) {
+    try {
+      if (typeof scheduleImages === "undefined" || !scheduleImages) return "";
+      const number = Number(fog?.name);
+      const code = String(group?.code || "").toUpperCase();
+      if (!Number.isInteger(number) || number < 1 || number > 12) return "";
+      if (code === "A" && number >= 1 && number <= 6) return scheduleImages[String(number)] || "";
+      if (code === "B" && number >= 7 && number <= 12) return scheduleImages[String(number)] || "";
+      return "";
+    } catch { return ""; }
+  }
+
   function openFog(group, fog) {
     activeGroup = group;
     chooser.hidden = true;
@@ -69,8 +81,9 @@
       empty.textContent = "لم تُرفع صورة توقيت لهذا الفوج بعد.";
       frame.append(empty);
     }
-    if (fog.scheduleImage) {
-      img.src = fog.scheduleImage;
+    const imageUrl = fog.scheduleImage || legacyScheduleImage(group, fog);
+    if (imageUrl) {
+      img.src = imageUrl;
       img.alt = "جدول توقيت " + fog.name;
       img.hidden = false;
       if (empty) empty.hidden = true;
