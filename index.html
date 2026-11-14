@@ -1230,7 +1230,6 @@ function renderResourceItems(){
 }
 async function loadResources(){const list=document.getElementById("resourceList");list.innerHTML='<div class="resource-empty">جارٍ تحديث المكتبة...</div>';try{const r=await fetch("/api/resources",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);RESOURCE_ITEMS=await r.json();if(!Array.isArray(RESOURCE_ITEMS))throw new Error("invalid response");renderResourceItems();}catch(e){list.innerHTML='<div class="resource-empty">تعذر تحميل الموارد. تحقق من اتصال المنصة ثم حاول التحديث.</div>';}}
 
-<div class="resource-dialog-overlay" id="resourceDialogOverlay" aria-hidden="true"><section class="resource-dialog" role="alertdialog" aria-modal="true" aria-labelledby="resourceDialogTitle" aria-describedby="resourceDialogMessage" tabindex="-1"><div class="resource-dialog-icon" aria-hidden="true"></div><h3 id="resourceDialogTitle"></h3><p id="resourceDialogMessage"></p><div class="resource-dialog-actions"><button type="button" class="resource-dialog-cancel"></button><button type="button" class="resource-dialog-confirm"></button></div></section></div>
 // Keep modal roots as direct body children so fixed overlays are viewport-relative,
 // never constrained by transformed/filtered page sections.
 ["resourceBrowseModal","resourceUploadModal"].forEach(id=>{const modal=document.getElementById(id);if(modal&&modal.parentElement!==document.body)document.body.appendChild(modal);});
@@ -2043,6 +2042,7 @@ body.resource-modal-open{overflow:hidden}
 </style>
 
 
+<div class="resource-dialog-overlay" id="resourceDialogOverlay" aria-hidden="true"><section class="resource-dialog" role="alertdialog" aria-modal="true" aria-labelledby="resourceDialogTitle" aria-describedby="resourceDialogMessage" tabindex="-1"><div class="resource-dialog-icon" aria-hidden="true"></div><h3 id="resourceDialogTitle"></h3><p id="resourceDialogMessage"></p><div class="resource-dialog-actions"><button type="button" class="resource-dialog-cancel"></button><button type="button" class="resource-dialog-confirm"></button></div></section></div>
 <style id="resource-sheet-and-dialog-20261114">
 /* Browse as a bottom sheet; upload remains a centered dialog */
 #resourceBrowseModal.resource-modal{align-items:flex-end!important;justify-content:center!important;padding:0!important}
