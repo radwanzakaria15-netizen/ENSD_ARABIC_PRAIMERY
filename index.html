@@ -1116,7 +1116,7 @@ function openLessonSubjectDialog(card){
  dialog.querySelectorAll("[data-replace-file]").forEach(input=>input.addEventListener("change",async()=>{
   const file=input.files?.[0],oldKey=input.dataset.replaceKey,lessonKeyValue=input.dataset.replaceLessonKey;
   if(!file)return;
-  if(!/\\.(pdf|doc|docx)$/i.test(file.name)){alert("يمكن استبدال الملف بملف PDF أو Word فقط.");input.value="";return;}
+  if(!/\.(pdf|doc|docx)$/i.test(file.name)){alert("يمكن استبدال الملف بملف PDF أو Word فقط.");input.value="";return;}
   if(file.size>4200000){alert("حجم الملف يتجاوز الحد المسموح (4.2 ميغابايت).");input.value="";return;}
   const button=input.closest(".lesson-file-actions")?.querySelector(".lesson-file-replace");
   if(!button)return;
