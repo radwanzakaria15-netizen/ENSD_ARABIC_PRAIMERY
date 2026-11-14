@@ -268,6 +268,82 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
 @media(max-width:700px){#page-lessons .lesson-subject-card:after{width:78px;height:78px;right:8px;font-size:42px;opacity:.13}#page-schedule .schedule-group-number{min-width:61px;height:40px;font-size:11px}}
 
 
+/* ===== Refined lesson subject dialog ===== */
+.lesson-subject-dialog{padding:clamp(10px,2.5vw,24px);isolation:isolate}
+.lesson-dialog-backdrop{background:rgba(19,31,29,.58);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+.lesson-dialog-panel{
+ width:min(760px,100%);max-height:min(88vh,900px);padding:0;
+ border:1px solid rgba(255,255,255,.88);border-radius:26px;
+ background:#f8faf9;box-shadow:0 30px 100px rgba(12,28,23,.32);
+ scrollbar-width:thin;scrollbar-color:#cbd8cf transparent
+}
+.lesson-dialog-panel:before{content:"";position:absolute;inset:0 0 auto;height:5px;background:linear-gradient(90deg,var(--lesson-accent,#54836a),color-mix(in srgb,var(--lesson-accent,#54836a) 45%,#fff));z-index:2}
+.lesson-dialog-close{position:sticky;float:left;top:16px;left:auto;z-index:5;margin:16px 16px -52px 16px;width:38px;height:38px;border:1px solid #e3eae5;border-radius:13px;background:rgba(255,255,255,.94);color:#53665a;font-size:23px;box-shadow:0 3px 12px rgba(30,55,40,.07)}
+.lesson-dialog-close:hover{background:#edf5ef;transform:rotate(90deg)}
+.lesson-dialog-kicker{margin:0;padding:27px 28px 0;color:var(--lesson-accent,#64816d);font-size:11px;font-weight:900;letter-spacing:.35px}
+.lesson-dialog-heading{
+ position:relative;overflow:hidden;display:flex;align-items:center;gap:16px;
+ margin:13px 22px 0;padding:22px 20px;border:1px solid color-mix(in srgb,var(--lesson-border,#dce8df) 85%,#fff);
+ border-radius:20px;background:linear-gradient(125deg,var(--lesson-bg,#edf5ef),#fff 90%);
+}
+.lesson-dialog-heading:after{content:"";position:absolute;width:155px;height:155px;border:1px solid color-mix(in srgb,var(--lesson-accent,#64816d) 15%,transparent);border-radius:50%;left:-65px;top:-95px;box-shadow:0 0 0 18px color-mix(in srgb,var(--lesson-accent,#64816d) 4%,transparent),0 0 0 38px color-mix(in srgb,var(--lesson-accent,#64816d) 3%,transparent);pointer-events:none}
+.lesson-dialog-symbol{position:relative;z-index:1;flex:0 0 58px;height:58px;border-radius:18px;background:var(--lesson-chip,#e5efe7);color:var(--lesson-accent,#52765e);font-size:22px;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--lesson-accent,#64816d) 10%,transparent)}
+.lesson-dialog-heading>div{position:relative;z-index:1;min-width:0}
+.lesson-dialog-heading h2{color:var(--lesson-ink,#2e4938);font-size:23px;line-height:1.45;margin:0 0 5px;font-weight:900}
+.lesson-dialog-heading p{color:#718078;font-size:12px;line-height:1.7}
+.lesson-dialog-content{padding:22px 24px 8px}
+.lesson-dialog-axis{margin:0 0 22px;padding:0}
+.lesson-dialog-axis-title{gap:11px;margin:0 0 12px}
+.lesson-dialog-axis-title>span{padding:7px 11px;border-radius:10px;background:var(--lesson-chip,#e7efe9);color:var(--lesson-ink,#64816d);font-size:10px}
+.lesson-dialog-axis-title h3{font-size:15px;line-height:1.6;color:#354b3d}
+.lesson-dialog-chapters{gap:9px}
+.lesson-dialog-chapter{border:1px solid #e3eae5;border-radius:15px;background:#fff;box-shadow:0 3px 12px rgba(31,57,41,.025);transition:border-color .2s,box-shadow .2s,background .2s}
+.lesson-dialog-chapter.is-published{border-color:#c9ddce;box-shadow:0 5px 16px rgba(50,100,63,.065)}
+.lesson-dialog-chapter.is-published:hover{border-color:#a9c9b1;box-shadow:0 8px 20px rgba(50,100,63,.09)}
+.lesson-dialog-chapter.is-unpublished{background:#f4f6f4;border-style:dashed;opacity:.7;filter:none}
+.lesson-dialog-chapter summary{min-height:57px;padding:11px 14px;gap:12px;font-size:13px;line-height:1.6;color:#344b3b}
+.lesson-dialog-chapter summary>b{width:32px;height:32px;border-radius:10px;background:var(--lesson-bg,#eff4ef);color:var(--lesson-accent,#718576);font-size:11px}
+.lesson-dialog-unit-name{font-weight:850}
+.lesson-unit-status{padding:5px 10px;font-size:10px;font-weight:800}
+.lesson-dialog-chapter summary i{font-size:18px;color:var(--lesson-accent,#829187);transition:transform .2s}
+.lesson-dialog-chapter[open] summary{border-bottom:1px solid #edf1ed}
+.lesson-dialog-chapter ul{padding:8px 60px 14px 16px;color:#68786e;font-size:12px;line-height:2.05}
+.lesson-unit-actions{padding:0 60px 14px;gap:8px}
+.lesson-unit-open,.lesson-unit-download,.lesson-admin-upload,.lesson-admin-delete{min-height:36px;border-radius:10px;padding:7px 12px;font-size:11px;font-weight:850;transition:transform .18s,box-shadow .18s,background .18s}
+.lesson-unit-open:hover,.lesson-unit-download:hover,.lesson-admin-upload:hover,.lesson-admin-delete:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(35,55,45,.08)}
+.lesson-unit-open{background:#eaf4ed;color:#356d47;border-color:#d7e9dc}
+.lesson-unit-download{background:#eef3f9;color:#48617d;border-color:#dce6f0}
+.lesson-unit-soon{font-size:11px;color:#8b806b}
+.lesson-admin-footer{margin:10px 24px 0;padding:17px 0 22px;border-top:1px solid #e5ebe6}
+.lesson-admin-lock{min-height:47px;border:1px solid #dce7df;border-radius:13px;background:#fff;color:#587260;font-size:12px}
+.lesson-admin-lock:hover{background:#f0f6f1;border-color:#bfd2c2}
+.lesson-admin-login{border-color:#e0e9e2;background:#fff}
+.lesson-admin-active{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#52765e;font-size:12px;font-weight:800}
+.lesson-admin-active button{border:1px solid #e5d9d7;background:#fff7f5;color:#9c554c;border-radius:9px;padding:8px 12px;font:inherit;font-size:11px}
+.lesson-dialog-empty{padding:28px 18px;background:#fff;border:1px dashed #d9e4dc;border-radius:16px;color:#77877c;font-size:13px}
+@media(max-width:600px){
+ .lesson-subject-dialog{padding:8px}
+ .lesson-dialog-panel{width:100%;max-height:90vh;border-radius:21px}
+ .lesson-dialog-kicker{padding:22px 17px 0;font-size:10px}
+ .lesson-dialog-close{margin:12px 12px -50px 12px;width:35px;height:35px}
+ .lesson-dialog-heading{margin:12px 12px 0;padding:17px 14px;gap:12px;border-radius:17px}
+ .lesson-dialog-symbol{flex-basis:48px;height:48px;border-radius:15px;font-size:19px}
+ .lesson-dialog-heading h2{font-size:18px}
+ .lesson-dialog-heading p{font-size:11px}
+ .lesson-dialog-content{padding:19px 13px 5px}
+ .lesson-dialog-axis{margin-bottom:19px}
+ .lesson-dialog-axis-title h3{font-size:13px}
+ .lesson-dialog-chapter summary{min-height:54px;padding:9px 10px;gap:9px;font-size:12px}
+ .lesson-dialog-chapter summary>b{width:29px;height:29px}
+ .lesson-unit-status{font-size:9px;padding:4px 7px}
+ .lesson-dialog-chapter ul{padding:7px 48px 12px 12px;font-size:11px}
+ .lesson-unit-actions{padding:0 48px 12px;gap:7px}
+ .lesson-unit-open,.lesson-unit-download,.lesson-admin-upload,.lesson-admin-delete{min-height:34px;padding:6px 9px;font-size:10px}
+ .lesson-admin-footer{margin:8px 13px 0;padding:14px 0 17px}
+}
+@media(prefers-reduced-motion:reduce){.lesson-subject-dialog,.lesson-dialog-panel,.lesson-dialog-close,.lesson-dialog-chapter,.lesson-unit-open,.lesson-unit-download,.lesson-admin-upload,.lesson-admin-delete{transition:none!important}}
+
+
 </style>
 
 <style id="lessons-page-redesign-20261113">
