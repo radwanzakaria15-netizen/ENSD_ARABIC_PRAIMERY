@@ -519,7 +519,7 @@ export default {
         })
         .on("body", {
           element(element) {
-            element.append('<script defer src="/schedule-view.js?v=9c2a3d8"></script>', { html: true });
+            element.append('<script defer src="/schedule-view.js?v=85807be"></script>', { html: true });
           }
         })
         .transform(response);
