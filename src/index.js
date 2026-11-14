@@ -345,7 +345,7 @@ async function handleApi(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file") return handleApi(request, env);
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
     return env.ASSETS.fetch(request);
   },
 };
