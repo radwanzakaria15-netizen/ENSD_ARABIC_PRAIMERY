@@ -242,6 +242,74 @@ async function handleResourceFile(request,env){
  return json({error:"method_not_allowed"},405);
 }
 
+
+async function handleAcademic(request, env) {
+  const key = "academic/config.json";
+  if (request.method === "GET") {
+    try {
+      const response = await signedB2Request(env, "GET", key);
+      if (response.status === 404) return json({ config: null });
+      if (!response.ok) throw new Error("Academic config read failed (" + response.status + ")");
+      const config = await response.json();
+      return json({ config });
+    } catch (error) {
+      return json({ error: "academic_config_read_failed", message: String(error.message || error).slice(0, 180) }, 502);
+    }
+  }
+  if (request.method === "PUT") {
+    if (!isAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    let config;
+    try { config = await request.json(); }
+    catch { return json({ error: "invalid_json" }, 400); }
+    if (!config || typeof config !== "object" || !Array.isArray(config.years) || config.years.length > 10) {
+      return json({ error: "invalid_academic_config" }, 400);
+    }
+    const validText = (value, max = 100) => typeof value === "string" && value.trim().length > 0 && value.length <= max;
+    const ids = new Set();
+    for (const year of config.years) {
+      if (!year || !validText(year.id, 80) || !validText(year.name, 80) || ids.has(year.id) || !Array.isArray(year.semesters) || year.semesters.length > 4) {
+        return json({ error: "invalid_year_entry" }, 400);
+      }
+      ids.add(year.id);
+      for (const semester of year.semesters) {
+        if (!semester || !validText(semester.id, 80) || !validText(semester.name, 80) || ids.has(semester.id) || !Array.isArray(semester.subjects) || semester.subjects.length > 100) {
+          return json({ error: "invalid_semester_entry" }, 400);
+        }
+        ids.add(semester.id);
+        for (const subject of semester.subjects) {
+          if (!subject || !validText(subject.id, 80) || !validText(subject.name, 120) || !validText(subject.symbol, 8) || ids.has(subject.id) || !Array.isArray(subject.axes) || subject.axes.length > 100) {
+            return json({ error: "invalid_subject_entry" }, 400);
+          }
+          ids.add(subject.id);
+          for (const axis of subject.axes) {
+            if (!axis || !validText(axis.id, 80) || !validText(axis.name, 160) || ids.has(axis.id) || !Array.isArray(axis.chapters) || axis.chapters.length > 200) {
+              return json({ error: "invalid_axis_entry" }, 400);
+            }
+            ids.add(axis.id);
+            for (const chapter of axis.chapters) {
+              if (!chapter || !validText(chapter.id, 80) || !validText(chapter.name, 180) || ids.has(chapter.id) || !Array.isArray(chapter.topics) || chapter.topics.length > 100) {
+                return json({ error: "invalid_chapter_entry" }, 400);
+              }
+              ids.add(chapter.id);
+              if (chapter.topics.some(topic => !validText(topic, 180))) return json({ error: "invalid_topic_entry" }, 400);
+            }
+          }
+        }
+      }
+    }
+    const body = encoder.encode(JSON.stringify({ ...config, updatedAt: new Date().toISOString() }));
+    if (body.byteLength > 500_000) return json({ error: "academic_config_too_large" }, 413);
+    try {
+      const response = await signedB2Request(env, "PUT", key, body, {}, "application/json");
+      if (!response.ok) throw new Error("Academic config save failed (" + response.status + ")");
+      return json({ ok: true, updatedAt: new Date().toISOString() });
+    } catch (error) {
+      return json({ error: "academic_config_save_failed", message: String(error.message || error).slice(0, 180) }, 502);
+    }
+  }
+  return json({ error: "method_not_allowed" }, 405);
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
@@ -260,6 +328,7 @@ async function handleApi(request, env) {
     return json({ error: "storage_not_configured", missing: missingStorageSettings }, 503);
   }
 
+  if (url.pathname === "/api/academic") return handleAcademic(request, env);
   if (url.pathname === "/api/resources") return handleResources(request, env);
   if (url.pathname === "/api/resource") return handleResourceFile(request, env);
 
@@ -345,7 +414,7 @@ async function handleApi(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
     return env.ASSETS.fetch(request);
   },
 };
