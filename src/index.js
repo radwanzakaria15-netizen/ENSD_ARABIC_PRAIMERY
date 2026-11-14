@@ -519,7 +519,7 @@ export default {
         })
         .on('script[src*="/schedule-view.js"]', {
           element(element) {
-            element.setAttribute("src", "/schedule-view.js?v=2322187");
+            element.setAttribute("src", "/schedule-view.js?v=7e8e47b");
           }
         })
         .transform(response);
