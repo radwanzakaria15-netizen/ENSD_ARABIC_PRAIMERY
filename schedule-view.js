@@ -112,18 +112,76 @@
     overlay.style.display = "flex";
   });
 
+  let loading = false;
+  let lastLoaded = "";
+
   async function load() {
+    if (loading) return;
+    loading = true;
     try {
-      const response = await fetch("/api/academic", { cache: "no-store" });
-      if (!response.ok) return;
+      const response = await fetch("/api/academic?refresh=" + Date.now(), {
+        cache: "no-store",
+        headers: { "cache-control": "no-cache" }
+      });
+      if (!response.ok) {
+        chooser.replaceChildren(el("p", "", "تعذر تحميل الأفواج من الخادم (رمز " + response.status + "). حاول تحديث الصفحة لاحقًا."));
+        return;
+      }
       const result = await response.json();
       const savedGroups = result.config?.groups;
-      if (!Array.isArray(savedGroups) || !savedGroups.length) return;
-      groups = savedGroups.filter(group => group && typeof group.name === "string" && Array.isArray(group.fogs));
-      renderGroups();
+      if (!Array.isArray(savedGroups)) {
+        groups = [];
+        renderGroups();
+        if (result.config) chooser.append(el("p", "schedule-load-note", "لم يعثر الموقع على بيانات المجموعات والأفواج المحفوظة في البرنامج الأكاديمي."));
+        return;
+      }
+      const validGroups = savedGroups.filter(group =>
+        group && typeof group.id === "string" &&
+        typeof group.name === "string" && Array.isArray(group.fogs)
+      );
+      const signature = JSON.stringify(validGroups);
+      if (signature !== lastLoaded) {
+        groups = validGroups;
+        lastLoaded = signature;
+        renderGroups();
+      }
     } catch (error) {
       console.warn("تعذر تحميل توقيت الأفواج:", error);
+      chooser.replaceChildren(el("p", "", "حدث خطأ أثناء الاتصال بالخادم لتحميل الأفواج. تحقق من اتصال الإنترنت ثم أعد المحاولة."));
+    } finally {
+      loading = false;
     }
+  }
+
+  // أعد جلب البيانات عند الرجوع إلى قسم التوقيت أو العودة إلى الصفحة.
+  let refreshQueued = false;
+  const scheduleRefresh = () => {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    setTimeout(() => {
+      refreshQueued = false;
+      if (!view.hidden) return;
+      load();
+    }, 180);
+  };
+  window.addEventListener("pageshow", scheduleRefresh);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") scheduleRefresh();
+  });
+  if (document.body && typeof MutationObserver !== "undefined") {
+    const observer = new MutationObserver(records => {
+      const relevant = records.some(record =>
+        record.type === "attributes" &&
+        (record.attributeName === "hidden" || record.attributeName === "class" || record.attributeName === "style")
+      );
+      if (relevant && !view.hidden && chooser.hidden) return;
+      if (relevant && !chooser.hidden) scheduleRefresh();
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["hidden", "class", "style"]
+    });
   }
 
   load();
