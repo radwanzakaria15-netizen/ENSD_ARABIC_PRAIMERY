@@ -6,9 +6,22 @@ const json = (value, status = 200) =>
   Response.json(value, { status, headers: { "cache-control": "no-store" } });
 
 function isAdmin(request, env) {
-  const expected = String(env.ADMIN_CODE || "").trim();
+  const expected = String(env.ADMIN_CODE_A || "").trim();
   const supplied = String(request.headers.get("x-admin-code") || "").trim();
   return Boolean(expected) && supplied === expected;
+}
+
+function lessonGroupFromKey(key) {
+  const match = /^(?:([AB])|Y[1-6]S[1-4]([AB]))-/.exec(String(key || ""));
+  return match ? (match[1] || match[2]) : null;
+}
+
+function isLessonAdmin(request, env, group) {
+  if (group !== "A" && group !== "B") return false;
+  const expected = String(env[group === "A" ? "ADMIN_CODE_A" : "ADMIN_CODE_B"] || "").trim();
+  const supplied = String(request.headers.get("x-admin-code") || "").trim();
+  const suppliedGroup = String(request.headers.get("x-admin-group") || "").trim().toUpperCase();
+  return Boolean(expected) && supplied === expected && suppliedGroup === group;
 }
 
 function hex(bytes) {
@@ -244,7 +257,7 @@ async function handleResourceFile(request,env){
 
 
 function isAcademicAdmin(request, env) {
-  const expected = String(env.ACADEMIC_ADMIN_CODE || "").trim();
+  const expected = String(env.ADMIN_CODE_MOD || "").trim();
   const supplied = String(request.headers.get("x-academic-admin-code") || "").trim();
   return Boolean(expected) && supplied === expected;
 }
@@ -323,11 +336,14 @@ async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
   if (url.pathname === "/api/lessons" && request.method === "POST") {
-    if (!String(env.ADMIN_CODE || "").trim()) {
-      return json({ error: "admin_code_not_configured" }, 503);
+    const group = String(request.headers.get("x-admin-group") || "").trim().toUpperCase();
+    if (group !== "A" && group !== "B") return json({ error: "invalid_lesson_group" }, 400);
+    const secretName = group === "A" ? "ADMIN_CODE_A" : "ADMIN_CODE_B";
+    if (!String(env[secretName] || "").trim()) {
+      return json({ error: "admin_code_not_configured", group }, 503);
     }
-    return isAdmin(request, env)
-      ? json({ ok: true })
+    return isLessonAdmin(request, env, group)
+      ? json({ ok: true, group })
       : json({ error: "unauthorized" }, 401);
   }
 
@@ -359,8 +375,10 @@ async function handleApi(request, env) {
     return json({ error: "not_found" }, 404);
   }
 
-  if (request.method !== "GET" && !isAdmin(request, env)) {
-    if (!String(env.ADMIN_CODE || "").trim()) return json({ error: "admin_code_not_configured" }, 503);
+  const lessonGroup = lessonGroupFromKey(key);
+  if (request.method !== "GET" && !isLessonAdmin(request, env, lessonGroup)) {
+    const secretName = lessonGroup === "A" ? "ADMIN_CODE_A" : lessonGroup === "B" ? "ADMIN_CODE_B" : "";
+    if (!secretName || !String(env[secretName] || "").trim()) return json({ error: "admin_code_not_configured" }, 503);
     return json({ error: "unauthorized" }, 401);
   }
 
