@@ -738,7 +738,20 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
  #page-lessons .lesson-subject-grid>.lesson-subject-card{animation:none!important}
 }
 </style>
-</head>
+<style id="academic-admin-ui">
+.academic-context-bar{display:flex;gap:12px;align-items:end;margin:0 0 16px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:15px}
+.academic-context-bar label,.academic-select-grid label{display:grid;gap:6px;color:#65746d;font-size:12px;font-weight:800;flex:1}
+.academic-context-bar select,.academic-select-grid select,.academic-admin-login input{width:100%;min-width:0;border:1px solid #e1e9e4;border-radius:10px;background:#fbfdfb;color:#26372e;padding:10px 11px;font:inherit;font-size:13px;outline:none}
+.academic-admin{margin:0 0 17px;background:#fff;border:1px solid var(--line);border-radius:15px;overflow:hidden}.academic-admin>summary{cursor:pointer;padding:14px 16px;font-weight:850;color:#476b58;list-style-position:inside}
+.academic-admin-login{display:flex;gap:9px;align-items:center;padding:0 15px 15px}.academic-admin-login input{flex:1}
+.academic-admin button{border:1px solid #dce8df;background:#f1f7f2;color:#3e6b50;border-radius:9px;padding:8px 11px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.academic-admin button.danger{background:#fff5f3;border-color:#f0d8d3;color:#a45d52}.academic-admin-login button,.academic-save-row button{background:#347b65;color:#fff;border-color:#347b65;white-space:nowrap}
+.academic-editor{padding:0 15px 16px;border-top:1px solid #edf1ee}.academic-editor-note{font-size:12px;line-height:1.7;color:#7a8980;margin:13px 0}
+.academic-select-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.academic-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}
+.academic-actions>div{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px;border:1px solid #edf1ee;border-radius:12px}.academic-actions b{width:100%;font-size:12px;color:#405a4a;margin-bottom:3px}
+.academic-save-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:13px;border-top:1px solid #edf1ee}.academic-save-row span,.academic-admin-login span{font-size:11px;color:#78867d}
+@media(max-width:700px){.academic-context-bar{padding:11px;gap:8px}.academic-context-bar label{font-size:11px}.academic-context-bar select{padding:9px 7px;font-size:12px}.academic-select-grid{grid-template-columns:1fr 1fr}.academic-actions{grid-template-columns:1fr}.academic-admin-login{flex-wrap:wrap}.academic-admin-login input{min-width:100%}.academic-save-row{align-items:flex-start;flex-direction:column}}
+</style>\n</head>
 <body>
 <div class="app">
 <aside class="sidebar">
@@ -793,7 +806,21 @@ button:focus-visible{outline:3px solid rgba(88,101,242,.28);outline-offset:3px}
  </section>
  <section class="page" id="page-subjects">
  <div class="subjects-hero"><div class="subjects-kicker">ENSD · STUDY MATERIALS</div><h2>المواد والمقاييس</h2><p>تصفّح مقاييس السنة ومحاور برامجها، وافتح أي مادة للاطلاع على محتواها.</p></div>
- <div class="subjects-toolbar"><div class="subject-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="subjectSearch" type="search" placeholder="ابحث عن مادة أو محور..."></div><span class="subject-count" id="subjectCount">10 مقاييس</span></div>
+ <div class="academic-context-bar" id="academicContextBar"><label>السنة الجامعية<select id="academicYearSelect"></select></label><label>السداسي<select id="academicSemesterSelect"></select></label></div>
+ <details class="academic-admin" id="academicAdmin"><summary>إدارة البرنامج الأكاديمي</summary>
+  <div class="academic-admin-login" id="academicAdminLogin"><input id="academicAdminCode" type="password" placeholder="رمز الإدارة" autocomplete="current-password"><button type="button" id="academicAdminEnter">دخول الإدارة</button><span id="academicAdminLoginStatus" role="status"></span></div>
+  <div class="academic-editor" id="academicEditor" hidden><p class="academic-editor-note">اختر العنصر من القوائم، ثم أضف أو عدّل أو احذف. التغييرات لا تظهر للطلبة قبل الضغط على «حفظ التغييرات».</p>
+   <div class="academic-select-grid"><label>السنة<select id="academicEditYear"></select></label><label>السداسي<select id="academicEditSemester"></select></label><label>المقياس<select id="academicEditSubject"></select></label><label>المحور<select id="academicEditAxis"></select></label><label>الدرس / الوحدة<select id="academicEditChapter"></select></label><label>الموضوع<select id="academicEditTopic"></select></label></div>
+   <div class="academic-actions">
+    <div><b>السنوات</b><button data-academic-action="add-year">إضافة</button><button data-academic-action="edit-year">تعديل</button><button data-academic-action="delete-year" class="danger">حذف</button></div>
+    <div><b>السداسيات</b><button data-academic-action="add-semester">إضافة</button><button data-academic-action="edit-semester">تعديل</button><button data-academic-action="delete-semester" class="danger">حذف</button></div>
+    <div><b>المقاييس</b><button data-academic-action="add-subject">إضافة</button><button data-academic-action="edit-subject">تعديل</button><button data-academic-action="delete-subject" class="danger">حذف</button></div>
+    <div><b>المحاور</b><button data-academic-action="add-axis">إضافة</button><button data-academic-action="edit-axis">تعديل</button><button data-academic-action="delete-axis" class="danger">حذف</button></div>
+    <div><b>الدروس والوحدات</b><button data-academic-action="add-chapter">إضافة</button><button data-academic-action="edit-chapter">تعديل</button><button data-academic-action="delete-chapter" class="danger">حذف</button></div>
+    <div><b>الموضوعات</b><button data-academic-action="add-topic">إضافة</button><button data-academic-action="edit-topic">تعديل</button><button data-academic-action="delete-topic" class="danger">حذف</button></div>
+   </div>
+   <div class="academic-save-row"><span id="academicSaveStatus" role="status">لا توجد تغييرات غير محفوظة.</span><button type="button" id="academicSave">حفظ التغييرات</button></div>
+  </div></details> <div class="subjects-toolbar"><div class="subject-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="subjectSearch" type="search" placeholder="ابحث عن مادة أو محور..."></div><span class="subject-count" id="subjectCount">10 مقاييس</span></div>
  <div class="subjects-grid" id="subjectsGrid"></div>
  <div class="subject-detail panel" id="subjectDetail" hidden><button class="subject-back" id="subjectBack">← العودة إلى المواد</button><div class="subject-detail-head"><div class="subject-symbol" id="detailSymbol">ن</div><div><div class="subject-overline">PROGRAMME · S1</div><h2 id="detailTitle"></h2><p id="detailMeta">برنامج المقياس ومحاوره</p></div></div><div id="detailAxes"></div></div>
 </section>
@@ -1305,7 +1332,16 @@ resourceInitSelects();
  [["resourceFilterSubject","subject"],["resourceUploadSubject","subject"],["resourceFilterKind","kind"],["resourceUploadKind","kind"],["resourceFilterYear","year"],["resourceUploadYear","year"],["resourceFilterSemester","semester"],["resourceUploadSemester","semester"]].forEach(([id,group])=>{const el=document.getElementById(id);resourcePaintSelect(el,group);el.addEventListener("change",()=>resourcePaintSelect(el,group));});
  loadResources();if(RESOURCE_ADMIN_CODE)loadPendingResources();
 
-</script>
+
+let ACADEMIC_YEAR_NUMBER=2;
+let ACADEMIC_SEMESTER_NUMBER=1;
+window.__academicBridge={
+ setSubjects(items){subjectData.splice(0,subjectData.length,...items);renderSubjects();},
+ setLessonSubjects(names){lessonSubjects.splice(0,lessonSubjects.length,...names);lessonData.A=names.map(name=>({name,lessons:[]}));lessonData.B=names.map(name=>({name,lessons:[]}));renderLessonSubjects(currentGroup);const total=document.querySelector("#page-lessons .lessons-total b");if(total)total.textContent=String(names.length);const count=document.querySelector("#page-lessons .lesson-summary-count b");if(count)count.textContent=String(names.length);},
+ setContext(year,semester){ACADEMIC_YEAR_NUMBER=Number(year)||2;ACADEMIC_SEMESTER_NUMBER=Number(semester)||1;},
+ refreshLessons(){renderLessonSubjects(currentGroup);}
+};
+</script>\n<script src="/academic-admin.js" defer></script>\n
 
 <style id="lesson-stack-visible-on-load-20261113">
 /* Keep the subject cards visibly stacked as soon as the lessons page opens */
