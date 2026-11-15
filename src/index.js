@@ -201,7 +201,7 @@ async function listObjectsByPrefix(env, prefix) {
 async function readResourceMeta(env,key){const r=await signedB2Request(env,"GET",key);if(!r.ok)return null;try{return await r.json()}catch{return null}}
 async function deleteResourceObject(env,key){const r=await signedB2Request(env,"DELETE",key);if(!r.ok&&r.status!==404)throw new Error("B2 delete failed ("+r.status+")")}
 async function handleResources(request,env){
- const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=isAdmin(request,env);
+ const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=isModerator(request,env);
  if(request.method==="GET"){
   const status=u.searchParams.get("status")==="pending"&&admin?"pending":"approved";
   if(u.searchParams.get("status")==="pending"&&!admin)return json({error:"unauthorized"},401);
@@ -246,7 +246,7 @@ async function handleResourceFile(request,env){
   return json({ok:true,pending:true,id:meta.id});
  }
  if(request.method==="GET"){
-  const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&isAdmin(request,env);
+  const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&isModerator(request,env);
   if(!approved&&!pending)return json({error:"not_found"},404);
   const r=await signedB2Request(env,"GET",key);if(!r.ok)return json({error:"not_found"},404);
   const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
@@ -397,6 +397,67 @@ async function handleAcademicImage(request, env) {
   return json({ error: "method_not_allowed" }, 405);
 }
 
+
+// ===== الإعلانات: تُحفظ في Backblaze B2 داخل ملف واحد announcements/list.json =====
+const ANN_KEY = "announcements/list.json";
+const annClip = (v, n) => String(v ?? "").trim().slice(0, n);
+async function readAnnouncements(env) {
+  const r = await signedB2Request(env, "GET", ANN_KEY);
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error("B2 read failed (" + r.status + ")");
+  try { const a = await r.json(); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+async function writeAnnouncements(env, list) {
+  const r = await signedB2Request(env, "PUT", ANN_KEY, encoder.encode(JSON.stringify(list)), {}, "application/json");
+  if (!r.ok) throw new Error("B2 write failed (" + r.status + ")");
+}
+// مشرف المحتوى: رمز الدروس (ADMIN_CODE_A) أو رمز الإدارة الأكاديمية (ADMIN_CODE_MOD) عبر أي من الترويستين
+function isModerator(request, env) {
+  if (isAdmin(request, env) || isAcademicAdmin(request, env)) return true;
+  const expected = String(env.ADMIN_CODE_MOD || "").trim();
+  return Boolean(expected) && String(request.headers.get("x-admin-code") || "").trim() === expected;
+}
+async function handleAnnouncements(request, env) {
+  const u = new URL(request.url), action = u.searchParams.get("action") || "";
+  try {
+    if (request.method === "GET") return json(await readAnnouncements(env));
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+    if (!isModerator(request, env)) return json({ ok: false, error: "unauthorized" }, 401);
+    if (action === "check") return json({ ok: true });
+
+    const list = await readAnnouncements(env);
+    if (action === "add") {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const title = annClip(body.title, 120);
+      if (!title) return json({ ok: false, error: "title_required" }, 400);
+      const link = annClip(body.link, 500);
+      const item = {
+        id: crypto.randomUUID().slice(0, 8),
+        title,
+        body: annClip(body.body, 1500),
+        category: annClip(body.category, 30) || "عام",
+        date: /^\d{4}-\d{2}-\d{2}$/.test(body.date || "") ? body.date : new Date().toISOString().slice(0, 10),
+        pinned: !!body.pinned,
+        link: /^(https?:\/\/|\/)/.test(link) ? link : "",
+        linkText: annClip(body.linkText, 40),
+      };
+      list.unshift(item);
+      await writeAnnouncements(env, list.slice(0, 200));
+      return json({ ok: true, id: item.id });
+    }
+
+    const id = u.searchParams.get("id") || "";
+    const idx = list.findIndex((a) => a.id === id);
+    if (idx < 0) return json({ ok: false, error: "not_found" }, 404);
+    if (action === "delete") { list.splice(idx, 1); await writeAnnouncements(env, list); return json({ ok: true }); }
+    if (action === "pin") { list[idx].pinned = !list[idx].pinned; await writeAnnouncements(env, list); return json({ ok: true, pinned: list[idx].pinned }); }
+    return json({ ok: false, error: "bad_action" }, 400);
+  } catch (e) {
+    return json({ ok: false, error: "storage_error", message: String(e.message || e).slice(0, 200) }, 502);
+  }
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
@@ -421,6 +482,7 @@ async function handleApi(request, env) {
   if (url.pathname === "/api/academic") return handleAcademic(request, env);
   if (url.pathname === "/api/academic-image") return handleAcademicImage(request, env);
   if (url.pathname === "/api/resources") return handleResources(request, env);
+  if (url.pathname === "/api/announcements") return handleAnnouncements(request, env);
   if (url.pathname === "/api/resource") return handleResourceFile(request, env);
 
   if (url.pathname === "/api/lessons") {
@@ -507,7 +569,7 @@ async function handleApi(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements") return handleApi(request, env);
     const response = await env.ASSETS.fetch(request);
     if ((url.pathname === "/" || url.pathname === "/index.html") &&
         (response.headers.get("content-type") || "").includes("text/html")) {
