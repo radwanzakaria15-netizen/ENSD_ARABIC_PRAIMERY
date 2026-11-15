@@ -1,0 +1,110 @@
+name: Optimize schedule images and bundle Tajawal
+
+on:
+  push:
+    branches:
+      - improvements/security-and-performance
+    paths:
+      - '.github/workflows/optimize-assets.yml'
+      - 'assets/schedules/*.jpg'
+      - 'app.js'
+      - 'styles.css'
+      - 'index.html'
+      - 'sw.js'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out working branch
+        uses: actions/checkout@v4
+        with:
+          ref: improvements/security-and-performance
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install image converter
+        run: python -m pip install --upgrade Pillow
+
+      - name: Download licensed Tajawal font files
+        run: |
+          mkdir -p assets/fonts
+          curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/tajawal/Tajawal-Regular.ttf -o assets/fonts/Tajawal-Regular.ttf
+          curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/tajawal/Tajawal-Bold.ttf -o assets/fonts/Tajawal-Bold.ttf
+          curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/tajawal/OFL.txt -o assets/fonts/OFL-Tajawal.txt
+          test -s assets/fonts/Tajawal-Regular.ttf
+          test -s assets/fonts/Tajawal-Bold.ttf
+          test -s assets/fonts/OFL-Tajawal.txt
+
+      - name: Convert schedule images and update references
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import re
+
+          converted = []
+          for source in sorted(Path("assets/schedules").glob("*.jpg")):
+              target = source.with_suffix(".webp")
+              with Image.open(source) as image:
+                  if image.mode not in ("RGB", "RGBA"):
+                      image = image.convert("RGB")
+                  image.save(target, "WEBP", quality=94, method=6)
+              if target.stat().st_size < source.stat().st_size:
+                  converted.append(source.stem)
+                  source.unlink()
+              else:
+                  target.unlink(missing_ok=True)
+
+          if converted:
+              names = "|".join(re.escape(name) for name in converted)
+              pattern = re.compile(r"(assets/schedules/(?:%s))\\.jpg" % names)
+              for filename in ("app.js", "sw.js", "schedule-view.js"):
+                  path = Path(filename)
+                  if path.exists():
+                      data = path.read_text(encoding="utf-8")
+                      path.write_text(pattern.sub(r"\\1.webp", data), encoding="utf-8")
+
+          css = Path("styles.css")
+          data = css.read_text(encoding="utf-8")
+          if "Tajawal-Regular.ttf" not in data:
+              data = '''@font-face{font-family:"Tajawal";src:url("/assets/fonts/Tajawal-Regular.ttf") format("truetype");font-style:normal;font-weight:400;font-display:swap}
+          @font-face{font-family:"Tajawal";src:url("/assets/fonts/Tajawal-Bold.ttf") format("truetype");font-style:normal;font-weight:700;font-display:swap}
+          ''' + data
+              css.write_text(data, encoding="utf-8")
+
+          html = Path("index.html")
+          data = html.read_text(encoding="utf-8")
+          data = re.sub(r'\\s*<link[^>]+fonts\\.googleapis\\.com[^>]*>', '', data)
+          data = re.sub(r'\\s*<link[^>]+fonts\\.gstatic\\.com[^>]*>', '', data)
+          data = data.replace("styles.css?v=20261115-2", "styles.css?v=20261115-3")
+          data = data.replace("app.js?v=20261115-1", "app.js?v=20261115-2")
+          html.write_text(data, encoding="utf-8")
+
+          sw = Path("sw.js")
+          data = sw.read_text(encoding="utf-8")
+          data = data.replace("arabic-students-shell-v5", "arabic-students-shell-v6")
+          if "assets/fonts/Tajawal-Regular.ttf" not in data:
+              data = data.replace('"/manifest.webmanifest"', '"/manifest.webmanifest","/assets/fonts/Tajawal-Regular.ttf","/assets/fonts/Tajawal-Bold.ttf"')
+          sw.write_text(data, encoding="utf-8")
+          PY
+
+      - name: Commit optimized assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js styles.css index.html sw.js assets/schedules assets/fonts
+          if git diff --cached --quiet; then
+            echo "No generated asset changes to commit."
+          else
+            git commit -m "Optimize schedule images and bundle Tajawal locally"
+            git push origin HEAD:improvements/security-and-performance
+          fi
