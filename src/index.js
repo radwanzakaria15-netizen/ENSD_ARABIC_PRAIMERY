@@ -200,16 +200,81 @@ async function listObjectsByPrefix(env, prefix) {
 }
 async function readResourceMeta(env,key){const r=await signedB2Request(env,"GET",key);if(!r.ok)return null;try{return await r.json()}catch{return null}}
 async function deleteResourceObject(env,key){const r=await signedB2Request(env,"DELETE",key);if(!r.ok&&r.status!==404)throw new Error("B2 delete failed ("+r.status+")")}
+
+/* ===== صلاحيات صاحب المورد (رمز يُحفظ على جهاز الرافع، ويُخزَّن هنا بصيغة SHA-256 فقط) ===== */
+async function sha256Hex(s){const d=await crypto.subtle.digest("SHA-256",encoder.encode(String(s)));return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+function publicResource(m){const {ownerHash,...rest}=m||{};return rest}
+function fileBytesMatch(type,data){
+ const b=new Uint8Array(data);
+ if(type==="application/pdf")return new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-");
+ if(type==="application/msword")return b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]);
+ if(type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document")return b[0]===0x50&&b[1]===0x4B;
+ return false;
+}
+const RESOURCE_KINDS_OK=["كتاب","درس ومحاضرة","ملخص","تمارين محلولة","سلسلة تمارين","امتحانات سابقة","مراجع أخرى"];
+async function findResource(env,id){
+ for(const status of ["approved","pending"]){
+  const base="resources/"+status+"/"+id,meta=await readResourceMeta(env,base+".json");
+  if(meta)return {meta,status,base};
+ }
+ return null;
+}
+async function saveResourceMeta(env,base,meta){
+ const r=await signedB2Request(env,"PUT",base+".json",encoder.encode(JSON.stringify(meta)),{},"application/json");
+ if(!r.ok)throw new Error("Could not save resource metadata");
+}
+async function handleResourceOwnerAction(request,env,action,id,admin){
+ if(!/^[a-f0-9-]{36}$/i.test(id))return json({error:"invalid_resource_id"},400);
+ const found=await findResource(env,id);if(!found)return json({error:"not_found"},404);
+ const {meta,base}=found;
+ const token=String(request.headers.get("x-owner-token")||"").trim();
+ const isOwner=!!token&&!!meta.ownerHash&&(await sha256Hex(token))===meta.ownerHash;
+ try{
+  if(action==="delete"){
+   if(!admin)return json({error:"unauthorized"},401);
+  }else{
+   if(!isOwner)return json({error:"unauthorized"},403);
+  }
+  if(action==="delete"||action==="owner_delete"){
+   await deleteResourceObject(env,meta.fileKey);await deleteResourceObject(env,base+".json");
+   return json({ok:true,action,id});
+  }
+  if(action==="owner_update"){
+   let b={};try{b=await request.json()}catch{}
+   const next={title:String(b.title||"").trim().slice(0,120),year:String(b.year||""),semester:String(b.semester||""),subject:String(b.subject||"").trim().slice(0,100),kind:String(b.kind||"")};
+   if(!/^السنة [1-6]$/.test(next.year)||!/^السداسي [12]$/.test(next.semester)||!next.subject||!RESOURCE_KINDS_OK.includes(next.kind))return json({error:"invalid_resource_metadata"},400);
+   const updated={...meta,...next,updatedAt:new Date().toISOString()};
+   await saveResourceMeta(env,base,updated);
+   return json({ok:true,action,id,resource:publicResource(updated)});
+  }
+  if(action==="owner_replace"){
+   const u=new URL(request.url),name=safeFileName(u.searchParams.get("name")),type=contentTypeForName(name);
+   if(type==="application/octet-stream")return json({error:"unsupported_file_type"},400);
+   const data=await request.arrayBuffer();
+   if(!data.byteLength)return json({error:"empty_file"},400);
+   if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
+   if(!fileBytesMatch(type,data))return json({error:"file_type_mismatch"},400);
+   const newKey=base+"__"+name;
+   const put=await signedB2Request(env,"PUT",newKey,data,{},type);if(!put.ok)return json({error:"storage_error"},502);
+   const updated={...meta,fileName:name,contentType:type,fileKey:newKey,updatedAt:new Date().toISOString()};
+   await saveResourceMeta(env,base,updated);
+   if(meta.fileKey&&meta.fileKey!==newKey)await deleteResourceObject(env,meta.fileKey);
+   return json({ok:true,action,id,resource:publicResource(updated)});
+  }
+  return json({error:"invalid_action"},400);
+ }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
+}
 async function handleResources(request,env){
  const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=isModerator(request,env);
  if(request.method==="GET"){
   const status=u.searchParams.get("status")==="pending"&&admin?"pending":"approved";
   if(u.searchParams.get("status")==="pending"&&!admin)return json({error:"unauthorized"},401);
   try{const objects=await listObjectsByPrefix(env,"resources/"+status+"/"),items=[];
-   for(const o of objects){if(!o.key.endsWith(".json"))continue;const m=await readResourceMeta(env,o.key);if(m?.id&&m.fileKey)items.push({...m,status})}
+   for(const o of objects){if(!o.key.endsWith(".json"))continue;const m=await readResourceMeta(env,o.key);if(m?.id&&m.fileKey)items.push({...publicResource(m),status})}
    items.sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));return json(items);
   }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
  }
+ if(request.method==="POST"&&["delete","owner_delete","owner_update","owner_replace"].includes(action))return handleResourceOwnerAction(request,env,action,id,admin);
  if(request.method==="POST"&&action){
   if(!admin)return json({error:"unauthorized"},401);
   if(!/^[a-f0-9-]{36}$/i.test(id))return json({error:"invalid_resource_id"},400);
@@ -239,6 +304,7 @@ async function handleResourceFile(request,env){
   const data=await request.arrayBuffer();if(!data.byteLength)return json({error:"empty_file"},400);if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
   const b=new Uint8Array(data),pdf=type==="application/pdf"&&new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-"),doc=type==="application/msword"&&b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]),docx=type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&b[0]===0x50&&b[1]===0x4B;
   if(!(pdf||doc||docx))return json({error:"file_type_mismatch"},400);
+  const ownerRaw=String(u.searchParams.get("owner")||"").trim();if(/^[A-Za-z0-9_-]{16,128}$/.test(ownerRaw))meta.ownerHash=await sha256Hex(ownerRaw);
   const base="resources/pending/"+meta.id;meta.fileKey=base+"__"+name;
   const put=await signedB2Request(env,"PUT",meta.fileKey,data,{},type);if(!put.ok)return json({error:"storage_error"},502);
   const save=await signedB2Request(env,"PUT",base+".json",encoder.encode(JSON.stringify(meta)),{},"application/json");
