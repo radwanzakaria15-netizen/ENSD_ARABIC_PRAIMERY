@@ -3,6 +3,12 @@
   const $ = (id) => document.getElementById(id);
   const clean = (value) => String(value || "").trim().replace(/[<>"'`]/g, "").slice(0, 180);
   const id = () => "a-" + crypto.randomUUID();
+  /* المعامل: رقم موجب أو "" (بدون معامل) */
+  const normCoef = (value) => {
+    if (value === undefined || value === null || String(value).trim() === "") return "";
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : "";
+  };
   const option = (select, items, selected, label) => {
     if (!select) return;
     select.replaceChildren();
@@ -65,6 +71,7 @@
         id: "semester-1", name: "السداسي الأول",
         subjects: (window.__academicBridge?.getSubjects?.() || []).map((subject, si) => ({
           id: "subject-" + (si + 1), name: subject.name, symbol: subject.symbol || "م", programImage: subject.programImage || "",
+          coefficient: normCoef(subject.coefficient),
           axes: (subject.axes || []).map((axis, ai) => ({
             id: "axis-" + (si + 1) + "-" + (ai + 1), name: axis.name,
             chapters: (axis.chapters || []).map((chapter, ci) => ({
@@ -107,6 +114,7 @@
     const subjects = sem.subjects || [];
     window.__academicBridge?.setSubjects(subjects.map(subject => ({
       name: subject.name, symbol: subject.symbol || "م", programImage: subject.programImage || "",
+      coefficient: normCoef(subject.coefficient),
       axes: (subject.axes || []).map(axis => ({
         name: axis.name,
         chapters: (axis.chapters || []).map(chapter => [chapter.name, (chapter.topics || []).slice()])
@@ -204,6 +212,25 @@
       event.target.disabled = false;
       event.target.value = "";
     }
+  }
+  /* حفظ معامل المقياس المختار داخل config ليُرسل مع «حفظ التغييرات». يعيد false إن كانت القيمة غير صالحة */
+  function applyCoefficientFromInput(showMessage) {
+    const input = $("academicCoefInput"), hint = $("academicCoefHint");
+    const subject = editSubject();
+    if (!input || !subject) return true;
+    const raw = String(input.value).trim();
+    if (raw !== "" && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
+      if (hint) hint.textContent = "أدخل رقمًا صحيحًا موجبًا للمعامل.";
+      return false;
+    }
+    const next = normCoef(raw);
+    if (subject.coefficient !== next) {
+      subject.coefficient = next;
+      markDirty();
+      applyCurrent();
+    }
+    if (showMessage && hint) hint.textContent = "تم ضبط معامل «" + subject.name + "»" + (next === "" ? " (بدون معامل)" : " = " + next) + ". اضغط «حفظ التغييرات» ليظهر للطلبة.";
+    return true;
   }
   function refreshEditorSelectors() {
     const y = editYear() || config.years[0];
@@ -494,7 +521,7 @@
         if (symbol) sub.symbol = symbol.slice(0, 8);
       } else {
         const symbol = (await safePrompt("رمز مختصر للمقياس", value.slice(0, 1), { title: "رمز المقياس", maxLength: 8 })) || value.slice(0, 1);
-        const item = { id: id(), name: value, symbol: symbol.slice(0, 8), axes: [] };
+        const item = { id: id(), name: value, symbol: symbol.slice(0, 8), coefficient: "", axes: [] };
         s.subjects.push(item); $("academicEditSubject").value = item.id;
       }
     } else if (kind === "axis") {
@@ -535,6 +562,7 @@
     const button = $("academicSave"), status = $("academicSaveStatus");
     if (!adminCode) { status.textContent = "سجّل الدخول أولًا."; return; }
     if (!config.years.length) { status.textContent = "أضف سنة جامعية أولًا."; return; }
+    if (!applyCoefficientFromInput(false)) { status.textContent = "المعامل غير صالح؛ صحّحه ثم احفظ."; return; }
     button.disabled = true; status.textContent = "جارٍ حفظ البرنامج...";
     try {
       const response = await fetch("/api/academic", {
@@ -584,6 +612,7 @@
     $("academicEditChapter")?.addEventListener("change", refreshEditorSelectors);
     $("academicAdminEnter")?.addEventListener("click", () => login($("academicAdminCode").value.trim()));
     $("academicAdminCode")?.addEventListener("keydown", event => { if (event.key === "Enter") login(event.target.value.trim()); });
+    $("academicCoefApply")?.addEventListener("click", () => { applyCoefficientFromInput(true); });
     $("academicSave")?.addEventListener("click", save);
     $("academicAdmin")?.addEventListener("toggle", async () => {
       if (!$("academicAdmin").open || adminCode) return;
