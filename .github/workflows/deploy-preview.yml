@@ -40,7 +40,7 @@ jobs:
         run: npm install
 
       - name: Deploy isolated preview Worker
-        run: npx wrangler deploy --name ensd-arabic-praimery-preview
+        run: npx wrangler delete --name ensd-arabic-praimery-preview --force
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
