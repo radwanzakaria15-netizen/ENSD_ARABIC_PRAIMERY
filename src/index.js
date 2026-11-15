@@ -187,6 +187,65 @@ async function listLessons(env) {
 }
 
 
+
+/* ===== ذاكرة الحافة (Cloudflare Cache): يقرأ الـ Worker من B2 مرة واحدة ثم يخدم كل الزوار من الذاكرة ===== */
+const EDGE = "https://edge-cache.ensd.internal/";
+const hasEdge = () => typeof caches !== "undefined" && !!caches.default;
+async function edgeDrop(key) {
+  if (!hasEdge()) return;
+  for (const k of [key, "stale:" + key]) { try { await caches.default.delete(new Request(EDGE + k)); } catch {} }
+}
+async function edgeJson(key, ttl, produce) {
+  if (!hasEdge()) return produce();
+  const cache = caches.default, fresh = new Request(EDGE + key), stale = new Request(EDGE + "stale:" + key);
+  const out = (res, tag) => new Response(res.body, { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store", "x-edge": tag } });
+  try { const hit = await cache.match(fresh); if (hit) return out(hit, "hit"); } catch {}
+  let res = null;
+  try { res = await produce(); } catch { res = null; }
+  if (res && res.status === 200) {
+    try {
+      const text = await res.clone().text();
+      const mk = (age) => new Response(text, { status: 200, headers: { "content-type": "application/json", "cache-control": "public, max-age=" + age } });
+      await cache.put(fresh, mk(ttl)); await cache.put(stale, mk(86400));
+    } catch {}
+    return res;
+  }
+  // فشل B2 (مثلاً تجاوز الحد اليومي): نخدم آخر نسخة ناجحة بدل إظهار الخطأ
+  try { const old = await cache.match(stale); if (old) return out(old, "stale"); } catch {}
+  return res || json({ error: "storage_error" }, 502);
+}
+async function edgeFile(request, ttl, produce) {
+  if (!hasEdge() || request.method !== "GET") return produce();
+  const cache = caches.default, ck = new Request(request.url);
+  const client = (res, tag) => { const h = new Headers(res.headers); h.set("cache-control", "public, max-age=600"); h.set("x-edge", tag); return new Response(res.body, { status: 200, headers: h }); };
+  try { const hit = await cache.match(ck); if (hit) return client(hit, "hit"); } catch {}
+  const res = await produce();
+  if (res.status !== 200) return res;
+  try {
+    const buf = await res.arrayBuffer(), h = new Headers(res.headers);
+    h.set("cache-control", "public, max-age=" + ttl);
+    await cache.put(ck, new Response(buf, { status: 200, headers: h }));
+    return client(new Response(buf, { status: 200, headers: res.headers }), "miss");
+  } catch { return res; }
+}
+const APPROVED_INDEX_KEY = "resources/index-approved.json";
+async function rebuildApprovedIndex(env) {
+  const objects = await listObjectsByPrefix(env, "resources/approved/"), items = [];
+  for (const o of objects) { if (!o.key.endsWith(".json")) continue; const m = await readResourceMeta(env, o.key); if (m?.id && m.fileKey) items.push({ ...publicResource(m), status: "approved" }); }
+  items.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  try { await signedB2Request(env, "PUT", APPROVED_INDEX_KEY, encoder.encode(JSON.stringify(items)), {}, "application/json"); } catch {}
+  return items;
+}
+async function approvedIndex(env) {
+  const r = await signedB2Request(env, "GET", APPROVED_INDEX_KEY);
+  if (r.ok) { try { const a = await r.json(); if (Array.isArray(a)) return a; } catch {} }
+  return rebuildApprovedIndex(env);
+}
+async function refreshApproved(env) {
+  await edgeDrop("res-approved");
+  try { await rebuildApprovedIndex(env); } catch {}
+}
+
 async function listObjectsByPrefix(env, prefix) {
  const out=[]; let token="";
  for(let page=0;page<20;page++){
@@ -239,6 +298,7 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
   }
   if(action==="delete"||action==="owner_delete"){
    await deleteResourceObject(env,meta.fileKey);await deleteResourceObject(env,base+".json");
+   if(found.status==="approved")await refreshApproved(env);
    return json({ok:true,action,id});
   }
   if(action==="owner_update"){
@@ -247,6 +307,7 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
    if(!validMeta(next))return json({error:"invalid_resource_metadata"},400);
    const updated={...meta,...next,updatedAt:new Date().toISOString()};
    await saveResourceMeta(env,base,updated);
+   if(found.status==="approved")await refreshApproved(env);
    return json({ok:true,action,id,resource:publicResource(updated)});
   }
   if(action==="owner_replace"){
@@ -261,6 +322,7 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
    const updated={...meta,fileName:name,contentType:type,fileKey:newKey,updatedAt:new Date().toISOString()};
    await saveResourceMeta(env,base,updated);
    if(meta.fileKey&&meta.fileKey!==newKey)await deleteResourceObject(env,meta.fileKey);
+   if(found.status==="approved")await refreshApproved(env);
    return json({ok:true,action,id,resource:publicResource(updated)});
   }
   return json({error:"invalid_action"},400);
@@ -271,6 +333,7 @@ async function handleResources(request,env){
  if(request.method==="GET"){
   const status=u.searchParams.get("status")==="pending"&&admin?"pending":"approved";
   if(u.searchParams.get("status")==="pending"&&!admin)return json({error:"unauthorized"},401);
+  if(status==="approved")return edgeJson("res-approved",120,async()=>{try{return json(await approvedIndex(env))}catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}});
   try{const objects=await listObjectsByPrefix(env,"resources/"+status+"/"),items=[];
    for(const o of objects){if(!o.key.endsWith(".json"))continue;const m=await readResourceMeta(env,o.key);if(m?.id&&m.fileKey)items.push({...publicResource(m),status})}
    items.sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));return json(items);
@@ -290,6 +353,7 @@ async function handleResources(request,env){
     const approved={...meta,fileKey,status:"approved",approvedAt:new Date().toISOString()};
     const saved=await signedB2Request(env,"PUT","resources/approved/"+id+".json",encoder.encode(JSON.stringify(approved)),{},"application/json");
     if(!saved.ok)throw new Error("Could not save resource metadata");
+    await refreshApproved(env);
    }else if(action!=="reject")return json({error:"invalid_action"},400);
    await deleteResourceObject(env,meta.fileKey);await deleteResourceObject(env,base+".json");return json({ok:true,action,id});
   }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
@@ -316,9 +380,12 @@ async function handleResourceFile(request,env){
  if(request.method==="GET"){
   const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&isModerator(request,env);
   if(!approved&&!pending)return json({error:"not_found"},404);
+  const serve=async()=>{
   const r=await signedB2Request(env,"GET",key);if(!r.ok)return json({error:"not_found"},404);
   const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
   return new Response(r.body,{headers:{"content-type":type,"content-disposition":(type==="application/pdf"&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\x20-\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
+  };
+  return approved?edgeFile(request,21600,serve):serve();
  }
  return json({error:"method_not_allowed"},405);
 }
@@ -335,7 +402,7 @@ async function handleAcademic(request, env) {
   if (request.method === "POST") {
     return isAcademicAdmin(request, env) ? json({ ok: true }) : json({ error: "unauthorized" }, 401);
   }
-  if (request.method === "GET") {
+  if (request.method === "GET") return edgeJson("acad", 300, async () => {
     try {
       const response = await signedB2Request(env, "GET", key);
       if (response.status === 404) return json({ config: null });
@@ -345,7 +412,7 @@ async function handleAcademic(request, env) {
     } catch (error) {
       return json({ error: "academic_config_read_failed", message: String(error.message || error).slice(0, 180) }, 502);
     }
-  }
+  });
   if (request.method === "PUT") {
     if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
     let config;
@@ -416,6 +483,7 @@ async function handleAcademic(request, env) {
     try {
       const response = await signedB2Request(env, "PUT", key, body, {}, "application/json");
       if (!response.ok) throw new Error("Academic config save failed (" + response.status + ")");
+      await edgeDrop("acad");
       return json({ ok: true, updatedAt: new Date().toISOString() });
     } catch (error) {
       return json({ error: "academic_config_save_failed", message: String(error.message || error).slice(0, 180) }, 502);
@@ -448,14 +516,14 @@ async function handleAcademicImage(request, env) {
     return json({ ok: true, key: imageKey, url: "/api/academic-image?key=" + encodeURIComponent(imageKey) });
   }
   if (!validKey) return json({ error: "not_found" }, 404);
-  if (request.method === "GET") {
+  if (request.method === "GET") return edgeFile(request, 86400, async () => {
     const image = await signedB2Request(env, "GET", key);
     if (image.status === 404) return json({ error: "not_found" }, 404);
     if (!image.ok) return json({ error: "image_read_failed" }, 502);
     const extension = key.split(".").pop();
     const type = extension === "jpg" ? "image/jpeg" : extension === "png" ? "image/png" : "image/webp";
     return new Response(image.body, { headers: { "content-type": type, "cache-control": "public, max-age=86400", "x-content-type-options": "nosniff" } });
-  }
+  });
   if (request.method === "DELETE") {
     if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
     const removed = await signedB2Request(env, "DELETE", key);
@@ -488,7 +556,10 @@ function isModerator(request, env) {
 async function handleAnnouncements(request, env) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "";
   try {
-    if (request.method === "GET") return json(await readAnnouncements(env));
+    if (request.method === "GET") return edgeJson("ann", 120, async () => {
+      try { return json(await readAnnouncements(env)); }
+      catch (e) { return json({ ok: false, error: "storage_error", message: String(e.message || e).slice(0, 200) }, 502); }
+    });
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
     if (!isModerator(request, env)) return json({ ok: false, error: "unauthorized" }, 401);
     if (action === "check") return json({ ok: true });
@@ -511,15 +582,15 @@ async function handleAnnouncements(request, env) {
         linkText: annClip(body.linkText, 40),
       };
       list.unshift(item);
-      await writeAnnouncements(env, list.slice(0, 200));
+      await writeAnnouncements(env, list.slice(0, 200)); await edgeDrop("ann");
       return json({ ok: true, id: item.id });
     }
 
     const id = u.searchParams.get("id") || "";
     const idx = list.findIndex((a) => a.id === id);
     if (idx < 0) return json({ ok: false, error: "not_found" }, 404);
-    if (action === "delete") { list.splice(idx, 1); await writeAnnouncements(env, list); return json({ ok: true }); }
-    if (action === "pin") { list[idx].pinned = !list[idx].pinned; await writeAnnouncements(env, list); return json({ ok: true, pinned: list[idx].pinned }); }
+    if (action === "delete") { list.splice(idx, 1); await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true }); }
+    if (action === "pin") { list[idx].pinned = !list[idx].pinned; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, pinned: list[idx].pinned }); }
     return json({ ok: false, error: "bad_action" }, 400);
   } catch (e) {
     return json({ ok: false, error: "storage_error", message: String(e.message || e).slice(0, 200) }, 502);
@@ -555,11 +626,13 @@ async function handleApi(request, env) {
 
   if (url.pathname === "/api/lessons") {
     if (request.method === "GET") {
-      try { return json(await listLessons(env)); }
-      catch (error) {
-        console.error("B2 list failed:", error);
-        return json({ error: "storage_error", message: String(error.message || error).slice(0, 240) }, 502);
-      }
+      return edgeJson("lessons", 120, async () => {
+        try { return json(await listLessons(env)); }
+        catch (error) {
+          console.error("B2 list failed:", error);
+          return json({ error: "storage_error", message: String(error.message || error).slice(0, 240) }, 502);
+        }
+      });
     }
     return json({ error: "method_not_allowed" }, 405);
   }
@@ -579,7 +652,7 @@ async function handleApi(request, env) {
   }
 
   try {
-    if (request.method === "GET") {
+    if (request.method === "GET") return edgeFile(request, 21600, async () => {
       const info = fileInfo(key);
       const response = await signedB2Request(env, "GET", key);
       if (response.status === 404) return json({ error: "not_found" }, 404);
@@ -598,7 +671,7 @@ async function handleApi(request, env) {
       const length = response.headers.get("content-length");
       if (length) headers.set("content-length", length);
       return new Response(response.body, { headers });
-    }
+    });
 
     if (request.method === "POST") {
       const name = safeFileName(url.searchParams.get("name"));
@@ -617,6 +690,7 @@ async function handleApi(request, env) {
       const objectKey = key + "/" + crypto.randomUUID() + "__" + name;
       const response = await signedB2Request(env, "PUT", objectKey, data, {}, type);
       if (!response.ok) throw new Error("B2 upload failed (" + response.status + "): " + (await response.text()).slice(0, 180));
+      await edgeDrop("lessons");
       return json({ ok: true, key: objectKey, lessonKey: key, name, size: data.byteLength });
     }
 
@@ -625,6 +699,7 @@ async function handleApi(request, env) {
       if (!response.ok && response.status !== 404) {
         throw new Error("B2 delete failed (" + response.status + "): " + (await response.text()).slice(0, 180));
       }
+      await edgeDrop("lessons");
       return json({ ok: true, key });
     }
     return json({ error: "method_not_allowed" }, 405);
