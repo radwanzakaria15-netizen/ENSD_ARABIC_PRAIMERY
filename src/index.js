@@ -215,18 +215,27 @@ async function edgeJson(key, ttl, produce) {
   return res || json({ error: "storage_error" }, 502);
 }
 async function edgeFile(request, ttl, produce) {
-  if (!hasEdge() || request.method !== "GET") return produce();
-  const cache = caches.default, ck = new Request(request.url);
-  const client = (res, tag) => { const h = new Headers(res.headers); h.set("cache-control", "public, max-age=600"); h.set("x-edge", tag); return new Response(res.body, { status: 200, headers: h }); };
-  try { const hit = await cache.match(ck); if (hit) return client(hit, "hit"); } catch {}
-  const res = await produce();
-  if (res.status !== 200) return res;
-  try {
-    const buf = await res.arrayBuffer(), h = new Headers(res.headers);
-    h.set("cache-control", "public, max-age=" + ttl);
-    await cache.put(ck, new Response(buf, { status: 200, headers: h }));
-    return client(new Response(buf, { status: 200, headers: res.headers }), "miss");
-  } catch { return res; }
+  const fail = () => json({ error: "storage_error" }, 502);
+  if (!hasEdge() || request.method !== "GET") { try { return await produce(); } catch { return fail(); } }
+  const cache = caches.default, ck = new Request(request.url), sk = new Request(EDGE + "stale-file:" + request.url);
+  const client = (res, tag, age) => { const h = new Headers(res.headers); h.set("cache-control", "public, max-age=" + age); h.set("x-edge", tag); return new Response(res.body, { status: 200, headers: h }); };
+  try { const hit = await cache.match(ck); if (hit) return client(hit, "hit", 600); } catch {}
+  let res = null;
+  try { res = await produce(); } catch { res = null; }
+  if (res && res.status === 200) {
+    let buf;
+    try { buf = await res.arrayBuffer(); } catch { return fail(); }
+    try {
+      const mk = (age) => { const h = new Headers(res.headers); h.set("cache-control", "public, max-age=" + age); return new Response(buf, { status: 200, headers: h }); };
+      await cache.put(ck, mk(ttl));
+      await cache.put(sk, mk(604800)); // نسخة احتياطية 7 أيام تُستخدم فقط عند فشل B2
+    } catch {}
+    return client(new Response(buf, { status: 200, headers: res.headers }), "miss", 600);
+  }
+  // أخطاء عادية (404، 400...) تُعاد كما هي. أما فشل B2 (403 تجاوز الحد، 429، 5xx، أو استثناء) فنحاول النسخة الاحتياطية
+  if (res && res.status !== 403 && res.status !== 429 && res.status < 500) return res;
+  try { const old = await cache.match(sk); if (old) return client(old, "stale", 60); } catch {}
+  return res || fail();
 }
 const APPROVED_INDEX_KEY = "resources/index-approved.json";
 async function rebuildApprovedIndex(env) {
@@ -241,9 +250,32 @@ async function approvedIndex(env) {
   if (r.ok) { try { const a = await r.json(); if (Array.isArray(a)) return a; } catch {} }
   return rebuildApprovedIndex(env);
 }
-async function refreshApproved(env) {
+// تحديث تدريجي للفهرس: طلبان فقط (قراءة + كتابة) بدل قراءة كل ملفات الموارد.
+// change = { upsert: meta } لإضافة/تعديل مورد، أو { remove: id } لحذفه. بدون change = إعادة بناء كاملة.
+async function refreshApproved(env, change) {
   await edgeDrop("res-approved");
-  try { await rebuildApprovedIndex(env); } catch {}
+  try {
+    if (change) {
+      const r = await signedB2Request(env, "GET", APPROVED_INDEX_KEY);
+      if (r.ok) {
+        let items = null;
+        try { const a = await r.json(); if (Array.isArray(a)) items = a; } catch {}
+        if (items) {
+          if (change.remove) items = items.filter((x) => x.id !== change.remove);
+          else if (change.upsert?.id) {
+            const entry = { ...publicResource(change.upsert), status: "approved" };
+            const i = items.findIndex((x) => x.id === entry.id);
+            if (i >= 0) items[i] = entry; else items.push(entry);
+          }
+          items.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+          const w = await signedB2Request(env, "PUT", APPROVED_INDEX_KEY, encoder.encode(JSON.stringify(items)), {}, "application/json");
+          if (w.ok) return;
+        }
+      }
+    }
+    // احتياط: الفهرس مفقود أو تالف أو فشلت الكتابة → إعادة بناء كاملة
+    await rebuildApprovedIndex(env);
+  } catch {}
 }
 
 async function listObjectsByPrefix(env, prefix) {
@@ -298,7 +330,7 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
   }
   if(action==="delete"||action==="owner_delete"){
    await deleteResourceObject(env,meta.fileKey);await deleteResourceObject(env,base+".json");
-   if(found.status==="approved")await refreshApproved(env);
+   if(found.status==="approved")await refreshApproved(env,{remove:id});
    return json({ok:true,action,id});
   }
   if(action==="owner_update"){
@@ -307,7 +339,7 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
    if(!validMeta(next))return json({error:"invalid_resource_metadata"},400);
    const updated={...meta,...next,updatedAt:new Date().toISOString()};
    await saveResourceMeta(env,base,updated);
-   if(found.status==="approved")await refreshApproved(env);
+   if(found.status==="approved")await refreshApproved(env,{upsert:updated});
    return json({ok:true,action,id,resource:publicResource(updated)});
   }
   if(action==="owner_replace"){
@@ -322,7 +354,7 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
    const updated={...meta,fileName:name,contentType:type,fileKey:newKey,updatedAt:new Date().toISOString()};
    await saveResourceMeta(env,base,updated);
    if(meta.fileKey&&meta.fileKey!==newKey)await deleteResourceObject(env,meta.fileKey);
-   if(found.status==="approved")await refreshApproved(env);
+   if(found.status==="approved")await refreshApproved(env,{upsert:updated});
    return json({ok:true,action,id,resource:publicResource(updated)});
   }
   return json({error:"invalid_action"},400);
@@ -353,7 +385,7 @@ async function handleResources(request,env){
     const approved={...meta,fileKey,status:"approved",approvedAt:new Date().toISOString()};
     const saved=await signedB2Request(env,"PUT","resources/approved/"+id+".json",encoder.encode(JSON.stringify(approved)),{},"application/json");
     if(!saved.ok)throw new Error("Could not save resource metadata");
-    await refreshApproved(env);
+    await refreshApproved(env,{upsert:approved});
    }else if(action!=="reject")return json({error:"invalid_action"},400);
    await deleteResourceObject(env,meta.fileKey);await deleteResourceObject(env,base+".json");return json({ok:true,action,id});
   }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
@@ -381,7 +413,7 @@ async function handleResourceFile(request,env){
   const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&isModerator(request,env);
   if(!approved&&!pending)return json({error:"not_found"},404);
   const serve=async()=>{
-  const r=await signedB2Request(env,"GET",key);if(!r.ok)return json({error:"not_found"},404);
+  const r=await signedB2Request(env,"GET",key);if(r.status===404)return json({error:"not_found"},404);if(!r.ok)return json({error:"storage_error"},502);
   const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
   return new Response(r.body,{headers:{"content-type":type,"content-disposition":(type==="application/pdf"&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\x20-\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
   };
@@ -652,7 +684,7 @@ async function handleApi(request, env) {
   }
 
   try {
-    if (request.method === "GET") return edgeFile(request, 21600, async () => {
+    if (request.method === "GET") return await edgeFile(request, 21600, async () => {
       const info = fileInfo(key);
       const response = await signedB2Request(env, "GET", key);
       if (response.status === 404) return json({ error: "not_found" }, 404);
