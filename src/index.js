@@ -572,12 +572,12 @@ const annClip = (v, n) => String(v ?? "").trim().slice(0, n);
 async function readAnnouncements(env) {
   const r = await signedB2Request(env, "GET", ANN_KEY);
   if (r.status === 404) return [];
-  if (!r.ok) throw new Error("B2 read failed (" + r.status + ")");
+  if (!r.ok) throw new Error("B2 read failed (" + r.status + "): " + (await r.text()).slice(0, 150));
   try { const a = await r.json(); return Array.isArray(a) ? a : []; } catch { return []; }
 }
 async function writeAnnouncements(env, list) {
   const r = await signedB2Request(env, "PUT", ANN_KEY, encoder.encode(JSON.stringify(list)), {}, "application/json");
-  if (!r.ok) throw new Error("B2 write failed (" + r.status + ")");
+  if (!r.ok) throw new Error("B2 write failed (" + r.status + "): " + (await r.text()).slice(0, 150));
 }
 // مشرف المحتوى: رمز الدروس (ADMIN_CODE_A) أو رمز الإدارة الأكاديمية (ADMIN_CODE_MOD) عبر أي من الترويستين
 function isModerator(request, env) {
