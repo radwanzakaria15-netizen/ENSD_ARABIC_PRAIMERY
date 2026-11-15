@@ -120,7 +120,7 @@ async function signedB2Request(env, method, key = "", body = null, extraQuery = 
 }
 
 function xmlText(xml, tag) {
-  const match = xml.match(new RegExp("<" + tag + ">([\s\S]*?)</" + tag + ">"));
+  const match = xml.match(new RegExp("<" + tag + ">([\\s\\S]*?)</" + tag + ">"));
   return match ? match[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'") : "";
 }
