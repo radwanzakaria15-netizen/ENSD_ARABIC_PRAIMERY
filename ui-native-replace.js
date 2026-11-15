@@ -1,15 +1,16 @@
 /* ui-native-replace.js
-   يستبدل نوافذ المتصفح الأصلية بنوافذ مصممة:
-   1) القوائم المنسدلة <select>  ->  ورقة اختيار سفلية (Bottom Sheet)
-   2) زر «اختيار ملف»           ->  زر مصمم مع اسم الملف
-   3) window.uiPrompt(...)       ->  بديل مصمم لـ prompt() (يعيد Promise)
-*/
+   Replaces native browser dialogs with styled ones:
+   1) <select> -> bottom sheet picker
+   2) file input -> styled button with file name
+   3) window.uiPrompt(...) -> styled Promise-based prompt()
+   NOTE: ASCII-only on purpose (non-ASCII chars are escapes), so it works
+   whatever encoding the server or browser guesses. */
 (() => {
   "use strict";
   if (window.__uxNativeReplace) return;
   window.__uxNativeReplace = true;
 
-  /* ---------- الأنماط ---------- */
+  
   const css = `
 .ux-sel-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:42px;padding:9px 12px;border:1px solid var(--line,#e1e9e4);border-radius:12px;background:var(--surface,#fbfdfb);color:var(--ink,#26372e);font:inherit;font-size:13px;font-weight:800;text-align:start;cursor:pointer;transition:border-color .15s,box-shadow .15s}
 .ux-sel-trigger:active{transform:scale(.99)}
@@ -34,7 +35,7 @@
 .ux-opt[disabled]{opacity:.4;cursor:not-allowed}
 .ux-opt .ux-tick{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--line,#cfd8d4);display:grid;place-items:center;font-size:13px;color:#fff;line-height:1}
 .ux-opt.is-sel .ux-tick{background:var(--primary,#287c78);border-color:var(--primary,#287c78)}
-.ux-opt.is-sel .ux-tick::before{content:"✓"}
+.ux-opt.is-sel .ux-tick::before{content:"\u2713"}
 .ux-empty{padding:22px;text-align:center;color:var(--muted,#7c8982);font-size:13px}
 
 .ux-modal{width:calc(100% - 36px);max-width:360px;margin:auto;border-radius:24px;padding:22px 18px 18px;background:var(--surface,#fff);color:var(--ink,#263b32);text-align:center;box-shadow:0 24px 75px rgba(8,25,18,.28);transform:scale(.95);transition:transform .2s ease}
@@ -54,7 +55,7 @@
 
 .ux-file{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;box-sizing:border-box;padding:8px;border:1.5px dashed var(--line,#cfd9d4);border-radius:14px;background:var(--surface,#fbfdfb)}
 .ux-file-btn{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:8px 14px;border:0;border-radius:11px;background:var(--soft,#e8f3f1);color:var(--primary-dark,#1e6562);font:inherit;font-size:13px;font-weight:850;cursor:pointer}
-.ux-file-btn::before{content:"＋";font-size:15px}
+.ux-file-btn::before{content:"\uff0b";font-size:15px}
 .ux-file-btn:active{transform:scale(.97)}
 .ux-file-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted,#7c8982);font-size:12.5px}
 .ux-file.has-file .ux-file-name{color:var(--ink,#26372e);font-weight:800}
@@ -73,7 +74,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
   st.textContent = css;
   document.head.appendChild(st);
 
-  /* ---------- أدوات ---------- */
+  
   const el = (tag, cls, txt) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -85,7 +86,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     openCount += on ? 1 : -1;
     document.documentElement.style.overflow = openCount > 0 ? "hidden" : "";
   };
-  /* يبني طبقة عائمة ويعيد دالة إغلاق */
+  
   function mountOverlay(content, { center = false, onClose } = {}) {
     const ov = el("div", "ux-ov" + (center ? " ux-center" : ""));
     ov.appendChild(content);
@@ -110,7 +111,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     return { ov, close };
   }
 
-  /* ---------- 1) القوائم المنسدلة ---------- */
+  
   const enhanced = new Set();
   const selectTitle = (sel) => {
     const aria = sel.getAttribute("aria-label");
@@ -128,7 +129,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     }
     const prev = sel.previousElementSibling;
     if (prev && /^(LABEL|SPAN|B|STRONG|SMALL)$/.test(prev.tagName)) return prev.textContent.trim();
-    return "اختر";
+    return "\u0627\u062e\u062a\u0631";
   };
 
   function openSheet(sel, trigger) {
@@ -139,7 +140,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     const list = el("div", "ux-list");
     list.setAttribute("role", "listbox");
     const opts = Array.from(sel.options);
-    if (!opts.length) list.appendChild(el("div", "ux-empty", "لا توجد خيارات"));
+    if (!opts.length) list.appendChild(el("div", "ux-empty", "\u0644\u0627 \u062a\u0648\u062c\u062f \u062e\u064a\u0627\u0631\u0627\u062a"));
     let selectedBtn = null;
     const { close } = mountOverlay(sheet, {
       onClose: () => { trigger.classList.remove("is-open"); trigger.setAttribute("aria-expanded", "false"); trigger.focus({ preventScroll: true }); }
@@ -175,19 +176,19 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     const t = sel._uxTrigger;
     if (!t) return;
     const o = sel.options[sel.selectedIndex];
-    const txt = o ? o.text : (sel.getAttribute("aria-label") || "اختر");
+    const txt = o ? o.text : (sel.getAttribute("aria-label") || "\u0627\u062e\u062a\u0631");
     const v = t.querySelector(".ux-sel-value");
     if (v.textContent !== txt) v.textContent = txt;
     v.classList.toggle("is-placeholder", !sel.value);
     if (t.disabled !== sel.disabled) t.disabled = sel.disabled;
-    /* إخفاء الزر إن كان الـ select نفسه مخفيًا */
+    
     const hide = sel.hidden || sel.style.display === "none";
     if (t.hidden !== hide) t.hidden = hide;
   }
 
   function enhanceSelect(sel) {
     if (sel._uxTrigger || sel.multiple || sel.size > 1 || sel.dataset.native === "1") return;
-    if (sel.classList.contains("resource-native-select") || sel.dataset.customReady) return; /* مغلّفة بقائمة مخصصة سابقة */
+    if (sel.classList.contains("resource-native-select") || sel.dataset.customReady) return; 
     const t = el("button", "ux-sel-trigger");
     t.type = "button";
     t.setAttribute("aria-haspopup", "listbox");
@@ -205,11 +206,11 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     syncSelect(sel);
   }
 
-  /* ---------- 2) اختيار الملفات ---------- */
+  
   const fileState = new Set();
   function shouldSkipFile(inp) {
     if (inp._uxFile || inp.hidden || inp.dataset.native === "1") return true;
-    if (inp.closest(".lesson-upload-control,.lesson-file-actions")) return true; /* أزرار مخصصة بالفعل */
+    if (inp.closest(".lesson-upload-control,.lesson-file-actions")) return true; 
     const cs = getComputedStyle(inp);
     if (cs.display === "none" || cs.visibility === "hidden" || cs.opacity === "0") return true;
     if (inp.style.display === "none") return true;
@@ -218,14 +219,14 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
   function fileLabel(inp) {
     const f = inp.files;
     if (!f || !f.length) return "";
-    return f.length === 1 ? f[0].name : f.length + " ملفات";
+    return f.length === 1 ? f[0].name : f.length + " \u0645\u0644\u0641\u0627\u062a";
   }
   function syncFile(inp) {
     const box = inp._uxFile;
     if (!box) return;
     const name = fileLabel(inp);
     const n = box.querySelector(".ux-file-name");
-    const txt = name || "لم يتم اختيار أي ملف";
+    const txt = name || "\u0644\u0645 \u064a\u062a\u0645 \u0627\u062e\u062a\u064a\u0627\u0631 \u0623\u064a \u0645\u0644\u0641";
     if (n.textContent !== txt) n.textContent = txt;
     box.classList.toggle("has-file", !!name);
     const btn = box.querySelector(".ux-file-btn");
@@ -234,12 +235,12 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
   function enhanceFile(inp) {
     if (shouldSkipFile(inp)) return;
     const box = el("div", "ux-file");
-    const btn = el("button", "ux-file-btn", inp.multiple ? "اختيار ملفات" : "اختيار ملف");
+    const btn = el("button", "ux-file-btn", inp.multiple ? "\u0627\u062e\u062a\u064a\u0627\u0631 \u0645\u0644\u0641\u0627\u062a" : "\u0627\u062e\u062a\u064a\u0627\u0631 \u0645\u0644\u0641");
     btn.type = "button";
     const name = el("span", "ux-file-name");
     box.append(btn, name);
     inp.parentNode.insertBefore(box, inp);
-    box.appendChild(inp); /* يبقى الـ input داخل الصندوق ليعمل كما هو */
+    box.appendChild(inp); 
     inp.classList.add("ux-native-hidden");
     inp.tabIndex = -1;
     inp._uxFile = box;
@@ -249,17 +250,16 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     syncFile(inp);
   }
 
-  /* ---------- 3) بديل prompt() ---------- */
-  /* الاستخدام: const name = await uiPrompt({title:"إضافة مقياس", label:"اسم المقياس", value:"", placeholder:"..."});
-     يعيد النص أو null عند الإلغاء. */
+  
+  
   window.uiPrompt = function uiPrompt(opts = {}) {
     return new Promise((resolve) => {
       const box = el("section", "ux-modal");
       box.setAttribute("role", "dialog");
       box.setAttribute("aria-modal", "true");
       box.append(
-        el("div", "ux-modal-icon", opts.icon || "✎"),
-        el("h3", "", opts.title || "إدخال")
+        el("div", "ux-modal-icon", opts.icon || "\u270e"),
+        el("h3", "", opts.title || "\u0625\u062f\u062e\u0627\u0644")
       );
       if (opts.label) box.appendChild(el("p", "", opts.label));
       const input = el("input", "ux-input");
@@ -267,12 +267,12 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
       input.value = opts.value == null ? "" : String(opts.value);
       input.placeholder = opts.placeholder || "";
       if (opts.maxLength) input.maxLength = opts.maxLength;
-      input.setAttribute("aria-label", opts.label || opts.title || "إدخال");
+      input.setAttribute("aria-label", opts.label || opts.title || "\u0625\u062f\u062e\u0627\u0644");
       input.autocomplete = "off";
       const err = el("div", "ux-err");
       const acts = el("div", "ux-actions");
-      const ok = el("button", "ux-ok", opts.confirmText || "حسنًا");
-      const cancel = el("button", "ux-cancel", opts.cancelText || "إلغاء");
+      const ok = el("button", "ux-ok", opts.confirmText || "\u062d\u0633\u0646\u064b\u0627");
+      const cancel = el("button", "ux-cancel", opts.cancelText || "\u0625\u0644\u063a\u0627\u0621");
       ok.type = cancel.type = "button";
       acts.append(ok, cancel);
       box.append(input, err, acts);
@@ -282,7 +282,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
       const submit = () => {
         const v = input.value.trim();
         let msg = "";
-        if (!v && !opts.allowEmpty) msg = opts.emptyMessage || "هذا الحقل مطلوب.";
+        if (!v && !opts.allowEmpty) msg = opts.emptyMessage || "\u0647\u0630\u0627 \u0627\u0644\u062d\u0642\u0644 \u0645\u0637\u0644\u0648\u0628.";
         else if (typeof opts.validate === "function") msg = opts.validate(v) || "";
         if (msg) { err.textContent = msg; input.classList.add("is-bad"); input.focus(); return; }
         finish(v);
@@ -296,7 +296,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     });
   };
 
-  /* ---------- التشغيل والمراقبة ---------- */
+  
   function scan(root) {
     (root.querySelectorAll ? root : document).querySelectorAll("select").forEach(enhanceSelect);
     (root.querySelectorAll ? root : document).querySelectorAll('input[type="file"]').forEach(enhanceFile);
@@ -313,7 +313,7 @@ html[data-theme=dark] .ux-cancel{background:#232826;color:#9ea9a3}
     }
   }).observe(document.documentElement, { childList: true, subtree: true });
 
-  /* مزامنة خفيفة للقيم التي تُغيَّر برمجيًا بدون حدث change */
+  
   setInterval(() => {
     enhanced.forEach((s) => { if (!s.isConnected) { enhanced.delete(s); s._uxTrigger?.remove(); return; } syncSelect(s); });
     fileState.forEach((i) => { if (!i.isConnected) { fileState.delete(i); return; } syncFile(i); });
