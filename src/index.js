@@ -448,7 +448,7 @@ async function handleAcademicImage(request, env) {
   return json({ error: "method_not_allowed" }, 405);
 }
 
-async async function handleAnnouncements(request,env) {
+async function handleAnnouncements(request,env) {
   const key="announcements/items.json";
   if(request.method==="GET"){
     try{
