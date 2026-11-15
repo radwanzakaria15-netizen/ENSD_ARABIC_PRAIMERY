@@ -448,10 +448,53 @@ async function handleAcademicImage(request, env) {
   return json({ error: "method_not_allowed" }, 405);
 }
 
+async function handleAnnouncements(request,env) {
+  const key="announcements/items.json";
+  if(request.method==="GET"){
+    try{
+      const r=await signedB2Request(env,"GET",key);
+      if(r.status===404)return json([]);
+      if(!r.ok)throw new Error("announcement_read_failed");
+      const items=await r.json();
+      return json(Array.isArray(items)?items:[]);
+    }catch(error){return json({error:"announcement_read_failed",message:String(error.message||error).slice(0,120)},502)}
+  }
+  if(!(await hasAdminSession(request,env,"academic")))return json({error:"unauthorized"},401);
+  if(request.method==="POST"){
+    let body;try{body=await request.json()}catch{return json({error:"invalid_json"},400)}
+    const title=String(body?.title||"").trim().slice(0,140);
+    const content=String(body?.content||"").trim().slice(0,3000);
+    const category=String(body?.category||"");
+    if(!title||!content||!["امتحانات","تغيير توقيت","غياب أستاذ","عام"].includes(category))return json({error:"invalid_announcement"},400);
+    const r=await signedB2Request(env,"GET",key);
+    let items=[];
+    if(r.ok){try{items=await r.json();if(!Array.isArray(items))items=[]}catch{items=[]}}
+    else if(r.status!==404)return json({error:"announcement_read_failed"},502);
+    const item={id:crypto.randomUUID(),title,content,category,date:String(body.date||new Date().toISOString().slice(0,10)).slice(0,10),pinned:body.pinned===true,createdAt:new Date().toISOString()};
+    items.unshift(item);
+    if(items.length>500)items=items.slice(0,500);
+    const saved=await signedB2Request(env,"PUT",key,encoder.encode(JSON.stringify(items)),{},"application/json");
+    if(!saved.ok)return json({error:"announcement_save_failed"},502);
+    return json({ok:true,item});
+  }
+  if(request.method==="DELETE"){
+    const id=new URL(request.url).searchParams.get("id")||"";
+    if(!/^[a-f0-9-]{36}$/i.test(id))return json({error:"invalid_id"},400);
+    const r=await signedB2Request(env,"GET",key);
+    if(!r.ok)return json({error:"not_found"},404);
+    let items=await r.json();if(!Array.isArray(items))items=[];
+    const next=items.filter(item=>item.id!==id);
+    const saved=await signedB2Request(env,"PUT",key,encoder.encode(JSON.stringify(next)),{},"application/json");
+    return saved.ok?json({ok:true}):json({error:"announcement_save_failed"},502);
+  }
+  return json({error:"method_not_allowed"},405);
+}
+
 async function handleApi(request, env) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
   if (url.pathname === "/api/admin/session") return handleAdminSession(request, env);
+  if (url.pathname === "/api/announcements") return handleAnnouncements(request, env);
   if (url.pathname === "/api/lessons" && request.method === "POST") {
     const group = String(new URL(request.url).searchParams.get("group") || "").trim().toUpperCase();
     if (group !== "A" && group !== "B") return json({ error: "invalid_lesson_group" }, 400);
@@ -555,7 +598,7 @@ async function handleApi(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/admin/session" || url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
+    if (url.pathname === "/api/admin/session" || url.pathname === "/api/announcements" || url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource") return handleApi(request, env);
     const response = await env.ASSETS.fetch(request);
     if ((url.pathname === "/" || url.pathname === "/index.html") &&
         (response.headers.get("content-type") || "").includes("text/html")) {
