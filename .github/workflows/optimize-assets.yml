@@ -66,12 +66,12 @@ jobs:
 
           if converted:
               names = "|".join(re.escape(name) for name in converted)
-              pattern = re.compile(r"(assets/schedules/(?:%s))\\.jpg" % names)
+              pattern = re.compile(r"(assets/schedules/(?:%s))\.jpg" % names)
               for filename in ("app.js", "sw.js", "schedule-view.js"):
                   path = Path(filename)
                   if path.exists():
                       data = path.read_text(encoding="utf-8")
-                      path.write_text(pattern.sub(r"\\1.webp", data), encoding="utf-8")
+                      path.write_text(pattern.sub(r"\1.webp", data), encoding="utf-8")
 
           css = Path("styles.css")
           data = css.read_text(encoding="utf-8")
@@ -83,8 +83,8 @@ jobs:
 
           html = Path("index.html")
           data = html.read_text(encoding="utf-8")
-          data = re.sub(r'\\s*<link[^>]+fonts\\.googleapis\\.com[^>]*>', '', data)
-          data = re.sub(r'\\s*<link[^>]+fonts\\.gstatic\\.com[^>]*>', '', data)
+          data = re.sub(r'\s*<link[^>]+fonts\.googleapis\\.com[^>]*>', '', data)
+          data = re.sub(r'\s*<link[^>]+fonts\.gstatic\\.com[^>]*>', '', data)
           data = data.replace("styles.css?v=20261115-2", "styles.css?v=20261115-3")
           data = data.replace("app.js?v=20261115-1", "app.js?v=20261115-2")
           html.write_text(data, encoding="utf-8")
