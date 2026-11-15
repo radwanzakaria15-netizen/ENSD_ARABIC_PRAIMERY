@@ -1,6 +1,17 @@
 name: Deploy preview Worker
 
 on:
+  push:
+    branches:
+      - improvements/security-and-performance
+    paths:
+      - .github/workflows/deploy-preview.yml
+      - wrangler.jsonc
+      - src/**
+      - index.html
+      - app.js
+      - styles.css
+      - assets/**
   workflow_dispatch:
 
 permissions:
@@ -24,7 +35,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
