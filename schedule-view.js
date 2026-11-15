@@ -15,6 +15,14 @@
   const MSG_NO_IMAGE = "لم تُرفع صورة توقيت لهذا الفوج بعد.";
   const MSG_IMG_FAIL = "تعذر تحميل صورة الجدول الآن. حاول مجددًا لاحقًا.";
 
+  /* الرسائل التقنية (رموز الخطأ، فشل الصورة) تظهر للمشرف فقط: من سجّل الدخول إلى إدارة البرنامج الأكاديمي */
+  const isAdmin = () => {
+    try { if (localStorage.getItem("ensd_persist_academic_code")) return true; } catch {}
+    const editor = $("academicEditor");
+    return !!(editor && !editor.hidden);
+  };
+  const imageFrame = () => $("scheduleImage")?.closest(".schedule-image-frame");
+
   let years = [];
   let activeYearId = "";
   let activeGroup = null;
@@ -51,7 +59,7 @@
   /* ===== ملاحظة صغيرة أعلى القائمة (لا تستبدل التصميم) ===== */
   function applyNote() {
     $("scheduleStatusNote")?.remove();
-    if (!noteText) return;
+    if (!noteText || !isAdmin()) return;
     const note = el("p", "schedule-load-note", noteText);
     note.id = "scheduleStatusNote";
     note.style.cssText = "margin:0 0 14px;padding:10px 14px;border-radius:12px;background:rgba(217,168,92,.16);border:1px solid rgba(217,168,92,.35);color:inherit;font-size:13px;line-height:1.7";
@@ -153,9 +161,17 @@
     return empty;
   }
 
-  function showImageMessage(text) {
+  function showImageMessage(text, technical = false) {
     const img = $("scheduleImage");
     if (img) { img.hidden = true; img.style.display = "none"; }
+    /* الطالب العادي لا يرى رسالة فشل تقنية: نخفي الإطار كله بدل ذلك */
+    if (technical && !isAdmin()) {
+      const frame = imageFrame();
+      if (frame) frame.style.display = "none";
+      return;
+    }
+    const frame = imageFrame();
+    if (frame) frame.style.display = "";
     const empty = ensureEmpty();
     if (empty) { empty.textContent = text; empty.hidden = false; }
   }
@@ -170,6 +186,8 @@
     $("scheduleGroupName").textContent = fog.name;
     $("scheduleGroupHall").textContent = group.hall || group.name;
     const img = $("scheduleImage");
+    const frame0 = imageFrame();
+    if (frame0) frame0.style.display = "";
     const empty = ensureEmpty();
     const imageUrl = fog.scheduleImage || legacyScheduleImage(group, fog);
     if (imageUrl) {
@@ -189,7 +207,7 @@
     const staticButton = event.target.closest("[data-schedule-id]");
     if (staticButton) {
       const img = $("scheduleImage");
-      if (img && !img.getAttribute("src")) showImageMessage(MSG_IMG_FAIL);
+      if (img && !img.getAttribute("src")) showImageMessage(MSG_IMG_FAIL, true);
       return;
     }
     const button = event.target.closest("[data-dynamic-group-id]");
@@ -208,9 +226,11 @@
   const scheduleImg = $("scheduleImage");
   scheduleImg?.addEventListener("error", () => {
     if (!scheduleImg.getAttribute("src")) return;
-    showImageMessage(MSG_IMG_FAIL);
+    showImageMessage(MSG_IMG_FAIL, true);
   });
   scheduleImg?.addEventListener("load", () => {
+    const fr = imageFrame();
+    if (fr) fr.style.display = "";
     scheduleImg.style.display = "";
     scheduleImg.hidden = false;
     const empty = $("scheduleNoImage");

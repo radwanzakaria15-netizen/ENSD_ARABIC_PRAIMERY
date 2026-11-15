@@ -21,9 +21,26 @@
     });
     if (items.some(item => item.id === selected)) select.value = selected;
   };
-  const safePrompt = (message, value = "") => {
+  /* نافذة إدخال مصممة (uiPrompt من ui-native-replace.js) مع رجوع لـ prompt عند غيابها. تعيد Promise */
+  const safePrompt = async (message, value = "", opts = {}) => {
+    if (typeof window.uiPrompt === "function") {
+      const result = await window.uiPrompt({
+        title: opts.title || "إدخال",
+        label: message,
+        value,
+        allowEmpty: !!opts.allowEmpty,
+        confirmText: opts.confirmText || "حسنًا",
+        maxLength: opts.maxLength
+      });
+      return result === null ? null : clean(result);
+    }
     const result = window.prompt(message, value);
     return result === null ? null : clean(result);
+  };
+  /* نافذة تأكيد مصممة (uiConfirm) مع رجوع لـ confirm */
+  const askConfirm = async (message, title = "تأكيد الحذف") => {
+    if (typeof window.uiConfirm === "function") return await window.uiConfirm(message, { title, confirmText: "حذف", type: "danger" });
+    return confirm(message);
   };
   function createDefaultScheduleGroups() {
     const makeGroup = (name, hall, code, firstFog) => ({
@@ -283,56 +300,56 @@
       renderScheduleEditor();
     });
     $("asmFogSelect")?.addEventListener("change", () => { scheduleFogId = $("asmFogSelect").value; renderScheduleEditor(); });
-    $("asmAddGroup")?.addEventListener("click", () => {
-      const name = safePrompt("اسم المجموعة أو القاعة (مثال: المجموعة A · مدرج أ)");
+    $("asmAddGroup")?.addEventListener("click", async () => {
+      const name = await safePrompt("اسم المجموعة أو القاعة (مثال: المجموعة A · مدرج أ)", "", { title: "إضافة مجموعة" });
       if (!name) return;
-      const hall = safePrompt("اسم المدرج أو القاعة (مثال: مدرج أ)", "");
+      const hall = await safePrompt("اسم المدرج أو القاعة (مثال: مدرج أ)", "", { title: "إضافة مجموعة", allowEmpty: true });
       if (hall === null) return;
       const groups = scheduleGroups();
       const item = { id: id(), name, hall, code: String.fromCharCode(65 + groups.length), fogs: [] };
       groups.push(item); scheduleGroupId = item.id; scheduleFogId = "";
       markDirty(); renderScheduleEditor();
     });
-    $("asmEditGroup")?.addEventListener("click", () => {
+    $("asmEditGroup")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(); if (!group) return;
-      const name = safePrompt("اسم المجموعة (مثال: المجموعة A)", group.name);
+      const name = await safePrompt("اسم المجموعة (مثال: المجموعة A)", group.name, { title: "تعديل المجموعة" });
       if (!name) return;
-      const hall = safePrompt("اسم المدرج أو القاعة", group.hall || "");
+      const hall = await safePrompt("اسم المدرج أو القاعة", group.hall || "", { title: "تعديل المجموعة", allowEmpty: true });
       if (hall === null) return;
       group.name = name; group.hall = hall; markDirty(); renderScheduleEditor();
     });
-    $("asmDeleteGroup")?.addEventListener("click", () => {
+    $("asmDeleteGroup")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(); if (!group) return;
-      if (!confirm("حذف «" + group.name + "» وجميع الأفواج التابعة لها؟")) return;
+      if (!(await askConfirm("حذف «" + group.name + "» وجميع الأفواج التابعة لها؟", "حذف المجموعة"))) return;
       const groups = scheduleGroups();
       const remaining = groups.filter(g => g.id !== group.id);
       scheduleYear().groups = remaining;
       scheduleGroupId = remaining[0]?.id || ""; scheduleFogId = remaining[0]?.fogs?.[0]?.id || "";
       markDirty(); renderScheduleEditor();
     });
-    $("asmAddFog")?.addEventListener("click", () => {
+    $("asmAddFog")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(); if (!group) { alert("أضف مجموعة أولًا."); return; }
-      const name = safePrompt("اسم الفوج (مثال: 01)");
+      const name = await safePrompt("اسم الفوج (مثال: 01)", "", { title: "إضافة فوج" });
       if (!name) return;
       const fog = { id: id(), name, scheduleImage: "" };
       group.fogs ||= []; group.fogs.push(fog); scheduleFogId = fog.id;
       markDirty(); renderScheduleEditor();
     });
-    $("asmEditFog")?.addEventListener("click", () => {
+    $("asmEditFog")?.addEventListener("click", async () => {
       const fog = currentScheduleFog(); if (!fog) return;
-      const name = safePrompt("اسم الفوج", fog.name);
+      const name = await safePrompt("اسم الفوج", fog.name, { title: "تعديل اسم الفوج" });
       if (!name) return; fog.name = name; markDirty(); renderScheduleEditor();
     });
-    $("asmDeleteFog")?.addEventListener("click", () => {
+    $("asmDeleteFog")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(), fog = currentScheduleFog(); if (!group || !fog) return;
-      if (!confirm("حذف الفوج «" + fog.name + "»؟")) return;
+      if (!(await askConfirm("حذف الفوج «" + fog.name + "»؟", "حذف الفوج"))) return;
       group.fogs = group.fogs.filter(f => f.id !== fog.id);
       scheduleFogId = group.fogs[0]?.id || ""; markDirty(); renderScheduleEditor();
     });
     $("asmScheduleFile")?.addEventListener("change", uploadScheduleImage);
-    $("asmRemoveSchedule")?.addEventListener("click", () => {
+    $("asmRemoveSchedule")?.addEventListener("click", async () => {
       const fog = currentScheduleFog(); if (!fog?.scheduleImage) return;
-      if (!confirm("حذف صورة توقيت هذا الفوج؟")) return;
+      if (!(await askConfirm("حذف صورة توقيت هذا الفوج؟", "حذف صورة التوقيت"))) return;
       fog.scheduleImage = ""; markDirty(); renderScheduleEditor();
       $("asmScheduleStatus").textContent = "حُذفت الصورة من الإعدادات؛ اضغط «حفظ التغييرات» لتطبيق الحذف.";
     });
@@ -447,7 +464,7 @@
       status.textContent = "تعذر الاتصال. تحقق من اتصال الإنترنت وحاول مجددًا.";
     }
   }
-  function addOrEdit(kind, editing) {
+  async function addOrEdit(kind, editing) {
     const names = {
       year: ["السنة الجامعية", editYear()?.name],
       semester: ["السداسي", editSemester()?.name],
@@ -460,7 +477,7 @@
     if (editing && (kind !== "year" || !editYear()) && !({
       semester: editSemester(), subject: editSubject(), axis: editAxis(), chapter: editChapter(), topic: editChapter()?.topics?.[topicIndex()] !== undefined
     })[kind]) return;
-    const value = safePrompt(label, editing ? current : "");
+    const value = await safePrompt(label, editing ? current : "", { title: (editing ? "تعديل " : "إضافة ") + label.replace(/^اسم /, "") });
     if (!value) return;
     if (kind === "year") {
       if (editing) editYear().name = value;
@@ -473,10 +490,10 @@
       const s = editSemester(); if (!s) return;
       if (editing) {
         const sub = editSubject(); sub.name = value;
-        const symbol = safePrompt("رمز مختصر للمقياس", sub.symbol || "م");
+        const symbol = await safePrompt("رمز مختصر للمقياس", sub.symbol || "م", { title: "رمز المقياس", maxLength: 8 });
         if (symbol) sub.symbol = symbol.slice(0, 8);
       } else {
-        const symbol = safePrompt("رمز مختصر للمقياس", value.slice(0, 1)) || value.slice(0, 1);
+        const symbol = (await safePrompt("رمز مختصر للمقياس", value.slice(0, 1), { title: "رمز المقياس", maxLength: 8 })) || value.slice(0, 1);
         const item = { id: id(), name: value, symbol: symbol.slice(0, 8), axes: [] };
         s.subjects.push(item); $("academicEditSubject").value = item.id;
       }
@@ -495,7 +512,7 @@
     }
     markDirty(); refreshAll();
   }
-  function remove(kind) {
+  async function remove(kind) {
     const map = {
       year: [config.years, editYear()],
       semester: [editYear()?.semesters, editSemester()],
@@ -508,7 +525,7 @@
     if (!list || item === undefined || item === null) return;
     if (kind === "year" && list.length <= 1) { alert("يجب الاحتفاظ بسنة واحدة على الأقل."); return; }
     const label = typeof item === "string" ? item : item.name;
-    if (!confirm("هل تريد حذف «" + label + "»؟")) return;
+    if (!(await askConfirm("هل تريد حذف «" + label + "»؟"))) return;
     const index = typeof item === "string" ? topicIndex() : list.indexOf(item);
     list.splice(index, 1);
     if (kind === "year") { activeYearId = config.years[0]?.id || ""; activeSemesterId = config.years[0]?.semesters[0]?.id || ""; }
