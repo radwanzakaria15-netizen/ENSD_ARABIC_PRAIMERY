@@ -751,12 +751,12 @@ export default {
       return new HTMLRewriter()
         .on('script[src="/academic-admin.js"]', {
           element(element) {
-            element.setAttribute("src", "/academic-admin.js?v=1751ed0");
+            element.setAttribute("src", "/academic-admin.js?v=20261116-ui");
           }
         })
         .on('script[src*="/schedule-view.js"]', {
           element(element) {
-            element.setAttribute("src", "/schedule-view.js?v=7e8e47b");
+            element.setAttribute("src", "/schedule-view.js?v=20261116-admin-only");
           }
         })
         .transform(response);
