@@ -6,17 +6,56 @@
   if (!chooser || !view || chooser.dataset.dynamicScheduleReady) return;
   chooser.dataset.dynamicScheduleReady = "1";
 
+  /* الواجهة الثابتة الأصلية (المجموعتان A وB والأفواج 01–12): نحتفظ بعقدها لإرجاعها عند فشل الخادم دون وجود نسخة محفوظة */
+  const originalNodes = Array.from(chooser.childNodes);
+
+  const CACHE_KEY = "ensd_schedule_years_v1";
+  const REFRESH_GAP = 5 * 60 * 1000; /* أقل مدة بين جلبين ناجحين من الخادم */
+  const RETRY_GAP = 2 * 60 * 1000;   /* أقل مدة بين محاولتين بعد فشل */
+  const MSG_NO_IMAGE = "لم تُرفع صورة توقيت لهذا الفوج بعد.";
+  const MSG_IMG_FAIL = "تعذر تحميل صورة الجدول الآن. حاول مجددًا لاحقًا.";
+
   let years = [];
   let activeYearId = "";
   let activeGroup = null;
+  let noteText = "";
   const selectedYear = () => years.find(year => year.id === activeYearId) || years[0] || null;
   const selectedGroups = () => selectedYear()?.groups || [];
+  const isSecondYear = (year) => /الثانية|second|year-2/i.test(year.name + " " + year.id);
+  const pickActiveYear = () => {
+    if (!years.some(year => year.id === activeYearId)) {
+      activeYearId = years.find(isSecondYear)?.id || years[0]?.id || "";
+    }
+  };
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+
+  /* ===== نسخة محفوظة على جهاز الطالب ===== */
+  function readCache() {
+    try {
+      const data = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (!data || !Array.isArray(data.years)) return null;
+      const list = data.years.filter(year => year && typeof year.id === "string" && typeof year.name === "string" && Array.isArray(year.groups));
+      return list.length ? list : null;
+    } catch { return null; }
+  }
+  function writeCache(list) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), years: list })); } catch {}
+  }
+
+  /* ===== ملاحظة صغيرة أعلى القائمة (لا تستبدل التصميم) ===== */
+  function applyNote() {
+    $("scheduleStatusNote")?.remove();
+    if (!noteText) return;
+    const note = el("p", "schedule-load-note", noteText);
+    note.id = "scheduleStatusNote";
+    note.style.cssText = "margin:0 0 14px;padding:10px 14px;border-radius:12px;background:rgba(217,168,92,.16);border:1px solid rgba(217,168,92,.35);color:inherit;font-size:13px;line-height:1.7";
+    chooser.prepend(note);
   }
 
   function renderGroups() {
@@ -37,7 +76,7 @@
     yearSelect.value = activeYearId;
     yearSelect.addEventListener("change", () => {
       activeYearId = yearSelect.value;
-      renderGroups();
+      render();
     });
     yearBar.append(yearLabel, yearSelect);
     chooser.append(yearBar);
@@ -74,6 +113,21 @@
     chooser.append(grid);
   }
 
+  function render() {
+    renderGroups();
+    applyNote();
+  }
+
+  /* عند فشل الخادم: نبقي آخر نسخة محفوظة إن وُجدت، وإلا نعيد الواجهة الثابتة الأصلية بدل رسالة الخطأ */
+  function showOffline(message) {
+    noteText = message;
+    if (years.length) { render(); return; }
+    years = [];
+    lastLoaded = "";
+    chooser.replaceChildren(...originalNodes);
+    applyNote();
+  }
+
   function legacyScheduleImage(group, fog) {
     try {
       if (typeof scheduleImages === "undefined" || !scheduleImages) return "";
@@ -86,6 +140,26 @@
     } catch { return ""; }
   }
 
+  function ensureEmpty() {
+    let empty = $("scheduleNoImage");
+    const frame = $("scheduleImage")?.closest(".schedule-image-frame");
+    if (!empty && frame) {
+      empty = el("p", "");
+      empty.id = "scheduleNoImage";
+      empty.style.cssText = "margin:12px;padding:16px;text-align:center;color:#71809b;background:#f7f8fc;border-radius:12px";
+      empty.textContent = MSG_NO_IMAGE;
+      frame.append(empty);
+    }
+    return empty;
+  }
+
+  function showImageMessage(text) {
+    const img = $("scheduleImage");
+    if (img) { img.hidden = true; img.style.display = "none"; }
+    const empty = ensureEmpty();
+    if (empty) { empty.textContent = text; empty.hidden = false; }
+  }
+
   function openFog(group, fog) {
     activeGroup = group;
     chooser.hidden = true;
@@ -96,29 +170,28 @@
     $("scheduleGroupName").textContent = fog.name;
     $("scheduleGroupHall").textContent = group.hall || group.name;
     const img = $("scheduleImage");
-    const frame = img?.closest(".schedule-image-frame");
-    let empty = $("scheduleNoImage");
-    if (!empty && frame) {
-      empty = el("p", "");
-      empty.id = "scheduleNoImage";
-      empty.style.cssText = "margin:12px;padding:16px;text-align:center;color:#71809b;background:#f7f8fc;border-radius:12px";
-      empty.textContent = "لم تُرفع صورة توقيت لهذا الفوج بعد.";
-      frame.append(empty);
-    }
+    const empty = ensureEmpty();
     const imageUrl = fog.scheduleImage || legacyScheduleImage(group, fog);
     if (imageUrl) {
+      img.style.display = "";
       img.src = imageUrl;
       img.alt = "جدول توقيت " + fog.name;
       img.hidden = false;
       if (empty) empty.hidden = true;
     } else {
       img.removeAttribute("src");
-      img.hidden = true;
-      if (empty) empty.hidden = false;
+      showImageMessage(MSG_NO_IMAGE);
     }
   }
 
   chooser.addEventListener("click", event => {
+    /* أزرار الواجهة الثابتة (تعمل بمعالجها الأصلي في الصفحة)؛ إن لم تتوفر صورة نوضح ذلك بدل إطار فارغ */
+    const staticButton = event.target.closest("[data-schedule-id]");
+    if (staticButton) {
+      const img = $("scheduleImage");
+      if (img && !img.getAttribute("src")) showImageMessage(MSG_IMG_FAIL);
+      return;
+    }
     const button = event.target.closest("[data-dynamic-group-id]");
     if (!button) return;
     const group = selectedGroups().find(item => item.id === button.dataset.dynamicGroupId);
@@ -132,7 +205,19 @@
     activeGroup = null;
   });
 
-  $("scheduleImage")?.addEventListener("click", event => {
+  const scheduleImg = $("scheduleImage");
+  scheduleImg?.addEventListener("error", () => {
+    if (!scheduleImg.getAttribute("src")) return;
+    showImageMessage(MSG_IMG_FAIL);
+  });
+  scheduleImg?.addEventListener("load", () => {
+    scheduleImg.style.display = "";
+    scheduleImg.hidden = false;
+    const empty = $("scheduleNoImage");
+    if (empty) empty.hidden = true;
+  });
+
+  scheduleImg?.addEventListener("click", event => {
     if (!event.currentTarget.src || event.currentTarget.hidden) return;
     let overlay = $("scheduleImageLightbox");
     if (!overlay) {
@@ -151,24 +236,31 @@
 
   let loading = false;
   let lastLoaded = "";
+  let nextAllowedAt = 0;
+  const isShown = () => !!(chooser.offsetParent || view.offsetParent);
 
-  async function load() {
+  /* force=true للتحميل الأول فقط. باقي المحفّزات (نقرات، عودة للصفحة) لا تطلب من الخادم إلا إذا كان قسم التوقيت ظاهراً ومرّت مدة كافية */
+  async function load(force = false) {
     if (loading) return;
+    if (!force && (Date.now() < nextAllowedAt || !isShown())) return;
     loading = true;
     try {
-      const response = await fetch("/api/academic?refresh=" + Date.now(), {
-        cache: "no-store",
-        headers: { "cache-control": "no-cache" }
-      });
+      const response = await fetch("/api/academic", { cache: "no-store" });
       if (!response.ok) {
-        chooser.replaceChildren(el("p", "", "تعذر تحميل الأفواج من الخادم (رمز " + response.status + "). حاول تحديث الصفحة لاحقًا."));
+        nextAllowedAt = Date.now() + RETRY_GAP;
+        showOffline(years.length
+          ? "تعذر تحديث التوقيت من الخادم (رمز " + response.status + ")، وتُعرض آخر نسخة محفوظة."
+          : "تعذر الاتصال بالخادم حاليًا (رمز " + response.status + ")، وقد لا تظهر صور الجداول. حاول لاحقًا.");
         return;
       }
       const result = await response.json();
+      nextAllowedAt = Date.now() + REFRESH_GAP;
       const savedYears = result.config?.years;
       if (!Array.isArray(savedYears)) {
         years = [];
-        renderGroups();
+        lastLoaded = "";
+        noteText = "";
+        render();
         if (result.config) chooser.append(el("p", "schedule-load-note", "لم يعثر الموقع على بيانات السنوات الجامعية."));
         return;
       }
@@ -185,24 +277,31 @@
         }));
       // عرض مؤقت متوافق مع البيانات القديمة قبل أن يحفظ المدير عملية الترحيل.
       if (!hasYearGroups && legacyGroups.length && years.length) {
-        const target = years.find(year => /الثانية|second|year-2/i.test(year.name + " " + year.id)) || years[0];
+        const target = years.find(isSecondYear) || years[0];
         target.groups = legacyGroups;
       }
-      if (!years.some(year => year.id === activeYearId)) activeYearId = years.find(year => /الثانية|second|year-2/i.test(year.name + " " + year.id))?.id || years[0]?.id || "";
+      pickActiveYear();
+      writeCache(years);
+      noteText = "";
       const signature = JSON.stringify(years);
       if (signature !== lastLoaded) {
         lastLoaded = signature;
-        renderGroups();
+        render();
+      } else {
+        applyNote();
       }
     } catch (error) {
       console.warn("تعذر تحميل توقيت الأفواج:", error);
-      chooser.replaceChildren(el("p", "", "حدث خطأ أثناء الاتصال بالخادم لتحميل الأفواج. تحقق من اتصال الإنترنت ثم أعد المحاولة."));
+      nextAllowedAt = Date.now() + RETRY_GAP;
+      showOffline(years.length
+        ? "تعذر الاتصال بالخادم، وتُعرض آخر نسخة محفوظة."
+        : "تعذر الاتصال بالخادم حاليًا، وقد لا تظهر صور الجداول. تحقق من الإنترنت ثم حاول لاحقًا.");
     } finally {
       loading = false;
     }
   }
 
-  // أعد جلب البيانات عند الرجوع إلى قسم التوقيت أو العودة إلى الصفحة.
+  // أعد المحاولة عند الرجوع إلى قسم التوقيت أو العودة إلى الصفحة (مع حدّ أدنى بين الطلبات).
   let refreshQueued = false;
   const scheduleRefresh = () => {
     if (refreshQueued) return;
@@ -214,26 +313,18 @@
     }, 180);
   };
   window.addEventListener("pageshow", scheduleRefresh);
-  // حدّث بيانات المجموعات عند انتقال المستخدم بين أقسام الموقع بالنقر على قائمة التنقل.
   document.addEventListener("click", scheduleRefresh, true);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") scheduleRefresh();
   });
-  if (document.body && typeof MutationObserver !== "undefined") {
-    const observer = new MutationObserver(records => {
-      const relevant = records.some(record =>
-        record.type === "attributes" &&
-        (record.attributeName === "hidden" || record.attributeName === "class" || record.attributeName === "style")
-      );
-      if (relevant && !view.hidden && chooser.hidden) return;
-      if (relevant && !chooser.hidden) scheduleRefresh();
-    });
-    observer.observe(document.body, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["hidden", "class", "style"]
-    });
-  }
 
-  load();
+  /* اعرض آخر نسخة محفوظة فورًا (دون انتظار الشبكة) ثم حدّثها من الخادم */
+  const cached = readCache();
+  if (cached) {
+    years = cached;
+    pickActiveYear();
+    lastLoaded = JSON.stringify(years);
+    render();
+  }
+  load(true);
 })();
