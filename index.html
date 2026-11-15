@@ -168,6 +168,19 @@
     <button type="button" class="schedule-back" id="scheduleBack">← العودة إلى اختيار الفوج</button>
     <div class="schedule-selected"><div><span>الجدول الدراسي</span><h4 id="scheduleGroupName">الفوج 01</h4><p id="scheduleGroupHall">المجموعة A · مدرج أ</p></div><div class="schedule-selected-tag">التوقيت الرسمي</div></div>
     <div class="schedule-image-frame"><img id="scheduleImage" loading="lazy" decoding="async" alt="جدول توقيت الفوج المختار"></div>
+    <section class="personal-schedule" id="personalSchedule" hidden>
+     <div class="personal-schedule-head"><div><h4>عدّاد الحصة القادمة</h4><p>أضف حصص فوجك مرة واحدة ليحسب الموقع موعد الحصة التالية على هذا الجهاز</p></div><span class="personal-schedule-local">جدول شخصي</span></div>
+     <div class="next-class-card" id="nextClassCard" aria-live="polite"><span>الحصة القادمة</span><strong id="nextClassTitle">أضف حصصك لتفعيل العدّاد</strong><small id="nextClassCountdown">—</small></div>
+     <form id="personalScheduleForm" class="personal-schedule-form">
+      <label>اليوم<select id="personalDay" required><option value="0">الأحد</option><option value="1">الإثنين</option><option value="2">الثلاثاء</option><option value="3">الأربعاء</option><option value="4">الخميس</option><option value="5">الجمعة</option><option value="6">السبت</option></select></label>
+      <label>المقياس<input id="personalSubject" maxlength="80" required placeholder="اسم المقياس"></label>
+      <label>من<input id="personalStart" type="time" required></label>
+      <label>إلى<input id="personalEnd" type="time" required></label>
+      <label>القاعة (اختياري)<input id="personalRoom" maxlength="40" placeholder="رقم القاعة"></label>
+      <button type="submit">إضافة الحصة</button>
+     </form>
+     <div id="personalScheduleList" class="personal-schedule-list"></div>
+    </section>
    </div>
   </div>
  </section>
