@@ -211,7 +211,9 @@ function fileBytesMatch(type,data){
  if(type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document")return b[0]===0x50&&b[1]===0x4B;
  return false;
 }
-const RESOURCE_KINDS_OK=["كتاب","درس ومحاضرة","ملخص","تمارين محلولة","سلسلة تمارين","امتحانات سابقة","مراجع أخرى"];
+/* التصنيفات (سنة/سداسي/نوع/مقياس) تُدار الآن من «إدارة المكتبة» في الواجهة، لذا يُتحقق من شكلها فقط لا من قائمة ثابتة. */
+const metaText=(v,max)=>{const t=String(v||"").replace(/[\u0000-\u001f\u007f<>]/g,"").trim();return t.length>=1&&t.length<=max?t:""};
+function validMeta(m){return !!(metaText(m.year,40)&&metaText(m.semester,40)&&metaText(m.subject,100)&&metaText(m.kind,40))}
 async function findResource(env,id){
  for(const status of ["approved","pending"]){
   const base="resources/"+status+"/"+id,meta=await readResourceMeta(env,base+".json");
@@ -241,8 +243,8 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
   }
   if(action==="owner_update"){
    let b={};try{b=await request.json()}catch{}
-   const next={title:String(b.title||"").trim().slice(0,120),year:String(b.year||""),semester:String(b.semester||""),subject:String(b.subject||"").trim().slice(0,100),kind:String(b.kind||"")};
-   if(!/^السنة [1-6]$/.test(next.year)||!/^السداسي [12]$/.test(next.semester)||!next.subject||!RESOURCE_KINDS_OK.includes(next.kind))return json({error:"invalid_resource_metadata"},400);
+   const next={title:String(b.title||"").trim().slice(0,120),year:metaText(b.year,40),semester:metaText(b.semester,40),subject:metaText(b.subject,100),kind:metaText(b.kind,40)};
+   if(!validMeta(next))return json({error:"invalid_resource_metadata"},400);
    const updated={...meta,...next,updatedAt:new Date().toISOString()};
    await saveResourceMeta(env,base,updated);
    return json({ok:true,action,id,resource:publicResource(updated)});
@@ -299,8 +301,8 @@ async function handleResourceFile(request,env){
  if(request.method==="POST"){
   const name=safeFileName(u.searchParams.get("name")),type=contentTypeForName(name);
   if(type==="application/octet-stream")return json({error:"unsupported_file_type"},400);
-  const meta={id:crypto.randomUUID(),title:String(u.searchParams.get("title")||"").trim().slice(0,120),year:String(u.searchParams.get("year")||""),semester:String(u.searchParams.get("semester")||""),subject:String(u.searchParams.get("subject")||"").trim().slice(0,100),kind:String(u.searchParams.get("kind")||""),fileName:name,contentType:type,createdAt:new Date().toISOString()};
-  if(!/^السنة [1-6]$/.test(meta.year)||!/^السداسي [12]$/.test(meta.semester)||!meta.subject||!["كتاب","درس ومحاضرة","ملخص","تمارين محلولة","سلسلة تمارين","امتحانات سابقة","مراجع أخرى"].includes(meta.kind))return json({error:"invalid_resource_metadata"},400);
+  const meta={id:crypto.randomUUID(),title:String(u.searchParams.get("title")||"").trim().slice(0,120),year:metaText(u.searchParams.get("year"),40),semester:metaText(u.searchParams.get("semester"),40),subject:metaText(u.searchParams.get("subject"),100),kind:metaText(u.searchParams.get("kind"),40),fileName:name,contentType:type,createdAt:new Date().toISOString()};
+  if(!validMeta(meta))return json({error:"invalid_resource_metadata"},400);
   const data=await request.arrayBuffer();if(!data.byteLength)return json({error:"empty_file"},400);if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
   const b=new Uint8Array(data),pdf=type==="application/pdf"&&new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-"),doc=type==="application/msword"&&b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]),docx=type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&b[0]===0x50&&b[1]===0x4B;
   if(!(pdf||doc||docx))return json({error:"file_type_mismatch"},400);
