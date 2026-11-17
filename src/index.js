@@ -437,17 +437,20 @@ async function uploaderInfo(request, env) {
   const role = badgeRoleByCode(request, env);
   if (role) {
     const cfg = mergeBadgeCfg(await readBadgeRaw(env));
-    return { role, name: cfg[role].name };
+    return { role, name: cfg[role].name, uid: "r-" + role };
   }
   const name = await uploaderName(request, env);
+  let uid = "", group = "";
   try {
     const ss = await readSession(request, env);
     if (ss.ok && ss.sid !== "admin") {
+      uid = (await mac(env, "u|" + ss.sid)).slice(0, 16); // معرّف مشتق لا يكشف رقم الطالب
+      try { const pf = (await kvOf(env).get("prof:" + ss.sid, { type: "json" })) || {}; if (pf.g === "A" || pf.g === "B") group = pf.g; } catch {}
       const hit = (await readSupervisors(env)).find((x) => x.sid === ss.sid);
-      if (hit) return { role: "supervisor", name: hit.name || name };
+      if (hit) return { role: "supervisor", name: hit.name || name, uid, group };
     }
   } catch {}
-  return { role: "", name: name === "المشرف" ? "الإدارة" : name };
+  return { role: "", name: name === "المشرف" ? "الإدارة" : name, uid, group };
 }
 async function handleBadges(request, env) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "";
@@ -527,7 +530,7 @@ async function handleResourceFile(request,env){
   const data=await request.arrayBuffer();if(!data.byteLength)return json({error:"empty_file"},400);if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
   const b=new Uint8Array(data),pdf=type==="application/pdf"&&new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-"),doc=type==="application/msword"&&b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]),docx=type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&b[0]===0x50&&b[1]===0x4B;
   if(!(pdf||doc||docx))return json({error:"file_type_mismatch"},400);
-  const up=await uploaderInfo(request,env);if(up.name)meta.uploader=up.name;if(up.role)meta.uploaderRole=up.role;
+  const up=await uploaderInfo(request,env);if(up.name)meta.uploader=up.name;if(up.role)meta.uploaderRole=up.role;if(up.uid)meta.uploaderId=up.uid;if(up.group)meta.uploaderGroup=up.group;
   const ownerRaw=String(u.searchParams.get("owner")||"").trim();if(/^[A-Za-z0-9_-]{16,128}$/.test(ownerRaw))meta.ownerHash=await sha256Hex(ownerRaw);
   const base="resources/pending/"+meta.id;meta.fileKey=base+"__"+name;
   const put=await signedB2Request(env,"PUT",meta.fileKey,data,{},type);if(!put.ok)return json({error:"storage_error"},502);
@@ -698,6 +701,8 @@ async function handleAcademicImage(request, env) {
 // ===== الإعلانات: تُحفظ في Backblaze B2 داخل ملف واحد announcements/list.json =====
 const ANN_KEY = "announcements/list.json";
 const annClip = (v, n) => String(v ?? "").trim().slice(0, n);
+// صورة خلفية البطاقة: data-URI صغيرة (JPG/PNG/WEBP) أو رابط http(s)/مسار داخلي
+const annImg = (v) => { const s = String(v || ""); return s.length <= 150000 && /^(data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+\/=]+|(?:https?:\/\/|\/)[^\s"'()<>\\]+)$/.test(s) ? s : ""; };
 async function readAnnouncements(env) {
   const r = await signedB2Request(env, "GET", ANN_KEY);
   if (r.status === 404) return [];
@@ -741,7 +746,10 @@ async function handleAnnouncements(request, env) {
         pinned: !!body.pinned,
         link: /^(https?:\/\/|\/)/.test(link) ? link : "",
         linkText: annClip(body.linkText, 40),
+        cm: body.cm === false ? false : true,
       };
+      const pl = annPoll(body.poll); if (pl) item.poll = pl;
+      const bi = annImg(body.bgImage); if (bi) item.bgImage = bi;
       list.unshift(item);
       await writeAnnouncements(env, list.slice(0, 200)); await edgeDrop("ann");
       return json({ ok: true, id: item.id });
@@ -750,12 +758,221 @@ async function handleAnnouncements(request, env) {
     const id = u.searchParams.get("id") || "";
     const idx = list.findIndex((a) => a.id === id);
     if (idx < 0) return json({ ok: false, error: "not_found" }, 404);
-    if (action === "delete") { list.splice(idx, 1); await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true }); }
+    if (action === "edit") {
+      // تعديل إعلان موجود: يحافظ على المعرّف والتصويت والتفاعلات والتعليقات
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const title = annClip(body.title, 120);
+      if (!title) return json({ ok: false, error: "title_required" }, 400);
+      const link = annClip(body.link, 500), it = list[idx];
+      it.title = title;
+      it.body = annClip(body.body, 1500);
+      it.category = annClip(body.category, 30) || "عام";
+      if (/^\d{4}-\d{2}-\d{2}$/.test(body.date || "")) it.date = body.date;
+      it.pinned = !!body.pinned;
+      it.link = /^(https?:\/\/|\/)/.test(link) ? link : "";
+      it.linkText = annClip(body.linkText, 40);
+      it.cm = body.cm === false ? false : true;
+      const bi = annImg(body.bgImage);
+      if (bi) it.bgImage = bi; else if ("bgImage" in body) delete it.bgImage;
+      await writeAnnouncements(env, list); await edgeDrop("ann");
+      return json({ ok: true, id });
+    }
+    if (action === "delete") { list.splice(idx, 1); await writeAnnouncements(env, list); await edgeDrop("ann"); await rxPurge(env, "ann:" + id); await pcPurge(env, id); return json({ ok: true }); }
+    if (action === "toggle_comments") { list[idx].cm = list[idx].cm === false; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, cm: list[idx].cm }); }
+    if (action === "toggle_poll") { if (!list[idx].poll) return json({ ok: false, error: "no_poll" }, 400); list[idx].poll.closed = !list[idx].poll.closed; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, closed: list[idx].poll.closed }); }
     if (action === "pin") { list[idx].pinned = !list[idx].pinned; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, pinned: list[idx].pinned }); }
     return json({ ok: false, error: "bad_action" }, 400);
   } catch (e) {
     return json({ ok: false, error: "storage_error", message: String(e.message || e).slice(0, 200) }, 502);
   }
+}
+
+/* ===== التفاعلات (قلب مشترك على الملفات والموارد والإعلانات) =====
+   rx:<hash> : مصفوفة معرّفات الطلبة المتفاعلين مع العنصر، وعدّها في metadata ليُقرأ الكل بعملية list واحدة
+   ru:<sid>  : معرّفات العناصر التي تفاعل معها الطالب (لتظهر حالته على كل أجهزته)
+   المعرّف: res:<مفتاح المورد> | lesson:<مفتاح ملف الدرس> | ann:<معرّف الإعلان> */
+const RX_ID = /^(?:res|lesson|ann):[^\u0000-\u001f\u007f]{1,260}$/u;
+const RX_MINE_MAX = 400, RX_ITEM_MAX = 3000, RX_SYNC_CHUNK = 15;
+async function rxKey(id) { return "rx:" + (await sha256Hex(id)).slice(0, 40); }
+async function rxMine(kv, sid) {
+  const v = await kv.get("ru:" + sid, { type: "json" }); // أي خطأ قراءة يُرمى: لا نكتب فوق قائمة موجودة
+  return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+}
+async function rxApply(kv, id, me, on) {
+  const k = await rxKey(id);
+  let list = [];
+  const v = await kv.get(k, { type: "json" }); // أي خطأ قراءة يُرمى: لا نكتب فوق قائمة موجودة
+  if (Array.isArray(v)) list = v;
+  const has = list.includes(me);
+  if (on === has) return { n: list.length, changed: false };
+  if (on) { if (list.length >= RX_ITEM_MAX) return { n: list.length, changed: false }; list.push(me); }
+  else list = list.filter((x) => x !== me);
+  if (list.length) await kv.put(k, JSON.stringify(list), { metadata: { n: list.length, id } });
+  else await kv.delete(k);
+  return { n: list.length, changed: true };
+}
+async function rxPurge(env, id) {
+  const kv = kvOf(env); if (!kv) return;
+  try { await kv.delete(await rxKey(id)); await edgeDrop("rx"); } catch {}
+}
+async function rxCounts(env) {
+  return edgeJson("rx", 20, async () => {
+    const kv = kvOf(env), counts = {};
+    let cursor;
+    for (let i = 0; i < 5; i++) {
+      const r = await kv.list({ prefix: "rx:", limit: 1000, ...(cursor ? { cursor } : {}) });
+      for (const k of r.keys) { const m = k.metadata; if (m && typeof m.id === "string" && m.n > 0) counts[m.id] = m.n; }
+      if (r.list_complete) break;
+      cursor = r.cursor;
+    }
+    return json({ ok: true, counts });
+  });
+}
+async function handleReactions(request, env) {
+  const u = new URL(request.url), action = u.searchParams.get("action") || "react";
+  const kv = kvOf(env);
+  if (!kv) return json({ error: "kv_not_configured" }, 503);
+  const ss = await readSession(request, env);
+  if (request.method === "GET") {
+    let counts = {};
+    try { const d = await (await rxCounts(env)).json(); if (d && d.counts) counts = d.counts; } catch {}
+    const out = { ok: true, counts };
+    if (u.searchParams.get("mine") !== "0") {
+      if (ss.ok && ss.sid !== "admin") { try { out.mine = await rxMine(kv, ss.sid); } catch {} } else out.mine = [];
+    }
+    return json(out);
+  }
+  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (!ss.ok) return json({ error: "login_required" }, 401);
+  if (ss.sid === "admin") return json({ error: "no_student_session" }, 403);
+  if (rlCount("rx:" + ss.sid, 60000) >= 40) return json({ error: "rate_limited" }, 429);
+  rlAdd("rx:" + ss.sid, 60000);
+  try {
+    let b = {}; try { b = await request.json(); } catch {}
+    const me = ss.sid;
+    if (action === "sync") {
+      const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String).filter((x) => RX_ID.test(x)))].slice(0, RX_SYNC_CHUNK);
+      if (!ids.length) return json({ error: "invalid_input" }, 400);
+      const counts = {}, mine = await rxMine(kv, me);
+      for (const id of ids) { counts[id] = (await rxApply(kv, id, me, true)).n; if (!mine.includes(id)) mine.push(id); }
+      if (mine.length > RX_MINE_MAX) mine.splice(0, mine.length - RX_MINE_MAX);
+      await kv.put("ru:" + me, JSON.stringify(mine));
+      await edgeDrop("rx");
+      return json({ ok: true, counts, mine });
+    }
+    if (action !== "react") return json({ error: "unknown_action" }, 400);
+    const id = String(b.id || ""), on = b.on === true;
+    if (!RX_ID.test(id)) return json({ error: "invalid_input" }, 400);
+    const r = await rxApply(kv, id, me, on);
+    const mine = await rxMine(kv, me), at = mine.indexOf(id);
+    if (on && at < 0) mine.push(id); else if (!on && at > -1) mine.splice(at, 1);
+    if (mine.length > RX_MINE_MAX) mine.splice(0, mine.length - RX_MINE_MAX);
+    if (r.changed || (on !== (at > -1))) await kv.put("ru:" + me, JSON.stringify(mine));
+    if (r.changed) await edgeDrop("rx");
+    return json({ ok: true, id, on, n: r.n });
+  } catch (e) {
+    return json({ error: "storage_error" }, 503);
+  }
+}
+
+/* ===== التصويت والتعليقات على الإعلانات =====
+   pv:<id> : { "<sid>": [فهارس الخيارات] }   cm:<id> : مصفوفة تعليقات {i,s,n,t,x} */
+function annPoll(p) {
+  if (!p || typeof p !== "object") return null;
+  const q = annClip(p.q, 200);
+  const o = (Array.isArray(p.o) ? p.o : []).map((x) => annClip(x, 100)).filter(Boolean).slice(0, 10);
+  if (!q || o.length < 2) return null;
+  return { q, o, multi: !!p.multi, closed: false };
+}
+const PV_MAX = 5000, CM_MAX = 300, CM_LEN = 500;
+const annKeyOk = (id) => /^[\w-]{1,40}$/.test(id);
+async function pcPurge(env, id) {
+  const kv = kvOf(env); if (!kv) return;
+  try { await kv.delete("pv:" + id); await kv.delete("cm:" + id); } catch {}
+}
+async function annFind(env, id) {
+  try { return (await readAnnouncements(env)).find((a) => a.id === id) || null; } catch { return null; }
+}
+async function handlePolls(request, env) {
+  const u = new URL(request.url), id = u.searchParams.get("id") || "";
+  const kv = kvOf(env);
+  if (!kv) return json({ error: "kv_not_configured" }, 503);
+  if (!annKeyOk(id)) return json({ error: "invalid_input" }, 400);
+  const ss = await readSession(request, env);
+  try {
+    const votes = (await kv.get("pv:" + id, { type: "json" })) || {};
+    const view = (o) => {
+      const counts = o.map(() => 0); let voters = 0;
+      for (const sid in votes) { const a = votes[sid]; if (!Array.isArray(a) || !a.length) continue; voters++; for (const i of a) if (counts[i] !== undefined) counts[i]++; }
+      return { counts, voters };
+    };
+    if (request.method === "GET") {
+      const n = Math.min(10, Number(u.searchParams.get("n")) || 10);
+      const mine = ss.ok && votes[ss.sid] ? votes[ss.sid] : [];
+      const c = Array(n).fill(0); let voters = 0;
+      for (const sid in votes) { const a = votes[sid]; if (!Array.isArray(a) || !a.length) continue; voters++; for (const i of a) if (i >= 0 && i < n) c[i]++; }
+      return json({ ok: true, counts: c, voters, mine });
+    }
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+    if (!ss.ok) return json({ error: "login_required" }, 401);
+    if (ss.sid === "admin") return json({ error: "no_student_session" }, 403);
+    if (rlCount("pv:" + ss.sid, 60000) >= 20) return json({ error: "rate_limited" }, 429);
+    rlAdd("pv:" + ss.sid, 60000);
+    const a = await annFind(env, id);
+    if (!a || !a.poll) return json({ error: "not_found" }, 404);
+    if (a.poll.closed) return json({ error: "poll_closed" }, 403);
+    let b = {}; try { b = await request.json(); } catch {}
+    let pick = (Array.isArray(b.choice) ? b.choice : []).map(Number).filter((i) => Number.isInteger(i) && i >= 0 && i < a.poll.o.length);
+    pick = [...new Set(pick)];
+    if (!a.poll.multi) pick = pick.slice(0, 1);
+    if (pick.length) { if (!votes[ss.sid] && Object.keys(votes).length >= PV_MAX) return json({ error: "full" }, 429); votes[ss.sid] = pick; }
+    else delete votes[ss.sid];
+    if (Object.keys(votes).length) await kv.put("pv:" + id, JSON.stringify(votes)); else await kv.delete("pv:" + id);
+    const r = view(a.poll.o);
+    return json({ ok: true, counts: r.counts, voters: r.voters, mine: pick });
+  } catch (e) { return json({ error: "storage_error" }, 503); }
+}
+async function handleComments(request, env) {
+  const u = new URL(request.url), id = u.searchParams.get("id") || "";
+  const kv = kvOf(env);
+  if (!kv) return json({ error: "kv_not_configured" }, 503);
+  if (!annKeyOk(id)) return json({ error: "invalid_input" }, 400);
+  const ss = await readSession(request, env);
+  const admin = isModerator(request, env) || (ss.ok && ss.sid === "admin");
+  try {
+    let list = (await kv.get("cm:" + id, { type: "json" })) || [];
+    if (!Array.isArray(list)) list = [];
+    if (request.method === "GET") {
+      return json({ ok: true, admin, me: ss.ok ? ss.sid : "", list: list.map((c) => ({ i: c.i, n: c.n, t: c.t, x: c.x, own: !!(ss.ok && c.s === ss.sid), adm: !!c.adm })) });
+    }
+    if (request.method === "DELETE") {
+      const cid = u.searchParams.get("cid") || "";
+      const c = list.find((x) => x.i === cid);
+      if (!c) return json({ ok: true });
+      if (!admin && !(ss.ok && c.s === ss.sid)) return json({ error: "forbidden" }, 403);
+      list = list.filter((x) => x.i !== cid);
+      if (list.length) await kv.put("cm:" + id, JSON.stringify(list)); else await kv.delete("cm:" + id);
+      return json({ ok: true });
+    }
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+    if (!ss.ok && !admin) return json({ error: "login_required" }, 401);
+    const who = ss.ok ? ss.sid : "admin";
+    if (rlCount("cm:" + who, 60000) >= 8) return json({ error: "rate_limited" }, 429);
+    rlAdd("cm:" + who, 60000);
+    const a = await annFind(env, id);
+    if (!a) return json({ error: "not_found" }, 404);
+    if (a.cm === false) return json({ error: "comments_closed" }, 403);
+    let b = {}; try { b = await request.json(); } catch {}
+    const x = String(b.text || "").trim().slice(0, CM_LEN);
+    if (!x) return json({ error: "invalid_input" }, 400);
+    const n = admin ? "المشرف" : ((await uploaderName(request, env)) || "طالب");
+    const c = { i: crypto.randomUUID().slice(0, 8), s: who, n, t: Date.now(), x, adm: admin };
+    list.push(c);
+    if (list.length > CM_MAX) list = list.slice(-CM_MAX);
+    await kv.put("cm:" + id, JSON.stringify(list));
+    return json({ ok: true, c: { i: c.i, n, t: c.t, x, own: true, adm: admin } });
+  } catch (e) { return json({ error: "storage_error" }, 503); }
 }
 
 async function handleApi(request, env) {
@@ -774,6 +991,9 @@ async function handleApi(request, env) {
   }
 
   if (url.pathname === "/api/badges") return handleBadges(request, env);
+  if (url.pathname === "/api/reactions") return handleReactions(request, env);
+  if (url.pathname === "/api/polls") return handlePolls(request, env);
+  if (url.pathname === "/api/comments") return handleComments(request, env);
 
   const requiredStorageSettings = ["B2_ENDPOINT", "B2_BUCKET", "B2_REGION", "B2_KEY_ID", "B2_APPLICATION_KEY"];
   const missingStorageSettings = requiredStorageSettings.filter((name) => !String(env[name] || "").trim());
@@ -1826,7 +2046,7 @@ export default {
     if (gate) return gate;
     if (url.pathname === "/api/publish") return handlePublish(request, env);
     if (url.pathname === "/api/history") return handleHistory(request, env);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges") {
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
       const response = await handleApi(request, env);
       if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
       return response;
