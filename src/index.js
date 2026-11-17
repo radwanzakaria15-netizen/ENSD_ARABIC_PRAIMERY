@@ -152,7 +152,8 @@ function fileInfo(key, size = 0) {
   if (!name) return null;
   const type = contentTypeForName(name);
   if (type === "application/octet-stream") return null;
-  return { lessonKey, key, name, type, size: Number(size) || 0, legacy: false };
+  const tsMatch = storedName.match(/^(\d{13})-/);
+  return { lessonKey, key, name, type, size: Number(size) || 0, legacy: false, ts: tsMatch ? Number(tsMatch[1]) : 0 };
 }
 
 function validStoredKey(key) {
@@ -182,7 +183,7 @@ async function listLessons(env) {
     token = xmlText(xml, "NextContinuationToken");
     if (!token) break;
   }
-  files.sort((a, b) => a.lessonKey.localeCompare(b.lessonKey) || a.name.localeCompare(b.name, "ar"));
+  files.sort((a, b) => a.lessonKey.localeCompare(b.lessonKey) || (a.ts || 0) - (b.ts || 0) || a.name.localeCompare(b.name, "ar"));
   return files;
 }
 
@@ -466,7 +467,7 @@ async function handleAcademic(request, env) {
         }
         ids.add(semester.id);
         for (const subject of semester.subjects) {
-          if (!subject || !validText(subject.id, 80) || !validText(subject.name, 120) || !validText(subject.symbol, 8) || ids.has(subject.id) || !Array.isArray(subject.axes) || subject.axes.length > 100 || (subject.programImage && (typeof subject.programImage !== "string" || subject.programImage.length > 220 || !subject.programImage.startsWith("/api/academic-image?key=academic%2Fimages%2F")))) {
+          if (!subject || !validText(subject.id, 80) || !validText(subject.name, 120) || !validText(subject.symbol, 8) || ids.has(subject.id) || (subject.lessonNames !== undefined && (typeof subject.lessonNames !== "object" || subject.lessonNames === null || ["A", "B"].some(g => subject.lessonNames[g] !== undefined && (typeof subject.lessonNames[g] !== "string" || subject.lessonNames[g].length > 120)))) || !Array.isArray(subject.axes) || subject.axes.length > 100 || (subject.programImage && (typeof subject.programImage !== "string" || subject.programImage.length > 220 || !subject.programImage.startsWith("/api/academic-image?key=academic%2Fimages%2F")))) {
             return json({ error: "invalid_subject_entry" }, 400);
           }
           ids.add(subject.id);
@@ -485,6 +486,9 @@ async function handleAcademic(request, env) {
           }
         }
       }
+    }
+    if (config.lessonsMode !== undefined && config.lessonsMode !== "hide" && config.lessonsMode !== "show") {
+      return json({ error: "invalid_lessons_mode" }, 400);
     }
     // المجموعات والأفواج اختيارية للتوافق مع الإعدادات الأكاديمية القديمة.
     if (config.groups !== undefined) {
@@ -719,7 +723,7 @@ async function handleApi(request, env) {
       const wordDocx = type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
         bytes[0] === 0x50 && bytes[1] === 0x4B;
       if (!(pdf || wordDoc || wordDocx)) return json({ error: "file_type_mismatch" }, 400);
-      const objectKey = key + "/" + crypto.randomUUID() + "__" + name;
+      const objectKey = key + "/" + String(Date.now()).padStart(13, "0") + "-" + crypto.randomUUID().slice(0, 8) + "__" + name;
       const response = await signedB2Request(env, "PUT", objectKey, data, {}, type);
       if (!response.ok) throw new Error("B2 upload failed (" + response.status + "): " + (await response.text()).slice(0, 180));
       await edgeDrop("lessons");
