@@ -393,6 +393,114 @@ async function handleResources(request,env){
  }
  return json({error:"method_not_allowed"},405);
 }
+/* ===== الشارات: المالك / الأستاذ / المشرف =====
+   المالك  = رمز الإدارة الأكاديمية (ADMIN_CODE_MOD)
+   الأستاذ = رمز المحاضرات (ADMIN_CODE_A أو ADMIN_CODE_B)
+   المشرف  = طالب يعيّنه المالك فقط (قائمة محفوظة في KV) */
+const BADGE_ROLES = ["owner", "teacher", "supervisor"];
+const BADGE_DEFAULTS = {
+  owner: { label: "المالك", color: "#b9802f", name: "" },
+  teacher: { label: "الأستاذ", color: "#3b6fb6", name: "" },
+  supervisor: { label: "مشرف", color: "#2f8f6b", name: "" }
+};
+const badgeText = (v, max) => String(v || "").replace(/[\u0000-\u001f\u007f<>"'`]/g, "").trim().slice(0, max);
+async function readBadgeRaw(env) {
+  try { const v = await kvOf(env).get("badges:cfg", { type: "json" }); return v && typeof v === "object" ? v : {}; } catch { return {}; }
+}
+function mergeBadgeCfg(saved) {
+  const out = {};
+  for (const r of BADGE_ROLES) {
+    const sv = saved[r] || {}, d = BADGE_DEFAULTS[r];
+    out[r] = {
+      label: badgeText(sv.label, 24) || d.label,
+      color: /^#[0-9a-fA-F]{6}$/.test(String(sv.color || "")) ? sv.color : d.color,
+      name: badgeText(sv.name, 60)
+    };
+  }
+  return out;
+}
+async function readSupervisors(env) {
+  try { const a = await kvOf(env).get("badges:sup", { type: "json" }); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+function badgeRoleByCode(request, env) {
+  const supplied = [request.headers.get("x-academic-admin-code"), request.headers.get("x-admin-code")]
+    .map((v) => String(v || "").trim()).filter(Boolean);
+  if (!supplied.length) return "";
+  const owner = String(env.ADMIN_CODE_MOD || "").trim();
+  if (owner && supplied.some((x) => safeEq(x, owner))) return "owner";
+  const teachers = [env.ADMIN_CODE_A, env.ADMIN_CODE_B].map((v) => String(v || "").trim()).filter(Boolean);
+  if (supplied.some((x) => teachers.some((c) => safeEq(x, c)))) return "teacher";
+  return "";
+}
+/* الدور والاسم الظاهر عند الرفع (يُحدَّدان في الخادم فقط) */
+async function uploaderInfo(request, env) {
+  const role = badgeRoleByCode(request, env);
+  if (role) {
+    const cfg = mergeBadgeCfg(await readBadgeRaw(env));
+    return { role, name: cfg[role].name };
+  }
+  const name = await uploaderName(request, env);
+  try {
+    const ss = await readSession(request, env);
+    if (ss.ok && ss.sid !== "admin") {
+      const hit = (await readSupervisors(env)).find((x) => x.sid === ss.sid);
+      if (hit) return { role: "supervisor", name: hit.name || name };
+    }
+  } catch {}
+  return { role: "", name: name === "المشرف" ? "الإدارة" : name };
+}
+async function handleBadges(request, env) {
+  const u = new URL(request.url), action = u.searchParams.get("action") || "";
+  const owner = isAcademicAdmin(request, env);
+  const kv = kvOf(env);
+  if (!kv) return json({ error: "kv_not_configured" }, 503);
+  if (request.method === "GET") {
+    const badges = mergeBadgeCfg(await readBadgeRaw(env));
+    if (u.searchParams.get("manage") === "1") {
+      if (!owner) return json({ error: "unauthorized" }, 401);
+      const supervisors = (await readSupervisors(env)).map((x) => ({ id: String(x.sid).slice(0, 12), name: x.name, at: x.at }));
+      return json({ ok: true, badges, supervisors });
+    }
+    return json({ ok: true, badges });
+  }
+  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (!owner) return json({ error: "unauthorized" }, 401);
+  let b = {}; try { b = await request.json(); } catch {}
+  if (action === "save_badge" || action === "reset_badge") {
+    const role = String(b.role || "");
+    if (!BADGE_ROLES.includes(role)) return json({ error: "invalid_role" }, 400);
+    const saved = await readBadgeRaw(env);
+    if (action === "reset_badge") delete saved[role];
+    else saved[role] = {
+      label: badgeText(b.label, 24) || BADGE_DEFAULTS[role].label,
+      color: /^#[0-9a-fA-F]{6}$/.test(String(b.color || "")) ? b.color : BADGE_DEFAULTS[role].color,
+      name: role === "supervisor" ? "" : badgeText(b.name, 60)
+    };
+    await kv.put("badges:cfg", JSON.stringify(saved));
+    return json({ ok: true, badges: mergeBadgeCfg(saved) });
+  }
+  const list = await readSupervisors(env);
+  if (action === "add_supervisor") {
+    const name = String(b.name || "").trim().slice(0, 80), regno = normRegno(b.regno);
+    if (!regno || normName(name).split(" ").filter(Boolean).length < 2) return json({ error: "invalid_input" }, 400);
+    const sid = (await mac(env, "r|" + regno)).slice(0, 24), rec = await lookupStudent(env, sid);
+    if (!rec || !nameMatches(name, rec[0])) return json({ error: "student_not_found" }, 404);
+    if (list.some((x) => x.sid === sid)) return json({ error: "already_supervisor" }, 409);
+    if (list.length >= 50) return json({ error: "too_many_supervisors" }, 400);
+    list.push({ sid, name: badgeText(rec[0], 60), at: Date.now() });
+    await kv.put("badges:sup", JSON.stringify(list));
+    return json({ ok: true, supervisors: list.map((x) => ({ id: x.sid.slice(0, 12), name: x.name, at: x.at })) });
+  }
+  if (action === "edit_supervisor" || action === "delete_supervisor") {
+    const id = String(b.id || ""), i = list.findIndex((x) => String(x.sid).slice(0, 12) === id);
+    if (i < 0) return json({ error: "not_found" }, 404);
+    if (action === "delete_supervisor") list.splice(i, 1);
+    else { const nm = badgeText(b.name, 60); if (!nm) return json({ error: "invalid_input" }, 400); list[i].name = nm; }
+    await kv.put("badges:sup", JSON.stringify(list));
+    return json({ ok: true, supervisors: list.map((x) => ({ id: x.sid.slice(0, 12), name: x.name, at: x.at })) });
+  }
+  return json({ error: "unknown_action" }, 400);
+}
 /* اسم صاحب الملف: يُؤخذ من جلسة الرافع (الاسم الذي اختاره في ملفه، وإلا اسمه في القائمة) */
 async function uploaderName(request,env){
  try{
@@ -419,7 +527,7 @@ async function handleResourceFile(request,env){
   const data=await request.arrayBuffer();if(!data.byteLength)return json({error:"empty_file"},400);if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
   const b=new Uint8Array(data),pdf=type==="application/pdf"&&new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-"),doc=type==="application/msword"&&b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]),docx=type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&b[0]===0x50&&b[1]===0x4B;
   if(!(pdf||doc||docx))return json({error:"file_type_mismatch"},400);
-  const up=await uploaderName(request,env);if(up)meta.uploader=up;
+  const up=await uploaderInfo(request,env);if(up.name)meta.uploader=up.name;if(up.role)meta.uploaderRole=up.role;
   const ownerRaw=String(u.searchParams.get("owner")||"").trim();if(/^[A-Za-z0-9_-]{16,128}$/.test(ownerRaw))meta.ownerHash=await sha256Hex(ownerRaw);
   const base="resources/pending/"+meta.id;meta.fileKey=base+"__"+name;
   const put=await signedB2Request(env,"PUT",meta.fileKey,data,{},type);if(!put.ok)return json({error:"storage_error"},502);
@@ -664,6 +772,8 @@ async function handleApi(request, env) {
       ? json({ ok: true, group })
       : json({ error: "unauthorized" }, 401);
   }
+
+  if (url.pathname === "/api/badges") return handleBadges(request, env);
 
   const requiredStorageSettings = ["B2_ENDPOINT", "B2_BUCKET", "B2_REGION", "B2_KEY_ID", "B2_APPLICATION_KEY"];
   const missingStorageSettings = requiredStorageSettings.filter((name) => !String(env[name] || "").trim());
@@ -1429,7 +1539,7 @@ export default {
     if (gate) return gate;
     if (url.pathname === "/api/publish") return handlePublish(request, env);
     if (url.pathname === "/api/history") return handleHistory(request, env);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements") {
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges") {
       const response = await handleApi(request, env);
       if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
       return response;
