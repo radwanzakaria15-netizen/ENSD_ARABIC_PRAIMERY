@@ -745,10 +745,139 @@ async function handleApi(request, env) {
   }
 }
 
+
+/* ===== النشر الثابت: يكتب الخادم نسخاً من القوائم العامة (data/*.json) في GitHub، فتقرؤها الصفحات كملفات ثابتة بلا حد يومي ===== */
+const PUBLISH_DELAY_MS = 10000; // انتظار قصير لتجميع الرفعات المتتالية في نشر واحد
+const PUBLISH_PATHS = new Set(["/api/file", "/api/lessons", "/api/announcements", "/api/resources", "/api/academic"]);
+const publishState = { waiting: false, running: false, again: false };
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function gitBlobSha(text) {
+  const body = encoder.encode(text), head = encoder.encode("blob " + body.length + "\0");
+  const all = new Uint8Array(head.length + body.length);
+  all.set(head); all.set(body, head.length);
+  return hex(await crypto.subtle.digest("SHA-1", all));
+}
+
+async function staticSnapshot(env) {
+  const jobs = {
+    "data/lessons.json": async () => JSON.stringify(await listLessons(env)),
+    "data/announcements.json": async () => JSON.stringify(await readAnnouncements(env)),
+    "data/resources.json": async () => JSON.stringify(await approvedIndex(env)),
+    "data/academic.json": async () => {
+      const r = await signedB2Request(env, "GET", "academic/config.json");
+      if (r.status === 404) return JSON.stringify({ config: null });
+      if (!r.ok) throw new Error("academic read failed (" + r.status + ")");
+      return JSON.stringify({ config: await r.json() });
+    },
+  };
+  const paths = Object.keys(jobs);
+  const settled = await Promise.allSettled(paths.map((path) => jobs[path]()));
+  const files = {}, errors = [];
+  settled.forEach((result, i) => {
+    if (result.status === "fulfilled") files[paths[i]] = result.value;
+    else errors.push(paths[i] + ": " + String(result.reason && result.reason.message || result.reason).slice(0, 120));
+  });
+  return { files, errors };
+}
+
+function github(env, path, init = {}) {
+  return fetch("https://api.github.com/repos/" + String(env.GITHUB_REPO).trim() + path, {
+    ...init,
+    headers: {
+      authorization: "Bearer " + String(env.GITHUB_TOKEN).trim(),
+      accept: "application/vnd.github+json",
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "ensd-static-publisher",
+      "content-type": "application/json",
+    },
+  });
+}
+
+async function publishStatic(env, attempt = 0) {
+  if (!String(env.GITHUB_TOKEN || "").trim() || !String(env.GITHUB_REPO || "").trim()) {
+    return { ok: false, error: "github_not_configured" };
+  }
+  const branch = String(env.GITHUB_BRANCH || "main").trim();
+  const { files, errors } = await staticSnapshot(env);
+  const paths = Object.keys(files);
+  if (!paths.length) return { ok: false, error: "nothing_to_publish", errors };
+
+  const ref = await github(env, "/git/ref/heads/" + encodeURI(branch));
+  if (!ref.ok) return { ok: false, error: "github_ref_" + ref.status };
+  const commitSha = (await ref.json()).object.sha;
+  const treeRes = await github(env, "/git/trees/" + commitSha + "?recursive=1");
+  if (!treeRes.ok) return { ok: false, error: "github_tree_" + treeRes.status };
+  const tree = await treeRes.json();
+  const existing = new Map((tree.tree || []).map((e) => [e.path, e.sha]));
+
+  const changed = [];
+  for (const path of paths) if (existing.get(path) !== await gitBlobSha(files[path])) changed.push(path);
+  if (!changed.length) return { ok: true, changed: [], errors };
+
+  const newTree = await github(env, "/git/trees", {
+    method: "POST",
+    body: JSON.stringify({
+      base_tree: tree.sha,
+      tree: changed.map((path) => ({ path, mode: "100644", type: "blob", content: files[path] })),
+    }),
+  });
+  if (!newTree.ok) return { ok: false, error: "github_newtree_" + newTree.status };
+  const commit = await github(env, "/git/commits", {
+    method: "POST",
+    body: JSON.stringify({ message: "تحديث البيانات العامة تلقائياً", tree: (await newTree.json()).sha, parents: [commitSha] }),
+  });
+  if (!commit.ok) return { ok: false, error: "github_commit_" + commit.status };
+  const move = await github(env, "/git/refs/heads/" + encodeURI(branch), {
+    method: "PATCH",
+    body: JSON.stringify({ sha: (await commit.json()).sha, force: false }),
+  });
+  if (!move.ok) {
+    // تعارض مع نشر متزامن: نعيد المحاولة مرة واحدة بالحالة الأحدث
+    if ((move.status === 422 || move.status === 409) && attempt < 2) return publishStatic(env, attempt + 1);
+    return { ok: false, error: "github_ref_update_" + move.status };
+  }
+  return { ok: true, changed, errors };
+}
+
+function schedulePublish(ctx, env) {
+  if (!ctx || !String(env.GITHUB_TOKEN || "").trim() || !String(env.GITHUB_REPO || "").trim()) return;
+  if (publishState.waiting) return;                       // ينتظر الآن وسيقرأ أحدث حالة
+  if (publishState.running) { publishState.again = true; return; }
+  publishState.waiting = true;
+  ctx.waitUntil((async () => {
+    try {
+      await sleep(PUBLISH_DELAY_MS);
+      publishState.waiting = false;
+      publishState.running = true;
+      do {
+        publishState.again = false;
+        try { const result = await publishStatic(env); if (!result.ok) console.error("publish failed:", JSON.stringify(result)); }
+        catch (error) { console.error("publish error:", error); }
+      } while (publishState.again);
+    } finally {
+      publishState.waiting = false;
+      publishState.running = false;
+    }
+  })());
+}
+
+async function handlePublish(request, env) {
+  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (!isModerator(request, env)) return json({ error: "unauthorized" }, 401);
+  try { return json(await publishStatic(env)); }
+  catch (error) { return json({ ok: false, error: "publish_error", message: String(error.message || error).slice(0, 200) }, 502); }
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements") return handleApi(request, env);
+    if (url.pathname === "/api/publish") return handlePublish(request, env);
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements") {
+      const response = await handleApi(request, env);
+      if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
+      return response;
+    }
     const response = await env.ASSETS.fetch(request);
     if ((url.pathname === "/" || url.pathname === "/index.html") &&
         (response.headers.get("content-type") || "").includes("text/html")) {
