@@ -111,6 +111,7 @@
     const yearNumber = ordinal(yr.name, ["الأولى","الثانية","الثالثة","الرابعة","الخامسة","السادسة"], 2);
     const semesterNumber = ordinal(sem.name, ["الأول","الثاني","الثالث","الرابع"], 1);
     window.__academicBridge?.setContext(yearNumber, semesterNumber);
+    window.__academicBridge?.setLessonsMode?.(config.lessonsMode === "show" ? "show" : "hide");
     const subjects = sem.subjects || [];
     window.__academicBridge?.setSubjects(subjects.map(subject => ({
       name: subject.name, symbol: subject.symbol || "م", programImage: subject.programImage || "",
@@ -120,7 +121,11 @@
         chapters: (axis.chapters || []).map(chapter => [chapter.name, (chapter.topics || []).slice()])
       }))
     })));
-    window.__academicBridge?.setLessonSubjects(subjects.map(subject => subject.name));
+    window.__academicBridge?.setLessonSubjects(
+      subjects.map(subject => subject.name),
+      subjects.map(subject => (subject.lessonNames && subject.lessonNames.A) || subject.name),
+      subjects.map(subject => (subject.lessonNames && subject.lessonNames.B) || subject.name)
+    );
     const code = $("academicSemesterSelect");
     if (code) option(code, yr.semesters, activeSemesterId, "لا توجد سداسيات");
   }
@@ -130,6 +135,95 @@
     if (!yr) return;
     if (!yr.semesters.some(item => item.id === activeSemesterId)) activeSemesterId = yr.semesters[0]?.id || "";
     option($("academicSemesterSelect"), yr.semesters, activeSemesterId);
+  }
+  /* ===== نطاق تعديل اسم المقياس: المواد والمقاييس / الدروس / كلاهما، والمجموعة A / B / كلتاهما ===== */
+  const scope = () => ({ section: $("academicScopeSection")?.value || "both", group: $("academicScopeGroup")?.value || "AB" });
+  const lessonNameOf = (subject, g) => (subject?.lessonNames && subject.lessonNames[g]) || subject?.name || "";
+  function nameForScope(subject) {
+    if (!subject) return "";
+    const sc = scope();
+    if (sc.section === "lessons") return lessonNameOf(subject, sc.group === "B" ? "B" : "A");
+    return subject.name;
+  }
+  function applySubjectRename(subject, value) {
+    const sc = scope();
+    const next = { subjects: subject.name, A: lessonNameOf(subject, "A"), B: lessonNameOf(subject, "B") };
+    if (sc.section !== "lessons") next.subjects = value;
+    if (sc.section !== "subjects") {
+      if (sc.group !== "B") next.A = value;
+      if (sc.group !== "A") next.B = value;
+    }
+    subject.name = next.subjects;
+    const names = {};
+    if (next.A !== next.subjects) names.A = next.A;
+    if (next.B !== next.subjects) names.B = next.B;
+    if (Object.keys(names).length) subject.lessonNames = names; else delete subject.lessonNames;
+  }
+  function renderScopeNames() {
+    const box = $("academicScopeNames"); if (!box) return;
+    const group = $("academicScopeGroup");
+    if (group) group.disabled = scope().section === "subjects";
+    const subject = editSubject();
+    if (!subject) { box.textContent = "اختر مقياسًا لعرض أسمائه."; return; }
+    box.innerHTML = "";
+    const line = (label, value) => {
+      const row = document.createElement("div");
+      const b = document.createElement("b"); b.textContent = label + ": ";
+      row.append(b, document.createTextNode(value));
+      box.append(row);
+    };
+    line("في المواد والمقاييس", subject.name);
+    line("في الدروس · المجموعة A", lessonNameOf(subject, "A"));
+    line("في الدروس · المجموعة B", lessonNameOf(subject, "B"));
+  }
+  function ensureScopeBox() {
+    let host = $("academicScopeBox");
+    if (host) return host;
+    host = document.createElement("section");
+    host.id = "academicScopeBox";
+    host.className = "academic-scope-box";
+    host.innerHTML = '<b>نطاق تعديل اسم المقياس</b><small>اختر أين يُطبَّق تغيير الاسم عند الضغط على «تعديل» في قسم المقاييس: في «المواد والمقاييس» أو في «الدروس» أو في كليهما، وفي أي مجموعة من مجموعات الدروس. التغيير في نطاق لا يمسّ النطاق الآخر.</small>'
+      + '<div class="academic-scope-grid"><label>القسم<select id="academicScopeSection"><option value="both">المواد والمقاييس + الدروس</option><option value="subjects">المواد والمقاييس فقط</option><option value="lessons">الدروس فقط</option></select></label>'
+      + '<label>المجموعة (في الدروس)<select id="academicScopeGroup"><option value="AB">المجموعتان A و B</option><option value="A">المجموعة A فقط</option><option value="B">المجموعة B فقط</option></select></label></div>'
+      + '<div class="academic-scope-names" id="academicScopeNames" role="status"></div>';
+    const anchor = document.querySelector("#academicAdmin .academic-actions");
+    if (anchor) anchor.before(host); else $("academicEditor")?.append(host);
+    $("academicScopeSection")?.addEventListener("change", renderScopeNames);
+    $("academicScopeGroup")?.addEventListener("change", renderScopeNames);
+    return host;
+  }
+  /* ===== وضع عرض الوحدات والمحاور للطلبة: إخفاء حتى الرفع / إظهار دائم ===== */
+  function renderModeBox() {
+    const host = $("academicModeBox"); if (!host) return;
+    const mode = config?.lessonsMode === "show" ? "show" : "hide";
+    host.querySelectorAll("[data-mode]").forEach(btn => {
+      const on = btn.dataset.mode === mode;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", String(on));
+    });
+    const note = $("academicModeNote");
+    if (note) note.textContent = mode === "hide"
+      ? "الوضع الحالي: لا يرى الطلبة في الدروس إلا الوحدات والمحاور التي رُفع فيها ملف."
+      : "الوضع الحالي: يرى الطلبة جميع الوحدات والمحاور في الدروس، حتى التي لم تُرفع ملفاتها بعد.";
+  }
+  function ensureModeBox() {
+    let host = $("academicModeBox");
+    if (host) return host;
+    host = document.createElement("section");
+    host.id = "academicModeBox";
+    host.className = "academic-scope-box academic-mode-box";
+    host.innerHTML = '<b>وضع عرض الوحدات والمحاور في الدروس</b><div class="academic-mode-switch" role="group" aria-label="وضع العرض">'
+      + '<button type="button" data-mode="hide">إخفاؤها حتى يتم رفع الملفات</button>'
+      + '<button type="button" data-mode="show">إظهار جميع الوحدات والمحاور</button></div>'
+      + '<div class="academic-scope-names" id="academicModeNote" role="status"></div>';
+    const anchor = $("academicScopeBox") || document.querySelector("#academicAdmin .academic-actions");
+    if (anchor) anchor.before(host); else $("academicEditor")?.append(host);
+    host.querySelectorAll("[data-mode]").forEach(btn => btn.addEventListener("click", () => {
+      if (config.lessonsMode === btn.dataset.mode || (!config.lessonsMode && btn.dataset.mode === "hide")) { renderModeBox(); return; }
+      config.lessonsMode = btn.dataset.mode;
+      markDirty(); applyCurrent(); renderModeBox();
+    }));
+    return host;
   }
   function ensureProgramImageEditor() {
     let host = $("academicProgramImageEditor");
@@ -247,6 +341,10 @@
     const topics = (ch?.topics || []).map((name, index) => ({ id: String(index), name }));
     option($("academicEditTopic"), topics, String(topicIndex()), "لا توجد موضوعات");
     renderProgramImageEditor();
+    ensureScopeBox();
+    renderScopeNames();
+    ensureModeBox();
+    renderModeBox();
     if ($("academicScheduleManager")) renderScheduleEditor();
   }
   function refreshAll() {
@@ -495,7 +593,7 @@
     const names = {
       year: ["السنة الجامعية", editYear()?.name],
       semester: ["السداسي", editSemester()?.name],
-      subject: ["اسم المقياس", editSubject()?.name],
+      subject: ["اسم المقياس", nameForScope(editSubject())],
       axis: ["اسم المحور", editAxis()?.name],
       chapter: ["اسم الدرس أو الوحدة", editChapter()?.name],
       topic: ["اسم الموضوع", editChapter()?.topics?.[topicIndex()]]
@@ -516,9 +614,12 @@
     } else if (kind === "subject") {
       const s = editSemester(); if (!s) return;
       if (editing) {
-        const sub = editSubject(); sub.name = value;
-        const symbol = await safePrompt("رمز مختصر للمقياس", sub.symbol || "م", { title: "رمز المقياس", maxLength: 8 });
-        if (symbol) sub.symbol = symbol.slice(0, 8);
+        const sub = editSubject();
+        applySubjectRename(sub, value);
+        if (scope().section !== "lessons") {
+          const symbol = await safePrompt("رمز مختصر للمقياس", sub.symbol || "م", { title: "رمز المقياس", maxLength: 8 });
+          if (symbol) sub.symbol = symbol.slice(0, 8);
+        }
       } else {
         const symbol = (await safePrompt("رمز مختصر للمقياس", value.slice(0, 1), { title: "رمز المقياس", maxLength: 8 })) || value.slice(0, 1);
         const item = { id: id(), name: value, symbol: symbol.slice(0, 8), coefficient: "", axes: [] };
