@@ -1,6 +1,33 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
+<script id="static-feed-20261117">
+/* قراءة القوائم العامة من ملفات ثابتة (/data/*.json) بدل الـ API: بلا حد يومي. المشرفون ومن عدّل للتو يقرؤون من الـ API ليروا أحدث نسخة، وأي فشل يرجع للـ API. */
+(function(){
+ var MAP={"/api/lessons":"/data/lessons.json","/api/announcements":"/data/announcements.json","/api/resources":"/data/resources.json","/api/academic":"/data/academic.json"};
+ var MUT=/^\/api\/(file|lessons|announcements|resources|academic)$/;
+ var orig=window.fetch.bind(window);
+ function adminSession(){try{var st=[localStorage,sessionStorage];for(var a=0;a<st.length;a++)for(var i=0;i<st[a].length;i++){var k=st[a].key(i);if(/admin|academic_code/i.test(k)&&st[a].getItem(k))return true}}catch(e){}return false}
+ function fresh(){try{return Date.now()<Number(localStorage.getItem("ensd_fresh_until")||0)}catch(e){return false}}
+ function markFresh(){try{localStorage.setItem("ensd_fresh_until",String(Date.now()+240000))}catch(e){}}
+ window.fetch=async function(input,init){
+  try{
+   var u=new URL(typeof input==="string"?input:((input&&input.url)||String(input)),location.href);
+   if(u.origin===location.origin){
+    var m=String((init&&init.method)||(input&&input.method)||"GET").toUpperCase();
+    if(m!=="GET"&&m!=="HEAD"){if(MUT.test(u.pathname))markFresh()}
+    else if(m==="GET"&&MAP[u.pathname]&&!adminSession()&&!fresh()){
+     var extra=false;u.searchParams.forEach(function(v,k){if(k!=="_")extra=true});
+     if(!extra){
+      try{var r=await orig(MAP[u.pathname],{cache:"no-cache"});if(r.ok){JSON.parse(await r.clone().text());return r}}catch(e){}
+     }
+    }
+   }
+  }catch(e){}
+  return orig(input,init);
+ };
+})();
+</script>
 <script id="lite-motion-detect-20261114">
 /* Auto-disable the decorative entrance/hover animations on weak devices.
    Weak = <=2GB RAM, <=4 CPU cores, or Data Saver on.  Override with ?motion=lite or ?motion=full */
@@ -1863,7 +1890,7 @@ function resourceMarkNotificationsSeen(){RESOURCE_SEEN_IDS=new Set(RESOURCE_KNOW
 function resourceTrackApprovedResources(items){const ids=items.map(item=>String(item.id)).filter(Boolean);if(!RESOURCE_TRACKING_READY){if(!RESOURCE_KNOWN_IDS.size){RESOURCE_KNOWN_IDS=new Set(ids);RESOURCE_SEEN_IDS=new Set(ids);}else ids.forEach(id=>RESOURCE_KNOWN_IDS.add(id));RESOURCE_TRACKING_READY=true;}else ids.forEach(id=>RESOURCE_KNOWN_IDS.add(id));resourceSaveNotificationState();resourcePaintNotification();}
 function resourceCheckForNewApproved(){fetch("/api/resources",{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error("resources unavailable");return r.json();}).then(items=>{if(Array.isArray(items))resourceTrackApprovedResources(items);}).catch(()=>{});}
 let _resSlow=0;
-setInterval(()=>{if(document.hidden)return;let fast=false;try{fast=resourceMyPending().some(m=>Date.now()-m.ts<7200000)}catch(e){}_resSlow+=30;if(fast||_resSlow>=600){_resSlow=0;resourceCheckForNewApproved()}},30000);
+setInterval(()=>{if(document.hidden)return;let fast=false;try{fast=resourceMyPending().some(m=>Date.now()-m.ts<7200000)}catch(e){}_resSlow+=30;if(fast||_resSlow>=60){_resSlow=0;resourceCheckForNewApproved()}},30000);
 function renderResourceItemsBase(){
  const list=document.getElementById("resourceList"),items=RESOURCE_ITEMS.filter(resourceMatches);document.getElementById("resourceCount").textContent=RESOURCE_ITEMS.length;
  if(!items.length){list.innerHTML='<div class="resource-empty">'+(RESOURCE_ITEMS.length?"لا توجد موارد تطابق التصنيفات المختارة.":"لم تُنشر موارد بعد. يمكنك أن تكون أول من يشارك مورداً.")+'</div>';return;}
@@ -3550,10 +3577,11 @@ date:a.date||"",pinned:!!a.pinned,
   linkText:String(a.linkText||"عرض التفاصيل")};
 }
 function inkFor(hex){const n=parseInt(hex.slice(1),16),r=n>>16&255,g=n>>8&255,b=n&255;return (.299*r+.587*g+.114*b)>150?"#14202a":"#ffffff"}
-async function loadAnnouncements(){
+async function loadAnnouncements(fromPoll){
  let list=null;
  try{const r=await fetch("/api/announcements",{cache:"no-store"});if(r.ok){const j=await r.json();if(Array.isArray(j)&&j.length)list=j}}catch(e){}
  if(!list)list=Array.isArray(window.ENSD_ANNOUNCEMENTS)?window.ENSD_ANNOUNCEMENTS:[];
+ {const sig=JSON.stringify(list);if(fromPoll&&sig===window.__annSig)return;window.__annSig=sig;}
  window.__ENSD_ANN_RAW=list;try{window.LIBCFG&&window.LIBCFG.ingest(list)}catch(e){}
  ANN=list.filter(a=>a&&a.title&&a.title!=="__ensd_library_config__").map(normAnn).sort(sortAnn);
  renderAnnouncements();renderHomeAnnouncements();renderAnnManage();paintBell();
@@ -3949,7 +3977,9 @@ window.addEventListener("online",()=>{toast("عاد الاتصال بالإنت�
 
 /* ---------- boot ---------- */
 loadAnnouncements();pollLessons();
-setInterval(()=>{if(!document.hidden)pollLessons()},300000);setInterval(loadAnnouncements,300000);
+let _lastPoll=Date.now();const _poll=()=>{_lastPoll=Date.now();pollLessons();loadAnnouncements(true)};
+setInterval(()=>{if(!document.hidden)_poll()},30000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&Date.now()-_lastPoll>20000)_poll()});
 })();
 
 </script>
