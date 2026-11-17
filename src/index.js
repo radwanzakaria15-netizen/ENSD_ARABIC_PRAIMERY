@@ -1259,6 +1259,10 @@ async function handleAuth(request, env, url) {
   if (!kvOf(env) || !secretOf(env)) return jsonC({ error: "auth_not_configured" }, 503);
   const a = url.pathname.slice("/api/auth/".length);
   if (a === "admin") return authAdmin(request, env, url);
+  if (a === "me" && request.method === "GET") {
+    const ss = await readSession(request, env);
+    return jsonC({ in: !!ss.ok, admin: !!ss.ok && ss.sid === "admin" });
+  }
   if (a === "status" && request.method === "GET") return authStatus(request, env);
   if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
   if (a === "login") return authLogin(request, env, "login");
@@ -1279,6 +1283,7 @@ async function authGate(request, env, url) {
   if (String(env.AUTH_DISABLED || "") === "1") return null;
   const p = url.pathname;
   if (p === "/auth-admin") return htmlPage(ADMIN_HTML);
+  if (p === "/login") return htmlPage(LOGIN_HTML);
   if (p.startsWith("/api/auth/")) return handleAuth(request, env, url);
   if (!kvOf(env) || !secretOf(env)) {
     return new Response("الحماية غير مهيّأة: أضف السر AUTH_SECRET واربط KV.", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -1286,11 +1291,10 @@ async function authGate(request, env, url) {
   const s = await readSession(request, env);
   if (s.ok) return null;
   if (p.startsWith("/api/") && anyAdmin(request, env)) return null;
-  if (p.startsWith("/api/") || p.startsWith("/data/")) return json({ error: "login_required", banned: !!s.banned }, 401);
-  if ((request.method === "GET" || request.method === "HEAD") && String(request.headers.get("accept") || "").includes("text/html")) {
-    return htmlPage(LOGIN_HTML, 401);
-  }
-  return new Response("Unauthorized", { status: 401, headers: { "cache-control": "no-store" } });
+  // الواجهة (HTML/JS/CSS) عامة لتظهر الصفحة الرئيسية، أما البيانات والملفات فمحمية بتسجيل الدخول
+  const isData = p.startsWith("/api/") || p.startsWith("/data/") || (/\.json$/i.test(p) && p !== "/manifest.json");
+  if (isData) return json({ error: "login_required", banned: !!s.banned }, 401);
+  return null;
 }
 
 const PAGE_STYLE = `
@@ -1325,7 +1329,7 @@ var $=function(i){return document.getElementById(i)},busy=false,poll=null;
 function msg(t,bad){var m=$('m');m.textContent=t;m.className=bad?'bad':'ok'}
 function post(p,b){return fetch(p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return{}})})}
 function handle(j){
- if(j.status==='ok'){location.reload();return}
+ if(j.status==='ok'){location.href=location.pathname==='/login'?'/':location.href;return}
  if(j.status==='pending'){wait();return}
  if(j.status==='banned'){msg('تم إيقاف هذا الحساب. تواصل مع الإدارة.',1);return}
  if(j.status==='nomatch'){msg('البيانات غير مطابقة للقائمة. تحقق من الاسم ورقم التسجيل.',1);$('req').hidden=false;return}
@@ -1338,7 +1342,7 @@ function go(path){
  post(path,{name:$('n').value.trim(),regno:$('r').value.trim()}).then(handle).catch(function(){msg('تعذّر الاتصال. أعد المحاولة.',1)}).then(function(){busy=false;$('go').disabled=false})
 }
 function check(){fetch('/api/auth/status').then(function(r){return r.json()}).then(function(j){
- if(j.status==='ok')location.reload();
+ if(j.status==='ok')location.href=location.pathname==='/login'?'/':location.href;
  else if(j.status==='rejected'){clearInterval(poll);poll=null;$('w').hidden=true;$('f').hidden=false;msg('تم رفض الطلب. تواصل مع الإدارة.',1)}
  else if(j.status==='none'&&poll){clearInterval(poll);poll=null;$('w').hidden=true;$('f').hidden=false;msg('')}
  else if(j.status==='pending'&&!poll)wait()}).catch(function(){})}
