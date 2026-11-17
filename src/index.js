@@ -913,20 +913,496 @@ async function handleHistory(request, env) {
   return json({ ok: false, error: "method_not_allowed" }, 405);
 }
 
+/* ===================================================================
+   بوابة دخول الطلبة (تحقق بالاسم + رقم التسجيل، ربط بجهاز، موافقة يدوية)
+   الإعداد المطلوب في Cloudflare:
+   - KV binding باسم STUDENTS_KV
+   - Secret باسم SESSION_SECRET (نص عشوائي طويل، لا يُغيَّر بعد رفع القائمة)
+   - المفتاح "roster" في STUDENTS_KV يُرفع بواسطة seed-roster.mjs
+   =================================================================== */
+const SESSION_DAYS = 180;
+const BANS_TTL_MS = 30_000;
+const authMem = { bans: null, bansAt: 0, hits: new Map() };
+
+const b64u = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64uText = (text) => b64u(encoder.encode(text));
+const unb64uText = (s) => {
+  try { return new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))); }
+  catch { return ""; }
+};
+
+function authSecret(env) { return String(env.SESSION_SECRET || ""); }
+function authReady(env) { return Boolean(env.STUDENTS_KV) && authSecret(env).length >= 16; }
+
+async function macHex(env, value, len = 32) {
+  return hex(await hmac(encoder.encode(authSecret(env)), value)).slice(0, len);
+}
+
+function normDigits(value) {
+  return String(value || "")
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x660))
+    .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x6f0))
+    .replace(/\D/g, "");
+}
+
+function normName(value) {
+  return String(value || "")
+    .replace(/[\u064b-\u065f\u0670\u0640]/g, "")
+    .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و").replace(/ئ/g, "ي")
+    .replace(/[^\u0621-\u064a a-zA-Z]/g, " ")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function editDistance(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+function namesMatch(typed, stored) {
+  const a = normName(typed), b = normName(stored);
+  if (!a || !b) return false;
+  if (a.replace(/ /g, "") === b.replace(/ /g, "")) return true;
+  const at = a.split(" "), bt = b.split(" "), bJoined = bt.join("");
+  let hit = 0;
+  for (const t of at) {
+    const ok = bt.some((s) => editDistance(t, s, t.length >= 5 ? 1 : 0) <= (t.length >= 5 ? 1 : 0)) ||
+      (t.length >= 4 && bJoined.includes(t));
+    if (ok) hit++;
+  }
+  return hit >= 1 && hit / at.length >= 0.5;
+}
+
+function clientIp(request) { return request.headers.get("cf-connecting-ip") || "0"; }
+
+function rateLimited(request, limit = 8, windowMs = 600_000) {
+  const ip = clientIp(request), now = Date.now();
+  const rec = authMem.hits.get(ip);
+  if (!rec || now - rec.t > windowMs) { authMem.hits.set(ip, { t: now, n: 0 }); return false; }
+  return rec.n >= limit;
+}
+function rateHit(request) {
+  const rec = authMem.hits.get(clientIp(request));
+  if (rec) rec.n++;
+  if (authMem.hits.size > 5000) authMem.hits.clear();
+}
+
+function parseCookies(request) {
+  const out = {};
+  for (const part of String(request.headers.get("cookie") || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return out;
+}
+
+async function signSession(env, uid, did, role = "s") {
+  const payload = b64uText([uid, did, role, Date.now() + SESSION_DAYS * 86400_000].join("|"));
+  return payload + "." + (await macHex(env, "sess:" + payload, 40));
+}
+
+async function readBans(env) {
+  const now = Date.now();
+  if (authMem.bans && now - authMem.bansAt < BANS_TTL_MS) return authMem.bans;
+  const list = (await env.STUDENTS_KV.get("bans", "json")) || [];
+  authMem.bans = new Set(list);
+  authMem.bansAt = now;
+  return authMem.bans;
+}
+
+async function readSession(request, env) {
+  const raw = parseCookies(request).sid;
+  if (!raw || !authReady(env)) return null;
+  const [payload, sig] = raw.split(".");
+  if (!payload || !sig || sig !== (await macHex(env, "sess:" + payload, 40))) return null;
+  const [uid, did, role, exp] = unb64uText(payload).split("|");
+  if (!uid || Number(exp) < Date.now()) return null;
+  const bans = await readBans(env);
+  if (role !== "a" && (bans.has(uid) || bans.has(did))) return null;
+  return { uid, did, role };
+}
+
+function sessionCookie(request, token) {
+  const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
+  return "sid=" + token + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + SESSION_DAYS * 86400 + secure;
+}
+
+function isAnyAdmin(request, env) {
+  const supplied = String(request.headers.get("x-admin-code") || "").trim();
+  if (!supplied) return false;
+  return [env.ADMIN_CODE_A, env.ADMIN_CODE_B, env.ADMIN_CODE_MOD]
+    .some((c) => String(c || "").trim() && String(c).trim() === supplied);
+}
+
+async function loadRoster(env) {
+  return (await env.STUDENTS_KV.get("roster", "json")) || {};
+}
+
+function validDid(value) { return /^[a-f0-9]{32}$/.test(String(value || "")); }
+
+async function authLogin(request, env) {
+  if (!authReady(env)) return json({ ok: false, error: "auth_not_configured" }, 503);
+  if (request.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
+  if (rateLimited(request)) return json({ ok: false, error: "too_many_attempts" }, 429);
+  let body;
+  try { body = await request.json(); } catch { return json({ ok: false, error: "bad_json" }, 400); }
+  const did = String(body.did || "");
+  if (!validDid(did)) return json({ ok: false, error: "bad_device" }, 400);
+
+  // دخول المشرف
+  const adminCode = String(body.admin || "").trim();
+  if (adminCode) {
+    const ok = [env.ADMIN_CODE_A, env.ADMIN_CODE_B, env.ADMIN_CODE_MOD]
+      .some((c) => String(c || "").trim() && String(c).trim() === adminCode);
+    if (!ok) { rateHit(request); return json({ ok: false, error: "bad_admin" }, 401); }
+    return new Response(JSON.stringify({ ok: true, status: "in" }), {
+      headers: { "content-type": "application/json", "cache-control": "no-store",
+        "set-cookie": sessionCookie(request, await signSession(env, "admin", did, "a")) },
+    });
+  }
+
+  const reg = normDigits(body.reg);
+  const name = String(body.name || "").trim().slice(0, 80);
+  if (reg.length < 8 || reg.length > 20 || normName(name).length < 3) {
+    return json({ ok: false, error: "bad_input" }, 400);
+  }
+  const uid = await macHex(env, "reg:" + reg);
+  const bans = await readBans(env);
+  if (bans.has(uid) || bans.has(did)) return json({ ok: false, error: "banned" }, 403);
+
+  const roster = await loadRoster(env);
+  const entry = roster[uid];
+  const known = entry && namesMatch(name, entry.n);
+  const st = await env.STUDENTS_KV.get("st:" + uid, "json");
+  const now = Date.now();
+
+  const issue = async (extra = {}) => new Response(JSON.stringify({ ok: true, status: "in", ...extra }), {
+    headers: { "content-type": "application/json", "cache-control": "no-store",
+      "set-cookie": sessionCookie(request, await signSession(env, uid, did)) },
+  });
+
+  if (known || st) {
+    // قبول الاسم بالقائمة أو سبقت الموافقة عليه يدوياً
+    if (!st) {
+      await env.STUDENTS_KV.put("st:" + uid, JSON.stringify({ n: entry.n, g: entry.g, d: did, t: now, src: "roster" }));
+      return issue();
+    }
+    if (st.d === did) return issue();
+    if (!st.d) { // أعاد المشرف تهيئة الجهاز: يُربط بالجهاز الجديد مباشرة
+      await env.STUDENTS_KV.put("st:" + uid, JSON.stringify({ ...st, d: did, t: now }));
+      return issue();
+    }
+    if (!known && !namesMatch(name, st.n)) { rateHit(request); return json({ ok: false, error: "name_mismatch" }, 401); }
+    return queue(env, did, { kind: "device", uid, n: st.n, reg: reg.slice(-4), g: st.g || "", t: now });
+  }
+  rateHit(request);
+  return queue(env, did, { kind: "new", uid, n: name, reg, g: entry ? entry.g : "", t: now,
+    note: entry ? "الرقم موجود لكن الاسم لا يطابق القائمة" : "الرقم غير موجود في القائمة" });
+}
+
+async function queue(env, did, record) {
+  await env.STUDENTS_KV.put("p:" + did, JSON.stringify(record), { expirationTtl: 30 * 86400 });
+  return json({ ok: true, status: "pending" });
+}
+
+async function authStatus(request, env) {
+  if (!authReady(env)) return json({ ok: false, error: "auth_not_configured" }, 503);
+  const did = new URL(request.url).searchParams.get("did") || "";
+  if (!validDid(did)) return json({ ok: false, error: "bad_device" }, 400);
+  const bans = await readBans(env);
+  if (bans.has(did)) return json({ ok: false, status: "banned" }, 403);
+  const approved = await env.STUDENTS_KV.get("ok:" + did, "json");
+  if (approved) {
+    await env.STUDENTS_KV.delete("ok:" + did);
+    return new Response(JSON.stringify({ ok: true, status: "in" }), {
+      headers: { "content-type": "application/json", "cache-control": "no-store",
+        "set-cookie": sessionCookie(request, await signSession(env, approved.uid, did)) },
+    });
+  }
+  const pending = await env.STUDENTS_KV.get("p:" + did);
+  return json({ ok: true, status: pending ? "pending" : "none" });
+}
+
+async function writeBans(env, set) {
+  await env.STUDENTS_KV.put("bans", JSON.stringify([...set]));
+  authMem.bans = set; authMem.bansAt = Date.now();
+}
+
+async function listPrefix(env, prefix) {
+  const out = []; let cursor;
+  do {
+    const page = await env.STUDENTS_KV.list({ prefix, cursor, limit: 1000 });
+    out.push(...page.keys.map((k) => k.name));
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return out;
+}
+
+async function authAdmin(request, env) {
+  if (!authReady(env)) return json({ ok: false, error: "auth_not_configured" }, 503);
+  if (!isAnyAdmin(request, env)) { rateHit(request); return json({ ok: false, error: "unauthorized" }, 401); }
+  if (rateLimited(request, 60)) return json({ ok: false, error: "too_many_attempts" }, 429);
+  const url = new URL(request.url);
+
+  if (request.method === "GET") {
+    const [pKeys, sKeys, roster, bans] = await Promise.all([
+      listPrefix(env, "p:"), listPrefix(env, "st:"), loadRoster(env), readBans(env),
+    ]);
+    const pending = (await Promise.all(pKeys.map(async (k) => {
+      const r = await env.STUDENTS_KV.get(k, "json");
+      return r ? { did: k.slice(2), ...r } : null;
+    }))).filter(Boolean).sort((a, b) => b.t - a.t);
+    const students = (await Promise.all(sKeys.map(async (k) => {
+      const r = await env.STUDENTS_KV.get(k, "json");
+      return r ? { uid: k.slice(3), n: r.n, g: r.g, t: r.t, src: r.src, banned: bans.has(k.slice(3)) } : null;
+    }))).filter(Boolean).sort((a, b) => b.t - a.t);
+    return json({ ok: true, pending, students, rosterSize: Object.keys(roster).length,
+      bannedCount: [...bans].length });
+  }
+
+  if (request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ ok: false, error: "bad_json" }, 400); }
+    const action = String(body.action || "");
+    const did = String(body.did || ""), uid = String(body.uid || "");
+
+    if (action === "approve" || action === "reject") {
+      const rec = await env.STUDENTS_KV.get("p:" + did, "json");
+      if (!rec) return json({ ok: false, error: "not_found" }, 404);
+      if (action === "approve") {
+        const prev = await env.STUDENTS_KV.get("st:" + rec.uid, "json");
+        const bans = await readBans(env);
+        if (prev && prev.d && prev.d !== did) { bans.add(prev.d); await writeBans(env, bans); } // إبطال الجهاز القديم
+        await env.STUDENTS_KV.put("st:" + rec.uid, JSON.stringify({
+          n: (prev && prev.n) || rec.n, g: (prev && prev.g) || rec.g || "", d: did, t: Date.now(),
+          src: rec.kind === "device" ? "device" : "manual",
+        }));
+        await env.STUDENTS_KV.put("ok:" + did, JSON.stringify({ uid: rec.uid }), { expirationTtl: 7 * 86400 });
+      }
+      await env.STUDENTS_KV.delete("p:" + did);
+      return json({ ok: true });
+    }
+
+    if (action === "ban" || action === "unban") {
+      if (!/^[a-f0-9]{32}$/.test(uid)) return json({ ok: false, error: "bad_uid" }, 400);
+      const bans = await readBans(env);
+      const st = await env.STUDENTS_KV.get("st:" + uid, "json");
+      if (action === "ban") { bans.add(uid); if (st && st.d) bans.add(st.d); }
+      else { bans.delete(uid); if (st && st.d) bans.delete(st.d); }
+      await writeBans(env, bans);
+      return json({ ok: true });
+    }
+
+    if (action === "reset_device") { // يسمح للطالب بالدخول من جهاز جديد دون موافقة
+      const st = await env.STUDENTS_KV.get("st:" + uid, "json");
+      if (!st) return json({ ok: false, error: "not_found" }, 404);
+      if (st.d) { const bans = await readBans(env); bans.add(st.d); await writeBans(env, bans); }
+      st.d = ""; await env.STUDENTS_KV.put("st:" + uid, JSON.stringify(st));
+      return json({ ok: true });
+    }
+  }
+  void url;
+  return json({ ok: false, error: "bad_request" }, 400);
+}
+
+const AUTH_PUBLIC_PREFIXES = ["/api/auth/"];
+const AUTH_OPEN_PATHS = new Set(["/__login", "/access-admin", "/favicon.ico", "/icon.svg", "/manifest.webmanifest"]);
+
+function htmlResponse(html, status = 200) {
+  return new Response(html, { status, headers: {
+    "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
+    "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" } });
+}
+
+/* يُحقن في الصفحة الرئيسية: إذا انتهت الجلسة أو حُظر الطالب يعود لصفحة الدخول */
+const GUARD_SNIPPET = `(function(){var o=window.fetch;var go=function(){if(location.pathname!=="/__login")location.replace("/__login")};window.fetch=function(){return o.apply(this,arguments).then(function(r){if(r.status===401&&/\\/(api|data)\\//.test(r.url)){r.clone().json().then(function(j){if(j&&j.error==="auth_required")go()}).catch(function(){})}return r})}})();`;
+
+const LOGIN_PAGE = `<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#f4f7f8">
+<title>تسجيل الدخول | ملحقة العربية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f7f8;--surface:#fff;--ink:#1e2935;--muted:#5d6a76;--line:#dfe6ea;--primary:#287c78;--primary-dark:#1e6562;--soft:#e8f3f1;--gold:#c18c42;--soft-gold:#fbf4e9;--err:#a33b3b;--soft-err:#fbeeee}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#141b20;--surface:#1c262d;--ink:#e6edf1;--muted:#9fb0bb;--line:#2c3a43;--primary:#5cb5ae;--primary-dark:#7fd0c9;--soft:#1f3532;--soft-gold:#352c1d;--gold:#e0b46f;--err:#ee9a9a;--soft-err:#3a2323}}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Tajawal",system-ui,sans-serif;font-size:16px;display:grid;place-items:center;padding:20px;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom))}
+main{width:min(430px,100%);background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:30px 26px 24px;box-shadow:0 14px 40px rgba(27,48,60,.07)}
+.mark{width:50px;height:50px;border-radius:15px;background:var(--soft);color:var(--primary);display:grid;place-items:center;margin-bottom:16px}
+.mark svg{width:27px;height:27px}
+h1{font-size:23px;margin:0 0 6px;font-weight:800}
+.lead{margin:0 0 22px;color:var(--muted);font-size:14px;line-height:1.8}
+label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}
+input{width:100%;font:inherit;padding:13px 14px;border:1px solid var(--line);border-radius:13px;background:var(--bg);color:var(--ink);margin-bottom:16px}
+input:focus{outline:2px solid var(--primary);outline-offset:1px;border-color:transparent}
+input[inputmode=numeric]{direction:ltr;text-align:right;letter-spacing:.04em}
+button.go{width:100%;border:0;border-radius:13px;padding:14px;background:var(--primary);color:#fff;font:inherit;font-weight:800;font-size:16px;cursor:pointer}
+button.go:hover{background:var(--primary-dark)}button.go:disabled{opacity:.6;cursor:wait}
+button.go:focus-visible,.link:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.msg{display:none;border-radius:13px;padding:12px 14px;font-size:14px;line-height:1.8;margin:0 0 16px}
+.msg.show{display:block}.msg.err{background:var(--soft-err);color:var(--err)}.msg.wait{background:var(--soft-gold);color:var(--gold)}
+.hint{margin:14px 0 0;color:var(--muted);font-size:12.5px;line-height:1.8}
+.link{background:none;border:0;color:var(--primary);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;margin-top:10px}
+#adm{display:none}
+.wait-box{display:none;text-align:center;padding:6px 0 2px}.wait-box.show{display:block}
+.pulse{width:14px;height:14px;border-radius:50%;background:var(--gold);margin:6px auto 16px}
+@media(prefers-reduced-motion:no-preference){.pulse{animation:p 1.6s ease-in-out infinite}@keyframes p{50%{transform:scale(1.5);opacity:.45}}}
+</style></head><body>
+<main>
+<div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v15H5.5C4.7 19 4 18.3 4 17.5z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H13v15h5.5c.8 0 1.5-.7 1.5-1.5z"/></svg></div>
+<div id="formBox">
+<h1>أهلاً بك في المنصة</h1>
+<p class="lead">الدخول مخصّص لطلبة الملحقة. اكتب اسمك الكامل ورقم التسجيل كما في الكشف.</p>
+<div class="msg err" id="err" role="alert"></div>
+<form id="f" autocomplete="off" novalidate>
+<label for="name">الاسم الكامل</label>
+<input id="name" name="name" type="text" autocomplete="name" required>
+<label for="reg">رقم التسجيل</label>
+<input id="reg" name="reg" type="text" inputmode="numeric" autocomplete="off" required>
+<div id="adm"><label for="admin">رمز المشرف</label><input id="admin" type="password" autocomplete="off"></div>
+<button class="go" id="btn" type="submit">دخول</button>
+</form>
+<p class="hint">يُربط حسابك بجهازك بعد أول دخول فلا تحتاج لإعادة الكتابة. للدخول من جهاز آخر سيُطلب موافقة المشرف.</p>
+<button class="link" id="tog" type="button">دخول المشرف</button>
+</div>
+<div class="wait-box" id="waitBox" aria-live="polite">
+<div class="pulse"></div>
+<h1>طلبك قيد المراجعة</h1>
+<p class="lead">لم نتمكن من مطابقة بياناتك آلياً، فأُرسل طلبك إلى المشرف. ستدخل تلقائياً فور الموافقة، يمكنك ترك هذه الصفحة مفتوحة أو العودة إليها لاحقاً.</p>
+<button class="link" id="back" type="button">تعديل البيانات</button>
+</div>
+</main>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var did;try{did=localStorage.getItem("ensd_did")}catch(e){}
+if(!/^[a-f0-9]{32}$/.test(did||"")){var a=new Uint8Array(16);crypto.getRandomValues(a);did=Array.prototype.map.call(a,function(x){return("0"+x.toString(16)).slice(-2)}).join("");try{localStorage.setItem("ensd_did",did)}catch(e){}}
+var ERR={bad_input:"تحقق من الاسم ورقم التسجيل ثم أعد المحاولة.",too_many_attempts:"محاولات كثيرة. انتظر بضع دقائق ثم أعد المحاولة.",banned:"تعذّر السماح بالدخول من هذا الحساب. تواصل مع المشرف.",name_mismatch:"الاسم لا يطابق رقم التسجيل. تأكد من كتابته كما في الكشف.",bad_admin:"رمز المشرف غير صحيح.",auth_not_configured:"النظام قيد الإعداد حالياً. حاول لاحقاً.",net:"تعذّر الاتصال. تحقق من الإنترنت وأعد المحاولة."};
+function showErr(k){var e=$("err");e.textContent=ERR[k]||ERR.net;e.className="msg err show"}
+function ok(){location.replace("/")}
+var timer;
+function poll(){clearTimeout(timer);timer=setTimeout(function(){fetch("/api/auth/status?did="+did,{cache:"no-store"}).then(function(r){return r.json().then(function(j){return[r.status,j]})}).then(function(x){var j=x[1];if(j.status==="in")return ok();if(j.status==="banned"){$("waitBox").classList.remove("show");$("formBox").style.display="";showErr("banned");return}if(j.status==="none"){$("waitBox").classList.remove("show");$("formBox").style.display="";return}poll()}).catch(poll)},6000)}
+function waiting(){$("formBox").style.display="none";$("waitBox").classList.add("show");poll()}
+$("back").onclick=function(){clearTimeout(timer);$("waitBox").classList.remove("show");$("formBox").style.display=""};
+$("tog").onclick=function(){var s=$("adm").style.display==="block";$("adm").style.display=s?"none":"block";$("tog").textContent=s?"دخول المشرف":"دخول الطالب";$("name").required=s;$("reg").required=s};
+$("f").onsubmit=function(ev){ev.preventDefault();$("err").className="msg err";var admin=$("adm").style.display==="block"?$("admin").value:"";var b=$("btn");b.disabled=true;
+fetch("/api/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({did:did,name:$("name").value,reg:$("reg").value,admin:admin}),cache:"no-store"})
+.then(function(r){return r.json()}).then(function(j){b.disabled=false;if(j.ok&&j.status==="in")return ok();if(j.ok&&j.status==="pending")return waiting();showErr(j.error)}).catch(function(){b.disabled=false;showErr("net")})};
+fetch("/api/auth/status?did="+did,{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(j.status==="in")ok();else if(j.status==="pending")waiting()}).catch(function(){});
+})();
+</script></body></html>`;
+
+const ACCESS_ADMIN_PAGE = `<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><title>إدارة الدخول</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f7f8;--surface:#fff;--ink:#1e2935;--muted:#5d6a76;--line:#dfe6ea;--primary:#287c78;--soft:#e8f3f1;--gold:#9a7034;--soft-gold:#fbf4e9;--err:#a33b3b;--soft-err:#fbeeee}
+@media(prefers-color-scheme:dark){:root{--bg:#141b20;--surface:#1c262d;--ink:#e6edf1;--muted:#9fb0bb;--line:#2c3a43;--primary:#5cb5ae;--soft:#1f3532;--soft-gold:#352c1d;--gold:#e0b46f;--err:#ee9a9a;--soft-err:#3a2323}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Tajawal",system-ui,sans-serif;padding:max(16px,env(safe-area-inset-top)) 16px 40px}
+.wrap{max-width:820px;margin:0 auto}h1{font-size:22px;margin:10px 0 4px}h2{font-size:17px;margin:26px 0 10px}
+.muted{color:var(--muted);font-size:13px}
+input,button{font:inherit}input{padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);width:100%}
+.row{display:flex;gap:8px;margin:12px 0}.row button{flex:none}
+button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:11px;padding:9px 14px;cursor:pointer;font-weight:700}
+button.p{background:var(--primary);color:#fff;border-color:var(--primary)}button.d{color:var(--err)}button:focus-visible,input:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 16px;min-width:110px}.stat b{font-size:20px;display:block}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:14px;margin:8px 0;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.card .info{min-width:0;flex:1 1 220px}.card b{display:block;font-size:15px}.card small{color:var(--muted);display:block;line-height:1.7}
+.tag{display:inline-block;font-size:11px;padding:2px 9px;border-radius:20px;background:var(--soft);color:var(--primary);font-weight:700}
+.tag.w{background:var(--soft-gold);color:var(--gold)}.tag.b{background:var(--soft-err);color:var(--err)}
+.acts{display:flex;gap:6px;flex-wrap:wrap}.empty{text-align:center;color:var(--muted);padding:22px}
+#err{color:var(--err);font-size:14px;min-height:20px}
+</style></head><body><div class="wrap">
+<h1>إدارة دخول الطلبة</h1><p class="muted">أدخل رمز الإدارة لعرض الطلبات والمسجّلين.</p>
+<div class="row"><input id="code" type="password" placeholder="رمز الإدارة" autocomplete="off"><button class="p" id="go">دخول</button></div><div id="err" role="alert"></div>
+<div id="app" hidden>
+<div class="stats" id="stats"></div>
+<h2>طلبات بانتظار الموافقة</h2><div id="pending"></div>
+<h2>الطلبة المسجّلون</h2>
+<input id="q" type="search" placeholder="بحث بالاسم أو الفوج">
+<div id="students"></div>
+</div></div>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)},code="",data=null;
+try{code=sessionStorage.getItem("acc_code")||""}catch(e){}
+function esc(t){var d=document.createElement("div");d.textContent=t==null?"":String(t);return d.innerHTML}
+function api(method,body){return fetch("/api/auth/admin",{method:method,headers:{"x-admin-code":code,"content-type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store"}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"err");return j})})}
+function date(t){try{return new Date(t).toLocaleString("ar-DZ",{dateStyle:"medium",timeStyle:"short"})}catch(e){return""}}
+var KIND={new:"طالب جديد",device:"جهاز جديد"};
+function render(){
+var d=data;$("app").hidden=false;
+$("stats").innerHTML='<div class="stat"><b>'+d.pending.length+'</b><small>بانتظار الموافقة</small></div><div class="stat"><b>'+d.students.length+'</b><small>سجّلوا دخولهم</small></div><div class="stat"><b>'+d.rosterSize+'</b><small>في القائمة</small></div><div class="stat"><b>'+d.bannedCount+'</b><small>محظورون</small></div>';
+$("pending").innerHTML=d.pending.length?d.pending.map(function(p){return'<div class="card"><div class="info"><b>'+esc(p.n)+'</b><small><span class="tag w">'+esc(KIND[p.kind]||p.kind)+'</span> '+(p.kind==="new"?"رقم التسجيل: "+esc(p.reg):"آخر 4 أرقام: "+esc(p.reg))+(p.g?" · الفوج "+esc(p.g):"")+'</small><small>'+esc(p.note||"")+' '+esc(date(p.t))+'</small></div><div class="acts"><button class="p" data-a="approve" data-did="'+esc(p.did)+'">قبول</button><button class="d" data-a="reject" data-did="'+esc(p.did)+'">رفض</button></div></div>'}).join(""):'<div class="empty">لا توجد طلبات حالياً.</div>';
+var q=$("q").value.trim();var list=d.students.filter(function(s){return!q||(s.n||"").indexOf(q)>-1||String(s.g).indexOf(q)>-1});
+$("students").innerHTML=list.length?list.slice(0,200).map(function(s){return'<div class="card"><div class="info"><b>'+esc(s.n)+'</b><small>'+(s.g?"الفوج "+esc(s.g)+" · ":"")+esc(date(s.t))+' '+(s.src==="manual"?'<span class="tag w">بموافقة يدوية</span>':"")+(s.banned?' <span class="tag b">محظور</span>':"")+'</small></div><div class="acts">'+(s.banned?'<button data-a="unban" data-uid="'+esc(s.uid)+'">رفع الحظر</button>':'<button data-a="reset_device" data-uid="'+esc(s.uid)+'">تهيئة الجهاز</button><button class="d" data-a="ban" data-uid="'+esc(s.uid)+'">حظر</button>')+'</div></div>'}).join(""):'<div class="empty">لا نتائج.</div>'
+}
+function load(){$("err").textContent="";return api("GET").then(function(j){data=j;try{sessionStorage.setItem("acc_code",code)}catch(e){}render()}).catch(function(){$("app").hidden=true;$("err").textContent="تعذّر التحقق من الرمز أو أن النظام غير مهيأ."})}
+$("go").onclick=function(){code=$("code").value.trim();if(code)load()};
+$("q").oninput=function(){if(data)render()};
+document.addEventListener("click",function(e){var b=e.target.closest("button[data-a]");if(!b)return;var a=b.dataset.a;
+if((a==="ban"||a==="reject")&&!confirm(a==="ban"?"حظر هذا الطالب؟":"رفض هذا الطلب؟"))return;
+b.disabled=true;api("POST",{action:a,did:b.dataset.did,uid:b.dataset.uid}).then(load).catch(function(){b.disabled=false;$("err").textContent="تعذّر تنفيذ العملية."})});
+if(code)load();
+})();
+</script></body></html>`;
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/publish") return handlePublish(request, env);
-    if (url.pathname === "/api/history") return handleHistory(request, env);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements") {
+    const path = url.pathname;
+
+    /* --- مسارات الدخول (مفتوحة) --- */
+    if (path === "/api/auth/login") return authLogin(request, env);
+    if (path === "/api/auth/status") return authStatus(request, env);
+    if (path === "/api/auth/admin") return authAdmin(request, env);
+    if (path === "/__login") return htmlResponse(LOGIN_PAGE);
+    if (path === "/access-admin") return htmlResponse(ACCESS_ADMIN_PAGE);
+
+    /* --- مسارات لها فحص إدارة خاص بها --- */
+    if (path === "/api/publish") return handlePublish(request, env);
+    if (path === "/api/history") return handleHistory(request, env);
+
+    /* --- البوابة: كل ما عدا ذلك يتطلب جلسة صالحة --- */
+    if (!AUTH_OPEN_PATHS.has(path) && path !== "/sw.js" && !/^\/icon-\d+\.png$/.test(path)) {
+      if (!authReady(env)) {
+        return htmlResponse("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><body dir=rtl style='font-family:sans-serif;padding:40px;text-align:center'><h2>المنصة قيد الإعداد</h2><p>يرجى المحاولة لاحقاً.</p>", 503);
+      }
+      const session = await readSession(request, env);
+      if (!session) {
+        const wantsHtml = request.headers.get("sec-fetch-mode") === "navigate" ||
+          String(request.headers.get("accept") || "").includes("text/html");
+        if (wantsHtml) return htmlResponse(LOGIN_PAGE);
+        return json({ error: "auth_required" }, 401);
+      }
+    }
+
+    if (path === "/api/lessons" || path === "/api/file" || path === "/api/academic" || path === "/api/academic-image" || path === "/api/resources" || path === "/api/resource" || path === "/api/announcements") {
       const response = await handleApi(request, env);
-      if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
+      if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(path)) schedulePublish(ctx, env);
       return response;
     }
     const response = await env.ASSETS.fetch(request);
-    if ((url.pathname === "/" || url.pathname === "/index.html") &&
+    if ((path === "/" || path === "/index.html") &&
         (response.headers.get("content-type") || "").includes("text/html")) {
       return new HTMLRewriter()
+        .on("head", {
+          element(element) {
+            element.prepend("<script>" + GUARD_SNIPPET + "</script>", { html: true });
+          }
+        })
         .on('script[src="/academic-admin.js"]', {
           element(element) {
             element.setAttribute("src", "/academic-admin.js?v=20261116-ui");
