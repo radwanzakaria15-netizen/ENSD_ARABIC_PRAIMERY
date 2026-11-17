@@ -10,7 +10,7 @@
   const originalNodes = Array.from(chooser.childNodes);
 
   const CACHE_KEY = "ensd_schedule_years_v1";
-  const REFRESH_GAP = 5 * 60 * 1000; /* أقل مدة بين جلبين ناجحين من الخادم */
+  const REFRESH_GAP = 60 * 1000; /* أقل مدة بين جلبين ناجحين من الخادم */
   const RETRY_GAP = 2 * 60 * 1000;   /* أقل مدة بين محاولتين بعد فشل */
   const MSG_NO_IMAGE = "لم تُرفع صورة توقيت لهذا الفوج بعد.";
   const MSG_IMG_FAIL = "تعذر تحميل صورة الجدول الآن. حاول مجددًا لاحقًا.";
