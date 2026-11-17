@@ -219,7 +219,7 @@ async function edgeFile(request, ttl, produce) {
   const fail = () => json({ error: "storage_error" }, 502);
   if (!hasEdge() || request.method !== "GET") { try { return await produce(); } catch { return fail(); } }
   const cache = caches.default, ck = new Request(request.url), sk = new Request(EDGE + "stale-file:" + request.url);
-  const client = (res, tag, age) => { const h = new Headers(res.headers); h.set("cache-control", "public, max-age=" + age); h.set("x-edge", tag); return new Response(res.body, { status: 200, headers: h }); };
+  const client = (res, tag, age) => { const h = new Headers(res.headers); h.set("cache-control", "private, max-age=" + age); h.set("x-edge", tag); return new Response(res.body, { status: 200, headers: h }); };
   try { const hit = await cache.match(ck); if (hit) return client(hit, "hit", 600); } catch {}
   let res = null;
   try { res = await produce(); } catch { res = null; }
@@ -913,9 +913,500 @@ async function handleHistory(request, env) {
   return json({ ok: false, error: "method_not_allowed" }, 405);
 }
 
+/* =====================================================================
+   حماية الدخول: اسم + رقم التسجيل (مطابقة قائمة الطلبة) + ربط بجهاز + موافقة يدوية
+   التخزين: Cloudflare KV (AUTH_KV أو HISTORY_KV) — لا يُخزَّن أي رقم تسجيل صريح، فقط بصمات HMAC.
+   الأسرار المطلوبة: AUTH_SECRET (نص عشوائي طويل). أوقف الحماية مؤقتاً بـ AUTH_DISABLED=1
+   ===================================================================== */
+const SESSION_DAYS = 30;
+const MAX_DEVICES = 4;
+const MAX_PENDING = 300;
+const PEND_TTL = 14 * 86400;
+
+const isKv = (v) => v && typeof v === "object" && typeof v.get === "function" && typeof v.put === "function";
+const kvOf = (env) => [env.STUDENTS_KV, env.AUTH_KV, env.HISTORY_KV].find(isKv) || null;
+const secretOf = (env) => {
+  // السر: AUTH_SECRET، أو STUDENTS_KV إن كان نصاً (سراً) لا ربط KV
+  const s = String(env.AUTH_SECRET || env.SESSION_SECRET || (typeof env.STUDENTS_KV === "string" ? env.STUDENTS_KV : "") || "");
+  return s.length >= 16 ? encoder.encode(s) : null;
+};
+
+function safeEq(a, b) {
+  a = String(a); b = String(b);
+  let diff = a.length ^ b.length;
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
+
+function anyAdmin(request, env) {
+  const codes = [env.ADMIN_CODE_A, env.ADMIN_CODE_B, env.ADMIN_CODE_MOD].map((v) => String(v || "").trim()).filter(Boolean);
+  const sup = [request.headers.get("x-admin-code"), request.headers.get("x-academic-admin-code")]
+    .map((v) => String(v || "").trim()).filter(Boolean);
+  return sup.some((s) => codes.some((c) => safeEq(s, c)));
+}
+
+async function mac(env, msg) { return hex(await hmac(secretOf(env), msg)); }
+
+function readCookies(request) {
+  const out = {};
+  for (const part of String(request.headers.get("cookie") || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return out;
+}
+const setCookie = (name, value, age) =>
+  name + "=" + value + "; Path=/; Max-Age=" + age + "; HttpOnly; Secure; SameSite=Lax";
+
+function jsonC(value, status = 200, cookies = []) {
+  const h = new Headers({ "content-type": "application/json", "cache-control": "no-store" });
+  for (const c of cookies) h.append("set-cookie", c);
+  return new Response(JSON.stringify(value), { status, headers: h });
+}
+
+async function sessionCookie(env, sid) {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  const sig = (await mac(env, "s|" + sid + "|" + exp)).slice(0, 40);
+  return setCookie("ensd_s", sid + "." + exp + "." + sig, SESSION_DAYS * 86400);
+}
+
+/* ----- قائمة الحظر (مخزّنة مؤقتاً 30 ثانية داخل الـ isolate) ----- */
+let bansCache = { t: 0, set: new Set() };
+async function getBans(env) {
+  if (Date.now() - bansCache.t < 30000) return bansCache.set;
+  try {
+    const a = await kvOf(env).get("bans", { type: "json", cacheTtl: 60 });
+    bansCache = { t: Date.now(), set: new Set(Array.isArray(a) ? a : []) };
+  } catch { bansCache.t = Date.now(); }
+  return bansCache.set;
+}
+
+async function readSession(request, env) {
+  const raw = readCookies(request).ensd_s;
+  if (!raw) return { ok: false };
+  const [sid, exp, sig] = raw.split(".");
+  if (!sid || !exp || !sig || Number(exp) < Date.now() / 1000) return { ok: false };
+  if (!safeEq(sig, (await mac(env, "s|" + sid + "|" + exp)).slice(0, 40))) return { ok: false };
+  if (sid !== "admin" && (await getBans(env)).has(sid)) return { ok: false, banned: true };
+  return { ok: true, sid };
+}
+
+/* ----- تحديد المحاولات (داخل الـ isolate؛ يُستحسن إضافة Rate Limiting Rule في Cloudflare أيضاً) ----- */
+const rlMap = new Map();
+function rlCount(key, windowMs) {
+  const now = Date.now(), e = rlMap.get(key);
+  if (!e || now - e.t > windowMs) return 0;
+  return e.n;
+}
+function rlAdd(key, windowMs) {
+  const now = Date.now(), e = rlMap.get(key);
+  if (rlMap.size > 5000) rlMap.clear();
+  if (!e || now - e.t > windowMs) rlMap.set(key, { n: 1, t: now }); else e.n++;
+}
+
+/* ----- تطبيع الأسماء العربية والأرقام ----- */
+function normName(s) {
+  return String(s || "").normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و").replace(/ئ/g, "ي")
+    .replace(/[^\p{L}\s]/gu, " ").toLowerCase().replace(/\s+/g, " ").trim();
+}
+function normRegno(s) {
+  const d = String(s || "")
+    .replace(/[\u0660-\u0669]/g, (c) => String(c.charCodeAt(0) - 0x660))
+    .replace(/[\u06F0-\u06F9]/g, (c) => String(c.charCodeAt(0) - 0x6F0))
+    .replace(/\D/g, "");
+  return /^\d{10,14}$/.test(d) ? d : "";
+}
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+function permutations(arr) {
+  if (arr.length <= 1) return [arr];
+  const out = [];
+  arr.forEach((x, i) => {
+    for (const p of permutations([...arr.slice(0, i), ...arr.slice(i + 1)])) out.push([x, ...p]);
+  });
+  return out;
+}
+function nameMatches(typed, stored) {
+  const tokens = normName(typed).split(" ").filter(Boolean);
+  const flat = normName(stored).replace(/ /g, "");
+  if (tokens.length < 2 || !flat) return false;
+  if (tokens.every((t) => t.length >= 2 && flat.includes(t))) return true;
+  const limit = Math.max(2, Math.floor(flat.length * 0.2));
+  for (const p of (tokens.length <= 5 ? permutations(tokens) : [tokens])) {
+    if (lev(p.join(""), flat) <= limit) return true;
+  }
+  return false;
+}
+
+/* ----- قراءة ملف CSV (group,seq,reg_no,name) ----- */
+function splitCsvLine(line) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ",") { out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+async function buildRoster(env, text) {
+  const roster = {}; let rows = 0, dup = 0, skipped = 0;
+  for (const line of String(text || "").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const f = splitCsvLine(line);
+    const regno = f.length >= 4 ? normRegno(f[2]) : "";
+    const name = f.slice(3).join(",").trim().slice(0, 80);
+    if (!regno || !name) { skipped++; continue; }
+    const sid = (await mac(env, "r|" + regno)).slice(0, 24);
+    if (roster[sid]) dup++;
+    roster[sid] = [name, String(f[0] || "").trim().slice(0, 12)];
+    rows++;
+  }
+  return { roster, rows, dup, skipped };
+}
+
+/* ----- تسجيل الدخول ----- */
+async function putDev(env, sid, rec) {
+  await kvOf(env).put("dev:" + sid, JSON.stringify(rec), { metadata: { n: rec.n, g: rec.g, ts: rec.ts, c: rec.d.length } });
+}
+async function lookupStudent(env, sid) {
+  const kv = kvOf(env);
+  const roster = (await kv.get("roster", { type: "json", cacheTtl: 60 })) || {};
+  return roster[sid] || (await kv.get("extra:" + sid, { type: "json" })) || null;
+}
+async function deviceOf(request, env) {
+  let token = readCookies(request).ensd_dev || "", fresh = false;
+  if (!/^[a-f0-9]{48}$/.test(token)) { token = hex(crypto.getRandomValues(new Uint8Array(24))); fresh = true; }
+  return { token, fresh, dh: (await mac(env, "d|" + token)).slice(0, 24) };
+}
+const devCookie = (token) => setCookie("ensd_dev", token, 365 * 86400);
+
+async function createPending(env, dev, type, sid, typedName, rec, ip) {
+  const kv = kvOf(env);
+  const exists = await kv.get("pend:" + dev.dh);
+  if (!exists) {
+    // منع إغراق طابور الموافقات: حدّ لكل شبكة ولكل رقم تسجيل في الساعة
+    if (rlCount("pip:" + ip, 3600000) >= 4 || rlCount("psid:" + sid, 3600000) >= 4) return false;
+    rlAdd("pip:" + ip, 3600000); rlAdd("psid:" + sid, 3600000);
+    const list = await kv.list({ prefix: "pend:", limit: MAX_PENDING + 1 });
+    if (list.keys.length > MAX_PENDING) return false;
+  }
+  const v = { t: type, sid, name: typedName, rn: rec ? rec[0] : "", g: rec ? rec[1] : "", ts: Date.now() };
+  await kv.put("pend:" + dev.dh, JSON.stringify(v), { expirationTtl: PEND_TTL, metadata: v });
+  return true;
+}
+
+async function authLogin(request, env, kind) {
+  const kv = kvOf(env), ip = request.headers.get("cf-connecting-ip") || "0";
+  let body = {};
+  try { body = await request.json(); } catch {}
+
+  if (body.admin) {
+    if (rlCount("fail:" + ip, 900000) >= 8) return jsonC({ error: "rate_limited" }, 429);
+    const codes = [env.ADMIN_CODE_A, env.ADMIN_CODE_B, env.ADMIN_CODE_MOD].map((v) => String(v || "").trim()).filter(Boolean);
+    const sup = String(body.code || "").trim();
+    if (!sup || !codes.some((c) => safeEq(sup, c))) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "nomatch" }, 401); }
+    return jsonC({ status: "ok" }, 200, [await sessionCookie(env, "admin")]);
+  }
+
+  if (rlCount("fail:" + ip, 900000) >= 10) return jsonC({ error: "rate_limited" }, 429);
+  const name = String(body.name || "").trim().slice(0, 80), regno = normRegno(body.regno);
+  if (!regno || normName(name).split(" ").filter(Boolean).length < 2) return jsonC({ error: "invalid_input" }, 400);
+  const sid = (await mac(env, "r|" + regno)).slice(0, 24);
+  const rec = await lookupStudent(env, sid);
+  const matched = !!rec && nameMatches(name, rec[0]);
+
+  if (kind === "request") {
+    if (rlCount("req:" + ip, 3600000) >= 3) return jsonC({ error: "rate_limited" }, 429);
+    if (matched) kind = "login";
+  }
+
+  if (kind === "login") {
+    if (!matched) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "nomatch" }, 401); }
+    if ((await getBans(env)).has(sid)) return jsonC({ status: "banned" }, 403);
+    const dev = await deviceOf(request, env);
+    const cookies = dev.fresh ? [devCookie(dev.token)] : [];
+    const cur = await kv.get("dev:" + sid, { type: "json" });
+    if (!cur) {
+      await putDev(env, sid, { d: [dev.dh], n: rec[0], g: rec[1], ts: Date.now() });
+      return jsonC({ status: "ok" }, 200, [...cookies, await sessionCookie(env, sid)]);
+    }
+    if (cur.d.includes(dev.dh)) return jsonC({ status: "ok" }, 200, [...cookies, await sessionCookie(env, sid)]);
+    if (!(await createPending(env, dev, "device", sid, name, rec, ip))) return jsonC({ error: "rate_limited" }, 429);
+    return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
+  }
+
+  // طلب مراجعة يدوية (اسم غير مطابق أو طالب غير مدرج)
+  rlAdd("req:" + ip, 3600000);
+  if (sid && (await getBans(env)).has(sid)) return jsonC({ status: "banned" }, 403);
+  const dev = await deviceOf(request, env);
+  const ok = await createPending(env, dev, rec ? "mismatch" : "new", sid, name, rec, ip);
+  if (!ok) return jsonC({ error: "rate_limited" }, 429);
+  return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
+}
+
+async function authStatus(request, env) {
+  const kv = kvOf(env), c = readCookies(request).ensd_dev || "";
+  if (!/^[a-f0-9]{48}$/.test(c)) return jsonC({ status: "none" });
+  const dh = (await mac(env, "d|" + c)).slice(0, 24);
+  const res = await kv.get("res:" + dh, { type: "json" });
+  if (res) {
+    await kv.delete("res:" + dh);
+    if (!res.ok) return jsonC({ status: "rejected" });
+    if ((await getBans(env)).has(res.sid)) return jsonC({ status: "rejected" });
+    return jsonC({ status: "ok" }, 200, [await sessionCookie(env, res.sid)]);
+  }
+  return jsonC({ status: (await kv.get("pend:" + dh)) ? "pending" : "none" });
+}
+
+/* ----- واجهة الإدارة ----- */
+async function updateBans(env, fn) {
+  const kv = kvOf(env);
+  const cur = (await kv.get("bans", { type: "json" })) || [];
+  const next = [...new Set(fn(Array.isArray(cur) ? cur : []))];
+  await kv.put("bans", JSON.stringify(next));
+  bansCache = { t: Date.now(), set: new Set(next) };
+  return next;
+}
+async function listAll(kv, prefix) {
+  const out = []; let cursor;
+  for (let i = 0; i < 5; i++) {
+    const r = await kv.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) });
+    out.push(...r.keys);
+    if (r.list_complete) break;
+    cursor = r.cursor;
+  }
+  return out;
+}
+
+async function authAdmin(request, env, url) {
+  if (!isModerator(request, env)) return jsonC({ error: "unauthorized" }, 401);
+  const kv = kvOf(env), action = url.searchParams.get("action") || "";
+  try {
+    if (action === "list" && request.method === "GET") {
+      const bans = await getBansFresh(env);
+      const pend = (await listAll(kv, "pend:")).map((k) => ({ id: k.name.slice(5), ...(k.metadata || {}) }));
+      const users = (await listAll(kv, "dev:")).map((k) => ({ sid: k.name.slice(4), banned: bans.includes(k.name.slice(4)), ...(k.metadata || {}) }));
+      const roster = (await kv.get("roster", { type: "json" })) || {};
+      pend.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      users.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      return jsonC({ pending: pend, users, rosterCount: Object.keys(roster).length, bans: bans.length });
+    }
+    if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
+
+    if (action === "import") {
+      if (!secretOf(env)) return jsonC({ error: "auth_not_configured" }, 503);
+      const { roster, rows, dup, skipped } = await buildRoster(env, await request.text());
+      if (rows < 1) return jsonC({ error: "no_rows" }, 400);
+      await kv.put("roster", JSON.stringify(roster));
+      return jsonC({ ok: true, imported: rows, unique: Object.keys(roster).length, duplicates: dup, skipped });
+    }
+
+    const id = url.searchParams.get("id") || "";
+    if (action === "approve" || action === "reject") {
+      if (!/^[a-f0-9]{24}$/.test(id)) return jsonC({ error: "bad_id" }, 400);
+      const p = await kv.get("pend:" + id, { type: "json" });
+      if (!p) return jsonC({ error: "not_found" }, 404);
+      if (action === "approve") {
+        const known = await lookupStudent(env, p.sid);
+        if (!known) await kv.put("extra:" + p.sid, JSON.stringify([p.name, p.g || ""]));
+        const rec = (await kv.get("dev:" + p.sid, { type: "json" })) ||
+          { d: [], n: known ? known[0] : p.name, g: known ? known[1] : (p.g || ""), ts: Date.now() };
+        if (!rec.d.includes(id)) rec.d.push(id);
+        rec.d = rec.d.slice(-MAX_DEVICES);
+        await putDev(env, p.sid, rec);
+        await kv.put("res:" + id, JSON.stringify({ ok: true, sid: p.sid }), { expirationTtl: 3600 });
+      } else {
+        await kv.put("res:" + id, JSON.stringify({ ok: false }), { expirationTtl: 3600 });
+      }
+      await kv.delete("pend:" + id);
+      return jsonC({ ok: true });
+    }
+
+    const sid = url.searchParams.get("sid") || "";
+    if (!/^[a-f0-9]{24}$/.test(sid)) return jsonC({ error: "bad_sid" }, 400);
+    if (action === "ban") { await updateBans(env, (a) => [...a, sid]); return jsonC({ ok: true }); }
+    if (action === "unban") { await updateBans(env, (a) => a.filter((x) => x !== sid)); return jsonC({ ok: true }); }
+    if (action === "resetdev") { await kv.delete("dev:" + sid); return jsonC({ ok: true }); }
+    return jsonC({ error: "bad_action" }, 400);
+  } catch (e) {
+    return jsonC({ error: "kv_error", message: String(e.message || e).slice(0, 160) }, 502);
+  }
+}
+async function getBansFresh(env) {
+  const a = await kvOf(env).get("bans", { type: "json" });
+  return Array.isArray(a) ? a : [];
+}
+
+async function handleAuth(request, env, url) {
+  if (!kvOf(env) || !secretOf(env)) return jsonC({ error: "auth_not_configured" }, 503);
+  const a = url.pathname.slice("/api/auth/".length);
+  if (a === "admin") return authAdmin(request, env, url);
+  if (a === "status" && request.method === "GET") return authStatus(request, env);
+  if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
+  if (a === "login") return authLogin(request, env, "login");
+  if (a === "request") return authLogin(request, env, "request");
+  if (a === "logout") return jsonC({ ok: true }, 200, [setCookie("ensd_s", "", 0)]);
+  return jsonC({ error: "not_found" }, 404);
+}
+
+function htmlPage(body, status = 200) {
+  return new Response(body, { status, headers: {
+    "content-type": "text/html; charset=utf-8", "cache-control": "no-store",
+    "x-robots-tag": "noindex, nofollow", "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+  } });
+}
+
+async function authGate(request, env, url) {
+  if (String(env.AUTH_DISABLED || "") === "1") return null;
+  const p = url.pathname;
+  if (p === "/auth-admin") return htmlPage(ADMIN_HTML);
+  if (p.startsWith("/api/auth/")) return handleAuth(request, env, url);
+  if (!kvOf(env) || !secretOf(env)) {
+    return new Response("الحماية غير مهيّأة: أضف السر AUTH_SECRET واربط KV.", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
+  }
+  const s = await readSession(request, env);
+  if (s.ok) return null;
+  if (p.startsWith("/api/") && anyAdmin(request, env)) return null;
+  if (p.startsWith("/api/") || p.startsWith("/data/")) return json({ error: "login_required", banned: !!s.banned }, 401);
+  if ((request.method === "GET" || request.method === "HEAD") && String(request.headers.get("accept") || "").includes("text/html")) {
+    return htmlPage(LOGIN_HTML, 401);
+  }
+  return new Response("Unauthorized", { status: 401, headers: { "cache-control": "no-store" } });
+}
+
+const PAGE_STYLE = `
+:root{--bg:#f6f7f9;--card:#fff;--tx:#14171c;--mu:#5b6573;--bd:#d9dee5;--ac:#1d6b57;--acx:#fff;--bad:#b3261e;--ok:#1d6b57}
+@media (prefers-color-scheme:dark){:root{--bg:#101316;--card:#1a1f24;--tx:#eef1f4;--mu:#9aa5b1;--bd:#2c343c;--ac:#3fb596;--acx:#06201a;--bad:#ff8a80;--ok:#5fd0b0}}
+*{box-sizing:border-box}html,body{margin:0}body{font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--tx);line-height:1.6;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.wrap{max-width:460px;margin:0 auto;padding:20px}.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px}
+h1{font-size:1.25rem;margin:0 0 4px}p{margin:0 0 14px;color:var(--mu);font-size:.92rem}label{display:block;font-size:.88rem;margin:12px 0 4px}
+input{width:100%;padding:12px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font-size:1rem}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 16px;background:var(--ac);color:var(--acx);font-weight:600;width:100%;margin-top:14px}
+button.s{background:transparent;color:var(--tx);border:1px solid var(--bd);font-weight:500}button:disabled{opacity:.55}
+.bad{color:var(--bad)}.ok{color:var(--ok)}#m{min-height:1.4em;margin:12px 0 0;font-size:.9rem}[hidden]{display:none!important}
+a{color:var(--ac)}.f{text-align:center;margin-top:14px;font-size:.85rem}`;
+
+const LOGIN_HTML = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex">
+<title>تسجيل الدخول</title><style>${PAGE_STYLE}</style></head><body><div class="wrap"><div class="card">
+<h1>تسجيل الدخول</h1><p>هذا الموقع مخصّص لطلبة الدفعة. أدخل اسمك الكامل ورقم التسجيل كما في القائمة.</p>
+<form id="f" autocomplete="on">
+<label for="n">الاسم الكامل</label><input id="n" name="name" autocomplete="name" required>
+<label for="r">رقم التسجيل</label><input id="r" name="regno" inputmode="numeric" autocomplete="off" required>
+<button id="go" type="submit">دخول</button>
+<button id="req" class="s" type="button" hidden>بياناتي صحيحة، أرسل طلب مراجعة يدوية</button>
+</form>
+<div id="w" hidden><p class="ok">تم إرسال طلبك إلى الإدارة. أبقِ هذه الصفحة مفتوحة، وستدخل تلقائياً عند الموافقة.</p></div>
+<div id="m"></div>
+<div class="f"><a href="#" id="adm">دخول المشرف</a></div>
+<form id="af" hidden><label for="ac">رمز المشرف</label><input id="ac" type="password" autocomplete="off"><button type="submit">دخول المشرف</button></form>
+</div></div>
+<script>
+var $=function(i){return document.getElementById(i)},busy=false,poll=null;
+function msg(t,bad){var m=$('m');m.textContent=t;m.className=bad?'bad':'ok'}
+function post(p,b){return fetch(p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return{}})})}
+function handle(j){
+ if(j.status==='ok'){location.reload();return}
+ if(j.status==='pending'){wait();return}
+ if(j.status==='banned'){msg('تم إيقاف هذا الحساب. تواصل مع الإدارة.',1);return}
+ if(j.status==='nomatch'){msg('البيانات غير مطابقة للقائمة. تحقق من الاسم ورقم التسجيل.',1);$('req').hidden=false;return}
+ if(j.error==='rate_limited'){msg('محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.',1);return}
+ if(j.error==='auth_not_configured'){msg('الحماية غير مهيّأة بعد.',1);return}
+ msg('تحقق من الاسم الكامل (كلمتان على الأقل) ورقم التسجيل.',1)
+}
+function go(path){
+ if(busy)return;busy=true;$('go').disabled=true;msg('جارٍ التحقق…');
+ post(path,{name:$('n').value.trim(),regno:$('r').value.trim()}).then(handle).catch(function(){msg('تعذّر الاتصال. أعد المحاولة.',1)}).then(function(){busy=false;$('go').disabled=false})
+}
+function check(){fetch('/api/auth/status').then(function(r){return r.json()}).then(function(j){
+ if(j.status==='ok')location.reload();
+ else if(j.status==='rejected'){clearInterval(poll);poll=null;$('w').hidden=true;$('f').hidden=false;msg('تم رفض الطلب. تواصل مع الإدارة.',1)}
+ else if(j.status==='none'&&poll){clearInterval(poll);poll=null;$('w').hidden=true;$('f').hidden=false;msg('')}
+ else if(j.status==='pending'&&!poll)wait()}).catch(function(){})}
+function wait(){$('f').hidden=true;$('w').hidden=false;$('m').textContent='';if(!poll)poll=setInterval(check,5000)}
+$('f').onsubmit=function(e){e.preventDefault();go('/api/auth/login')};
+$('req').onclick=function(){go('/api/auth/request')};
+$('adm').onclick=function(e){e.preventDefault();$('af').hidden=!$('af').hidden};
+$('af').onsubmit=function(e){e.preventDefault();post('/api/auth/login',{admin:true,code:$('ac').value}).then(handle)};
+check();
+</script></body></html>`;
+
+const ADMIN_HTML = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex">
+<title>إدارة الدخول</title><style>${PAGE_STYLE}
+.wrap{max-width:760px}.row{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--bd);padding:10px 0;flex-wrap:wrap}
+.row b{font-weight:600}.row small{color:var(--mu);display:block}.btns{display:flex;gap:6px}.btns button{width:auto;margin:0;padding:8px 12px;font-size:.85rem}
+h2{font-size:1.05rem;margin:22px 0 6px}.card+.card{margin-top:14px}.tag{font-size:.75rem;border:1px solid var(--bd);border-radius:99px;padding:1px 8px;color:var(--mu)}
+</style></head><body><div class="wrap">
+<div class="card" id="lg"><h1>إدارة الدخول</h1><p>أدخل رمز الإدارة.</p><input id="code" type="password" autocomplete="off"><button id="in">دخول</button><div id="m"></div></div>
+<div id="app" hidden>
+<div class="card"><h1>إدارة الدخول</h1><p id="stats"></p>
+<label for="csv">استيراد قائمة الطلبة (CSV: group,seq,reg_no,name) — يستبدل القائمة الحالية</label><input id="csv" type="file" accept=".csv,text/csv,text/plain"><div id="im"></div></div>
+<div class="card"><h2>طلبات بانتظار الموافقة <span id="pc"></span></h2><div id="pend"></div></div>
+<div class="card"><h2>المسجّلون</h2><input id="q" placeholder="بحث بالاسم…"><div id="users"></div></div>
+</div></div>
+<script>
+var $=function(i){return document.getElementById(i)},code=sessionStorage.getItem('ac')||'',data=null;
+function el(t,x,c){var e=document.createElement(t);if(x!=null)e.textContent=x;if(c)e.className=c;return e}
+function api(a,p,body){var q=new URLSearchParams(Object.assign({action:a},p||{}));
+ return fetch('/api/auth/admin?'+q,{method:body===undefined?'GET':'POST',headers:{'x-admin-code':code,'content-type':'text/csv'},body:body}).then(function(r){return r.json().then(function(j){j.http=r.status;return j})})}
+function btn(t,fn,s){var b=el('button',t,s?'s':'');b.onclick=fn;return b}
+function act(a,p){return api(a,p,'').then(function(j){if(j.error)alert('خطأ: '+j.error);load()})}
+function when(ts){return ts?new Date(ts).toLocaleString('ar-DZ'):''}
+function render(){
+ $('stats').textContent='القائمة: '+data.rosterCount+' طالب · المسجّلون: '+data.users.length+' · المحظورون: '+data.bans;
+ $('pc').textContent=data.pending.length?'('+data.pending.length+')':'';
+ var P=$('pend');P.textContent='';if(!data.pending.length)P.appendChild(el('p','لا توجد طلبات.'));
+ data.pending.forEach(function(p){var r=el('div',null,'row'),d=el('div');
+  var kind=p.t==='new'?'طالب غير مدرج':p.t==='mismatch'?'اسم غير مطابق':'جهاز جديد';
+  var b=el('b',p.name||'');d.appendChild(b);d.appendChild(document.createTextNode(' '));d.appendChild(el('span',kind,'tag'));
+  d.appendChild(el('small',(p.rn?'في القائمة: '+p.rn+(p.g?' · فوج '+p.g:''):'غير موجود في القائمة')+' · '+when(p.ts)));
+  r.appendChild(d);var bs=el('div',null,'btns');
+  bs.appendChild(btn('قبول',function(){act('approve',{id:p.id})}));bs.appendChild(btn('رفض',function(){act('reject',{id:p.id})},1));
+  r.appendChild(bs);P.appendChild(r)});
+ var U=$('users'),f=($('q').value||'').trim();U.textContent='';
+ data.users.filter(function(u){return !f||(u.n||'').indexOf(f)>=0}).slice(0,200).forEach(function(u){
+  var r=el('div',null,'row'),d=el('div');d.appendChild(el('b',u.n||''));if(u.banned){d.appendChild(document.createTextNode(' '));d.appendChild(el('span','محظور','tag'))}
+  d.appendChild(el('small','فوج '+(u.g||'—')+' · أجهزة: '+(u.c||1)+' · '+when(u.ts)));r.appendChild(d);var bs=el('div',null,'btns');
+  bs.appendChild(btn(u.banned?'إلغاء الحظر':'حظر',function(){act(u.banned?'unban':'ban',{sid:u.sid})},u.banned));
+  bs.appendChild(btn('تصفير الأجهزة',function(){if(confirm('حذف أجهزة هذا الطالب المسجّلة؟'))act('resetdev',{sid:u.sid})},1));
+  r.appendChild(bs);U.appendChild(r)})}
+function load(){return api('list').then(function(j){
+ if(j.http===401){sessionStorage.removeItem('ac');$('lg').hidden=false;$('app').hidden=true;$('m').textContent='رمز غير صحيح';$('m').className='bad';return}
+ if(j.error){$('m').textContent='خطأ: '+j.error;$('m').className='bad';return}
+ data=j;$('lg').hidden=true;$('app').hidden=false;render()})}
+$('in').onclick=function(){code=$('code').value.trim();sessionStorage.setItem('ac',code);load()};
+$('q').oninput=function(){if(data)render()};
+$('csv').onchange=function(){var f=this.files[0];if(!f)return;if(!confirm('سيُستبدل ملف القائمة الحالي. متابعة؟'))return;
+ f.text().then(function(t){return api('import',{},t)}).then(function(j){$('im').textContent=j.ok?('تم استيراد '+j.imported+' طالب'+(j.duplicates?' (تكرار: '+j.duplicates+')':'')+(j.skipped?' · أسطر متجاهلة: '+j.skipped:'')):('فشل: '+(j.error||''));load()})};
+if(code)load();
+</script></body></html>`;
+
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const gate = await authGate(request, env, url);
+    if (gate) return gate;
     if (url.pathname === "/api/publish") return handlePublish(request, env);
     if (url.pathname === "/api/history") return handleHistory(request, env);
     if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements") {
