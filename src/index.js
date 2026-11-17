@@ -1261,7 +1261,24 @@ async function handleAuth(request, env, url) {
   if (a === "admin") return authAdmin(request, env, url);
   if (a === "me" && request.method === "GET") {
     const ss = await readSession(request, env);
-    return jsonC({ in: !!ss.ok, admin: !!ss.ok && ss.sid === "admin" });
+    const out = { in: !!ss.ok, admin: !!ss.ok && ss.sid === "admin" };
+    if (ss.ok) {
+      const exp = Number(String(readCookies(request).ensd_s || "").split(".")[1]);
+      if (exp) out.exp = exp;
+      if (!out.admin) {
+        // بيانات الملف الشخصي: الاسم والمجموعة من قائمة الطلبة، وعدد الأجهزة وتاريخ أول دخول من سجل الجهاز
+        try {
+          const rec = await kvOf(env).get("dev:" + ss.sid, { type: "json" });
+          const known = await lookupStudent(env, ss.sid);
+          out.name = known ? known[0] : (rec && rec.n) || "";
+          out.group = known ? known[1] : (rec && rec.g) || "";
+          out.devices = rec && Array.isArray(rec.d) ? rec.d.length : 1;
+          out.since = (rec && rec.ts) || 0;
+          out.maxDevices = MAX_DEVICES;
+        } catch {}
+      }
+    }
+    return jsonC(out);
   }
   if (a === "status" && request.method === "GET") return authStatus(request, env);
   if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
@@ -1283,7 +1300,7 @@ async function authGate(request, env, url) {
   if (String(env.AUTH_DISABLED || "") === "1") return null;
   const p = url.pathname;
   if (p === "/auth-admin") return htmlPage(ADMIN_HTML);
-  if (p === "/login") return htmlPage(LOGIN_HTML);
+  if (p === "/login") return Response.redirect(url.origin + "/#login", 302);
   if (p.startsWith("/api/auth/")) return handleAuth(request, env, url);
   if (!kvOf(env) || !secretOf(env)) {
     return new Response("الحماية غير مهيّأة: أضف السر AUTH_SECRET واربط KV.", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
@@ -1308,51 +1325,6 @@ button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 16px
 button.s{background:transparent;color:var(--tx);border:1px solid var(--bd);font-weight:500}button:disabled{opacity:.55}
 .bad{color:var(--bad)}.ok{color:var(--ok)}#m{min-height:1.4em;margin:12px 0 0;font-size:.9rem}[hidden]{display:none!important}
 a{color:var(--ac)}.f{text-align:center;margin-top:14px;font-size:.85rem}`;
-
-const LOGIN_HTML = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex">
-<title>تسجيل الدخول</title><style>${PAGE_STYLE}</style></head><body><div class="wrap"><div class="card">
-<h1>تسجيل الدخول</h1><p>هذا الموقع مخصّص لطلبة الدفعة. أدخل اسمك الكامل ورقم التسجيل كما في القائمة.</p>
-<form id="f" autocomplete="on">
-<label for="n">الاسم الكامل</label><input id="n" name="name" autocomplete="name" required>
-<label for="r">رقم التسجيل</label><input id="r" name="regno" inputmode="numeric" autocomplete="off" required>
-<button id="go" type="submit">دخول</button>
-<button id="req" class="s" type="button" hidden>بياناتي صحيحة، أرسل طلب مراجعة يدوية</button>
-</form>
-<div id="w" hidden><p class="ok">تم إرسال طلبك إلى الإدارة. أبقِ هذه الصفحة مفتوحة، وستدخل تلقائياً عند الموافقة.</p></div>
-<div id="m"></div>
-<div class="f"><a href="#" id="adm">دخول المشرف</a></div>
-<form id="af" hidden><label for="ac">رمز المشرف</label><input id="ac" type="password" autocomplete="off"><button type="submit">دخول المشرف</button></form>
-</div></div>
-<script>
-var $=function(i){return document.getElementById(i)},busy=false,poll=null;
-function msg(t,bad){var m=$('m');m.textContent=t;m.className=bad?'bad':'ok'}
-function post(p,b){return fetch(p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json().catch(function(){return{}})})}
-function handle(j){
- if(j.status==='ok'){location.href=location.pathname==='/login'?'/':location.href;return}
- if(j.status==='pending'){wait();return}
- if(j.status==='banned'){msg('تم إيقاف هذا الحساب. تواصل مع الإدارة.',1);return}
- if(j.status==='nomatch'){msg('البيانات غير مطابقة للقائمة. تحقق من الاسم ورقم التسجيل.',1);$('req').hidden=false;return}
- if(j.error==='rate_limited'){msg('محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.',1);return}
- if(j.error==='auth_not_configured'){msg('الحماية غير مهيّأة بعد.',1);return}
- msg('تحقق من الاسم الكامل (كلمتان على الأقل) ورقم التسجيل.',1)
-}
-function go(path){
- if(busy)return;busy=true;$('go').disabled=true;msg('جارٍ التحقق…');
- post(path,{name:$('n').value.trim(),regno:$('r').value.trim()}).then(handle).catch(function(){msg('تعذّر الاتصال. أعد المحاولة.',1)}).then(function(){busy=false;$('go').disabled=false})
-}
-function check(){fetch('/api/auth/status').then(function(r){return r.json()}).then(function(j){
- if(j.status==='ok')location.href=location.pathname==='/login'?'/':location.href;
- else if(j.status==='rejected'){clearInterval(poll);poll=null;$('w').hidden=true;$('f').hidden=false;msg('تم رفض الطلب. تواصل مع الإدارة.',1)}
- else if(j.status==='none'&&poll){clearInterval(poll);poll=null;$('w').hidden=true;$('f').hidden=false;msg('')}
- else if(j.status==='pending'&&!poll)wait()}).catch(function(){})}
-function wait(){$('f').hidden=true;$('w').hidden=false;$('m').textContent='';if(!poll)poll=setInterval(check,5000)}
-$('f').onsubmit=function(e){e.preventDefault();go('/api/auth/login')};
-$('req').onclick=function(){go('/api/auth/request')};
-$('adm').onclick=function(e){e.preventDefault();$('af').hidden=!$('af').hidden};
-$('af').onsubmit=function(e){e.preventDefault();post('/api/auth/login',{admin:true,code:$('ac').value}).then(handle)};
-check();
-</script></body></html>`;
 
 const ADMIN_HTML = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex">
