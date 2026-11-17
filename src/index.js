@@ -869,10 +869,55 @@ async function handlePublish(request, env) {
   catch (error) { return json({ ok: false, error: "publish_error", message: String(error.message || error).slice(0, 200) }, 502); }
 }
 
+/* ===== سجل النشاط (Cloudflare KV: HISTORY_KV) ===== */
+const HISTORY_MAX = 500;
+
+function isHistoryAdmin(request, env) {
+  if (isModerator(request, env)) return true;
+  const expectedB = String(env.ADMIN_CODE_B || "").trim();
+  const supplied = String(request.headers.get("x-admin-code") || "").trim();
+  return Boolean(expectedB) && supplied === expectedB;
+}
+
+async function handleHistory(request, env) {
+  if (!isHistoryAdmin(request, env)) return json({ ok: false, error: "unauthorized" }, 401);
+  if (!env.HISTORY_KV) return json({ ok: false, error: "history_not_configured" }, 501);
+  const url = new URL(request.url);
+
+  if (request.method === "GET") {
+    const items = (await env.HISTORY_KV.get("history", "json")) || [];
+    return json({ items });
+  }
+
+  if (request.method === "POST" && url.searchParams.get("action") === "log") {
+    let body;
+    try { body = await request.json(); } catch { return json({ ok: false, error: "bad_json" }, 400); }
+    const incoming = (Array.isArray(body.events) ? body.events : []).slice(0, 50);
+    const clean = incoming.map((e) => ({
+      id: String(e.id || "").slice(0, 24),
+      ts: Number(e.ts) || Date.now(),
+      kind: ["add", "edit", "delete", "approve", "other"].includes(e.kind) ? e.kind : "other",
+      text: String(e.text || "").slice(0, 160),
+      target: String(e.target || "").slice(0, 220),
+      by: String(e.by || "").slice(0, 30),
+    })).filter((e) => e.id && e.text);
+    if (!clean.length) return json({ ok: true, added: 0 });
+
+    const cur = (await env.HISTORY_KV.get("history", "json")) || [];
+    const seen = new Set(cur.map((x) => x.id));
+    for (const e of clean) if (!seen.has(e.id)) cur.push(e);
+    cur.sort((a, b) => a.ts - b.ts);
+    await env.HISTORY_KV.put("history", JSON.stringify(cur.slice(-HISTORY_MAX)));
+    return json({ ok: true, added: clean.length });
+  }
+  return json({ ok: false, error: "method_not_allowed" }, 405);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/api/publish") return handlePublish(request, env);
+    if (url.pathname === "/api/history") return handleHistory(request, env);
     if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements") {
       const response = await handleApi(request, env);
       if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
