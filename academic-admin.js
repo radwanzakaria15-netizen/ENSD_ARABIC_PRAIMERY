@@ -99,8 +99,10 @@
     if ($("academicSaveStatus")) $("academicSaveStatus").textContent = "توجد تغييرات غير محفوظة.";
   }
   function applyCurrent() {
-    const sem = selectedSemester(), yr = selectedYear();
-    if (!sem || !yr) return;
+    const yr = selectedYear();
+    if (!yr) return;
+    /* سنة بلا سداسيات: نفرّغ المقاييس والدروس بدل ترك بيانات السنة السابقة ظاهرة */
+    const sem = selectedSemester() || { id: "", name: "", subjects: [] };
     const ordinal = (value, words, fallback) => {
       const digit = String(value).match(/[1-6]/);
       if (digit) return Number(digit[0]);
@@ -108,7 +110,9 @@
       const index = words.findIndex(word => text.includes(word));
       return index >= 0 ? index + 1 : fallback;
     };
-    const yearNumber = ordinal(yr.name, ["الأولى","الثانية","الثالثة","الرابعة","الخامسة","السادسة"], 2);
+    /* «أولى» و«الأولى» كلاهما يُعرَف؛ والاسم غير المعروف يأخذ رقمًا فريدًا حتى لا يلتبس بالسنة الثانية */
+    const yearIdx = Math.max(0, (config.years || []).findIndex(item => item.id === yr.id));
+    const yearNumber = ordinal(yr.name, ["أولى","ثانية","ثالثة","رابعة","خامسة","سادسة"], 100 + yearIdx);
     const semesterNumber = ordinal(sem.name, ["الأول","الثاني","الثالث","الرابع"], 1);
     window.__academicBridge?.setContext(yearNumber, semesterNumber);
     window.__academicBridge?.setLessonsMode?.(config.lessonsMode === "show" ? "show" : "hide");
@@ -128,6 +132,14 @@
     );
     const code = $("academicSemesterSelect");
     if (code) option(code, yr.semesters, activeSemesterId, "لا توجد سداسيات");
+    /* أزرار المجموعات في صفحة الدروس: مدرج وأفواج السنة المختارة فقط */
+    document.querySelectorAll(".lesson-group-option[data-group]").forEach(btn => {
+      const g = (yr.groups || []).find(item => String(item.code || "").toUpperCase() === btn.dataset.group);
+      const small = btn.querySelector("small"); if (!small) return;
+      if (!g) { small.textContent = "لم تُضف أفواج لهذه السنة بعد"; return; }
+      const names = (g.fogs || []).map(f => f.name).filter(Boolean);
+      small.textContent = (g.hall || "") + (names.length ? " · الأفواج " + (names.length > 1 ? names[0] + "–" + names[names.length - 1] : names[0]) : "");
+    });
   }
   function refreshPublicSelectors() {
     const yr = selectedYear();
