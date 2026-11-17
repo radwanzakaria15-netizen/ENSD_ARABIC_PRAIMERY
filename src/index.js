@@ -393,6 +393,22 @@ async function handleResources(request,env){
  }
  return json({error:"method_not_allowed"},405);
 }
+/* اسم صاحب الملف: يُؤخذ من جلسة الرافع (الاسم الذي اختاره في ملفه، وإلا اسمه في القائمة) */
+async function uploaderName(request,env){
+ try{
+  if(String(env.AUTH_DISABLED||"")==="1")return "";
+  if(anyAdmin(request,env))return "المشرف";
+  const ss=await readSession(request,env);
+  if(!ss.ok)return "";
+  if(ss.sid==="admin")return "المشرف";
+  const kv=kvOf(env),prof=(await kv.get("prof:"+ss.sid,{type:"json"}))||{};
+  if(prof.n)return String(prof.n).slice(0,60);
+  const known=await lookupStudent(env,ss.sid);
+  if(known&&known[0])return String(known[0]).slice(0,60);
+  const rec=await kv.get("dev:"+ss.sid,{type:"json"});
+  return rec&&rec.n?String(rec.n).slice(0,60):"";
+ }catch{return ""}
+}
 async function handleResourceFile(request,env){
  const u=new URL(request.url),key=u.searchParams.get("key")||"";
  if(request.method==="POST"){
@@ -403,6 +419,7 @@ async function handleResourceFile(request,env){
   const data=await request.arrayBuffer();if(!data.byteLength)return json({error:"empty_file"},400);if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
   const b=new Uint8Array(data),pdf=type==="application/pdf"&&new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-"),doc=type==="application/msword"&&b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]),docx=type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&b[0]===0x50&&b[1]===0x4B;
   if(!(pdf||doc||docx))return json({error:"file_type_mismatch"},400);
+  const up=await uploaderName(request,env);if(up)meta.uploader=up;
   const ownerRaw=String(u.searchParams.get("owner")||"").trim();if(/^[A-Za-z0-9_-]{16,128}$/.test(ownerRaw))meta.ownerHash=await sha256Hex(ownerRaw);
   const base="resources/pending/"+meta.id;meta.fileKey=base+"__"+name;
   const put=await signedB2Request(env,"PUT",meta.fileKey,data,{},type);if(!put.ok)return json({error:"storage_error"},502);
@@ -1255,6 +1272,30 @@ async function getBansFresh(env) {
   return Array.isArray(a) ? a : [];
 }
 
+/* ----- تعديل الملف الشخصي: الاسم المعروض + اختيار المجموعة (لا يمسّ مطابقة الدخول بالقائمة) ----- */
+async function authProfile(request, env) {
+  const ss = await readSession(request, env);
+  if (!ss.ok || ss.sid === "admin") return jsonC({ error: "login_required" }, 401);
+  if (rlCount("prof:" + ss.sid, 600000) >= 30) return jsonC({ error: "rate_limited" }, 429);
+  rlAdd("prof:" + ss.sid, 600000);
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const kv = kvOf(env);
+  const next = { ...((await kv.get("prof:" + ss.sid, { type: "json" })) || {}) };
+  if (body.name !== undefined) {
+    const n = String(body.name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+    if (!/^[\p{L}\p{M}' .\-]{2,60}$/u.test(n)) return jsonC({ error: "invalid_name" }, 400);
+    next.n = n;
+  }
+  if (body.group !== undefined) {
+    if (body.group !== "A" && body.group !== "B" && body.group !== "") return jsonC({ error: "invalid_group" }, 400);
+    next.g = body.group;
+  }
+  try { await kv.put("prof:" + ss.sid, JSON.stringify(next)); }
+  catch { return jsonC({ error: "kv_error" }, 502); }
+  return jsonC({ ok: true, name: next.n || "", group: next.g || "" });
+}
+
 async function handleAuth(request, env, url) {
   if (!kvOf(env) || !secretOf(env)) return jsonC({ error: "auth_not_configured" }, 503);
   const a = url.pathname.slice("/api/auth/".length);
@@ -1270,8 +1311,10 @@ async function handleAuth(request, env, url) {
         try {
           const rec = await kvOf(env).get("dev:" + ss.sid, { type: "json" });
           const known = await lookupStudent(env, ss.sid);
-          out.name = known ? known[0] : (rec && rec.n) || "";
-          out.group = known ? known[1] : (rec && rec.g) || "";
+          const prof = (await kvOf(env).get("prof:" + ss.sid, { type: "json" })) || {};
+          // الاسم: ما اختاره الطالب، وإلا اسمه في القائمة. المجموعة: اختياره هو فقط (لا تُستنتج من القائمة)
+          out.name = prof.n || (known ? known[0] : (rec && rec.n) || "");
+          out.group = prof.g === "A" || prof.g === "B" ? prof.g : "";
           out.devices = rec && Array.isArray(rec.d) ? rec.d.length : 1;
           out.since = (rec && rec.ts) || 0;
           out.maxDevices = MAX_DEVICES;
@@ -1282,6 +1325,7 @@ async function handleAuth(request, env, url) {
   }
   if (a === "status" && request.method === "GET") return authStatus(request, env);
   if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
+  if (a === "profile") return authProfile(request, env);
   if (a === "login") return authLogin(request, env, "login");
   if (a === "request") return authLogin(request, env, "request");
   if (a === "logout") return jsonC({ ok: true }, 200, [setCookie("ensd_s", "", 0)]);
