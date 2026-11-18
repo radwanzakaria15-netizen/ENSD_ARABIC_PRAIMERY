@@ -164,13 +164,33 @@ function validStoredKey(key) {
   return Boolean(fileInfo(key));
 }
 
+/* تنفيذ دوال غير متزامنة بتوازٍ محدود مع حفظ ترتيب النتائج */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); }
+  }));
+  return out;
+}
+
+/* مفاتيح المحاضرات تبدأ بـ A- أو B- أو Y: نسرد هذه البادئات الثلاث بالتوازي بدل سرد كل الحاوية
+   (التي تضم الموارد والصور والإعلانات)، فيسرع الجلب بعد كل رفع مهما كبرت المكتبة */
+const LESSON_PREFIXES = ["A-", "B-", "Y"];
 async function listLessons(env) {
+  const parts = await Promise.all(LESSON_PREFIXES.map((prefix) => listLessonsByPrefix(env, prefix)));
+  const files = parts.flat();
+  files.sort((a, b) => a.lessonKey.localeCompare(b.lessonKey) || (a.ts || 0) - (b.ts || 0) || a.name.localeCompare(b.name, "ar"));
+  return files;
+}
+async function listLessonsByPrefix(env, prefix) {
   const files = [];
   let token = "";
   for (let page = 0; page < 100; page++) {
     const response = await signedB2Request(env, "GET", "", null, {
       "list-type": "2",
       "max-keys": "1000",
+      prefix,
       ...(token ? { "continuation-token": token } : {}),
     });
     if (!response.ok) throw new Error("B2 list failed (" + response.status + "): " + (await response.text()).slice(0, 180));
@@ -186,7 +206,6 @@ async function listLessons(env) {
     token = xmlText(xml, "NextContinuationToken");
     if (!token) break;
   }
-  files.sort((a, b) => a.lessonKey.localeCompare(b.lessonKey) || (a.ts || 0) - (b.ts || 0) || a.name.localeCompare(b.name, "ar"));
   return files;
 }
 
@@ -243,8 +262,9 @@ async function edgeFile(request, ttl, produce) {
 }
 const APPROVED_INDEX_KEY = "resources/index-approved.json";
 async function rebuildApprovedIndex(env) {
-  const objects = await listObjectsByPrefix(env, "resources/approved/"), items = [];
-  for (const o of objects) { if (!o.key.endsWith(".json")) continue; const m = await readResourceMeta(env, o.key); if (m?.id && m.fileKey) items.push({ ...publicResource(m), status: "approved" }); }
+  const objects = (await listObjectsByPrefix(env, "resources/approved/")).filter((o) => o.key.endsWith(".json")), items = [];
+  const metas = await mapLimit(objects, 10, (o) => readResourceMeta(env, o.key).catch(() => null));
+  for (const m of metas) { if (m?.id && m.fileKey) items.push({ ...publicResource(m), status: "approved" }); }
   items.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   try { await signedB2Request(env, "PUT", APPROVED_INDEX_KEY, encoder.encode(JSON.stringify(items)), {}, "application/json"); } catch {}
   return items;
@@ -373,8 +393,9 @@ async function handleResources(request,env){
   const status=u.searchParams.get("status")==="pending"&&admin?"pending":"approved";
   if(u.searchParams.get("status")==="pending"&&!admin)return json({error:"unauthorized"},401);
   if(status==="approved")return edgeJson("res-approved",120,async()=>{try{return json(await approvedIndex(env))}catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}});
-  try{const objects=await listObjectsByPrefix(env,"resources/"+status+"/"),items=[];
-   for(const o of objects){if(!o.key.endsWith(".json"))continue;const m=await readResourceMeta(env,o.key);if(m?.id&&m.fileKey)items.push({...publicResource(m),status})}
+  try{const objects=(await listObjectsByPrefix(env,"resources/"+status+"/")).filter(o=>o.key.endsWith(".json")),items=[];
+   const metas=await mapLimit(objects,10,o=>readResourceMeta(env,o.key).catch(()=>null));
+   for(const m of metas){if(m?.id&&m.fileKey)items.push({...publicResource(m),status})}
    items.sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));return json(items);
   }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
  }
@@ -542,8 +563,20 @@ async function uploaderName(request,env){
   return rec&&rec.n?String(rec.n).slice(0,60):"";
  }catch{return ""}
 }
-async function handleResourceFile(request,env){
+/* من يُنشر مورده مباشرة دون مراجعة: المالك والأستاذ والمشرف (الدور يُحدَّد في الخادم فقط) */
+const DIRECT_PUBLISH_ROLES=["owner","teacher","supervisor"];
+async function handleResourceFile(request,env,ctx){
  const u=new URL(request.url),key=u.searchParams.get("key")||"";
+ if(request.method==="POST"&&u.searchParams.get("action")==="reindex"){
+  /* إعادة بناء فهرس الموارد المنشورة بعد رفع عدة أجزاء بالتوازي (لتفادي ضياع أحدها عند الكتابة المتزامنة) */
+  const who=await uploaderInfo(request,env);
+  if(!DIRECT_PUBLISH_ROLES.includes(who.role))return json({error:"unauthorized"},401);
+  const rk="reidx:"+(who.uid||who.role);
+  if(rlCount(rk,600000)>=6)return json({error:"rate_limited"},429);
+  rlAdd(rk,600000);
+  try{await edgeDrop("res-approved");await rebuildApprovedIndex(env);schedulePublish(ctx,env);return json({ok:true})}
+  catch(e){return json({error:"storage_error"},502)}
+ }
  if(request.method==="POST"){
   const name=safeFileName(u.searchParams.get("name")),type=contentTypeForName(name);
   if(type==="application/octet-stream")return json({error:"unsupported_file_type"},400);
@@ -553,10 +586,16 @@ async function handleResourceFile(request,env){
   if(!fileBytesMatch(type,data))return json({error:"file_type_mismatch"},400);
   const up=await uploaderInfo(request,env);if(up.name)meta.uploader=up.name;if(up.role)meta.uploaderRole=up.role;if(up.uid)meta.uploaderId=up.uid;if(up.group)meta.uploaderGroup=up.group;
   const ownerRaw=String(u.searchParams.get("owner")||"").trim();if(/^[A-Za-z0-9_-]{16,128}$/.test(ownerRaw))meta.ownerHash=await sha256Hex(ownerRaw);
-  const base="resources/pending/"+meta.id;meta.fileKey=base+"__"+name;
-  const put=await signedB2Request(env,"PUT",meta.fileKey,data,{},type);if(!put.ok)return json({error:"storage_error"},502);
-  const save=await signedB2Request(env,"PUT",base+".json",encoder.encode(JSON.stringify(meta)),{},"application/json");
-  if(!save.ok){await deleteResourceObject(env,meta.fileKey);return json({error:"storage_error"},502)}
+  const direct=DIRECT_PUBLISH_ROLES.includes(up.role);
+  const base="resources/"+(direct?"approved/":"pending/")+meta.id;meta.fileKey=base+"__"+name;
+  if(direct){meta.status="approved";meta.approvedAt=meta.createdAt}
+  /* الملف وبياناته يُرفعان معًا (طلبان متوازيان بدل متتاليين)، وعند فشل أحدهما نمسح ما رُفع */
+  const [put,save]=await Promise.all([
+   signedB2Request(env,"PUT",meta.fileKey,data,{},type).catch(()=>null),
+   signedB2Request(env,"PUT",base+".json",encoder.encode(JSON.stringify(meta)),{},"application/json").catch(()=>null)
+  ]);
+  if(!put||!put.ok||!save||!save.ok){await Promise.all([deleteResourceObject(env,meta.fileKey).catch(()=>{}),deleteResourceObject(env,base+".json").catch(()=>{})]);return json({error:"storage_error"},502)}
+  if(direct){await refreshApproved(env,{upsert:meta});schedulePublish(ctx,env);return json({ok:true,pending:false,published:true,id:meta.id})}
   return json({ok:true,pending:true,id:meta.id});
  }
  if(request.method==="GET"){
@@ -743,6 +782,8 @@ async function handleAcademicImage(request, env) {
 
 // ===== الإعلانات: تُحفظ في Backblaze B2 داخل ملف واحد announcements/list.json =====
 const ANN_KEY = "announcements/list.json";
+/* إعدادات «إدارة المكتبة» تُحفظ كإعلان بهذا العنوان؛ تعديلها (إضافة/تعديل/حذف) للمالك وحده */
+const LIB_CFG_TITLE = "__ensd_library_config__";
 const annClip = (v, n) => String(v ?? "").trim().slice(0, n);
 // صورة خلفية البطاقة: data-URI صغيرة (JPG/PNG/WEBP) أو رابط http(s)/مسار داخلي
 const annImg = (v) => { const s = String(v || ""); return s.length <= 150000 && /^(data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+\/=]+|(?:https?:\/\/|\/)[^\s"'()<>\\]+)$/.test(s) ? s : ""; };
@@ -763,8 +804,9 @@ function isModerator(request, env) {
   return Boolean(expected) && String(request.headers.get("x-admin-code") || "").trim() === expected;
 }
 /* ===== الصلاحيات: المالك فقط / المشرف بصلاحيات يمنحها المالك =====
-   ann = إدارة الإعلانات · res = إدارة الموارد · academic = إدارة الدروس والمواد (الوحدات والمواضيع) */
-const SUP_PERMS = ["res", "academic"];
+   ann = إدارة الإعلانات · res = إدارة المشاركات الجديدة (مراجعة الموارد المعلّقة) · academic = إدارة الدروس والمواد (الوحدات والمواضيع)
+   «إدارة المكتبة» (التصنيفات والألوان) للمالك وحده، ولا تُمنح لأي مشرف أو أستاذ. */
+const SUP_PERMS = ["ann", "res", "academic"];
 const supEntryPerms = (e) => Array.isArray(e && e.perms) ? e.perms.filter((p) => SUP_PERMS.includes(p)) : ["academic"]; // المشرفون القدامى يحتفظون بما كان لهم
 function isOwnerCode(request, env) {
   const expected = String(env.ADMIN_CODE_MOD || "").trim();
@@ -785,13 +827,15 @@ async function supervisorPerms(request, env) {
   } catch { return []; }
 }
 async function supervisorHas(request, env, perm) { return (await supervisorPerms(request, env)).includes(perm); }
-/* إدارة الإعلانات: المالك (رمز الإدارة الأكاديمية) والأستاذ (رمز المحاضرات) فقط، ولا أحد غيرهما */
+/* إدارة الإعلانات: المالك والأستاذ، والمشرف الذي منحه المالك صلاحية «ann» */
 async function isTeacherAccess(request, env) {
   const hdr = String(request.headers.get("x-admin-code") || "").trim();
   if (hdr && [env.ADMIN_CODE_A, env.ADMIN_CODE_B].some((v) => { const e = String(v || "").trim(); return e && safeEq(hdr, e); })) return true;
   try { const ss = await readSession(request, env); return !!(ss.ok && ss.sid === "admin" && (await readRole(request, env)) === "teacher"); } catch { return false; }
 }
-async function canManageAnn(request, env) { return (await isOwnerSession(request, env)) || (await isTeacherAccess(request, env)); }
+async function canManageAnn(request, env) {
+  return (await isOwnerSession(request, env)) || (await isTeacherAccess(request, env)) || (await supervisorHas(request, env, "ann"));
+}
 async function canModerateRes(request, env) { return isModerator(request, env) || (await isOwnerSession(request, env)) || (await supervisorHas(request, env, "res")); }
 async function handleAnnouncements(request, env) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "";
@@ -803,18 +847,20 @@ async function handleAnnouncements(request, env) {
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
     const annOk = await canManageAnn(request, env);
     if (action === "check") {
-      // check يخدم واجهة الموارد أيضاً: الإعلانات للمالك والأستاذ فقط، والمشرف بصلاحية الموارد يمرّ للموارد فقط
+      // check يخدم واجهة الموارد أيضاً: الإعلانات للمالك والأستاذ والمشرف بصلاحية ann، والمشرف بصلاحية الموارد يمرّ للموارد
       const resOk = annOk || (await canModerateRes(request, env));
       return resOk ? json({ ok: true, ann: annOk, res: resOk }) : json({ ok: false, error: "unauthorized" }, 401);
     }
     if (!annOk) return json({ ok: false, error: "unauthorized" }, 401);
 
     const list = await readAnnouncements(env);
+    const isOwner = await isOwnerSession(request, env);
     if (action === "add") {
       let body = {};
       try { body = await request.json(); } catch {}
       const title = annClip(body.title, 120);
       if (!title) return json({ ok: false, error: "title_required" }, 400);
+      if (title === LIB_CFG_TITLE && !isOwner) return json({ ok: false, error: "owner_only" }, 403);
       const link = annClip(body.link, 500);
       const item = {
         id: crypto.randomUUID().slice(0, 8),
@@ -839,12 +885,14 @@ async function handleAnnouncements(request, env) {
     const id = u.searchParams.get("id") || "";
     const idx = list.findIndex((a) => a.id === id);
     if (idx < 0) return json({ ok: false, error: "not_found" }, 404);
+    if (annClip(list[idx].title, 120) === LIB_CFG_TITLE && !isOwner) return json({ ok: false, error: "owner_only" }, 403);
     if (action === "edit") {
       // تعديل إعلان موجود: يحافظ على المعرّف والتصويت والتفاعلات والتعليقات
       let body = {};
       try { body = await request.json(); } catch {}
       const title = annClip(body.title, 120);
       if (!title) return json({ ok: false, error: "title_required" }, 400);
+      if (title === LIB_CFG_TITLE && !isOwner) return json({ ok: false, error: "owner_only" }, 403);
       const link = annClip(body.link, 500), it = list[idx];
       it.title = title;
       it.body = annClip(body.body, 1500);
@@ -1128,7 +1176,7 @@ async function handleComments(request, env) {
   if (!kv) return json({ error: "kv_not_configured" }, 503);
   if (!annKeyOk(id)) return json({ error: "invalid_input" }, 400);
   const ss = await readSession(request, env);
-  const admin = isModerator(request, env) || (ss.ok && ss.sid === "admin");
+  const admin = isModerator(request, env) || (ss.ok && ss.sid === "admin") || (ss.ok && await supervisorHas(request, env, "ann"));
   try {
     let list = (await kv.get("cm:" + id, { type: "json" })) || [];
     if (!Array.isArray(list)) list = [];
@@ -1216,7 +1264,7 @@ async function handleApi(request, env, ctx) {
   if (url.pathname === "/api/academic-image") return handleAcademicImage(request, env);
   if (url.pathname === "/api/resources") return handleResources(request, env);
   if (url.pathname === "/api/announcements") return handleAnnouncements(request, env);
-  if (url.pathname === "/api/resource") return handleResourceFile(request, env);
+  if (url.pathname === "/api/resource") return handleResourceFile(request, env, ctx);
 
   if (url.pathname === "/api/lessons") {
     if (request.method === "GET") {
@@ -1858,14 +1906,26 @@ async function authProfile(request, env) {
   if (ss.sid === "admin") {
     // المالك/الأستاذ: يغيّر الاسم الظاهر لدوره (يُحفظ في إعدادات الشارة)
     const role = (await readRole(request, env)) || "teacher";
-    const n = String(body.name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
-    if (!/^[\p{L}\p{M}' .\-]{2,60}$/u.test(n)) return jsonC({ error: "invalid_name" }, 400);
-    try {
-      const saved = await readBadgeRaw(env);
-      saved[role] = { ...(saved[role] || {}), name: badgeText(n, 60) };
-      await kv.put("badges:cfg", JSON.stringify(saved));
-    } catch { return jsonC({ error: "kv_error" }, 502); }
-    return jsonC({ ok: true, name: n, group: "" });
+    let saved;
+    try { saved = await readBadgeRaw(env); } catch { return jsonC({ error: "kv_error" }, 502); }
+    const cur = { ...(saved[role] || {}) };
+    if (body.name !== undefined) {
+      const n = String(body.name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+      if (!/^[\p{L}\p{M}' .\-]{2,60}$/u.test(n)) return jsonC({ error: "invalid_name" }, 400);
+      cur.name = badgeText(n, 60);
+    }
+    if (body.subject !== undefined) {
+      const sj = String(body.subject || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+      if (sj.length > 80) return jsonC({ error: "invalid_subject" }, 400);
+      cur.subject = sj;
+    }
+    if (body.group !== undefined) {
+      if (body.group !== "A" && body.group !== "B" && body.group !== "") return jsonC({ error: "invalid_group" }, 400);
+      cur.group = body.group;
+    }
+    saved[role] = cur;
+    try { await kv.put("badges:cfg", JSON.stringify(saved)); } catch { return jsonC({ error: "kv_error" }, 502); }
+    return jsonC({ ok: true, name: cur.name || "", subject: cur.subject || "", group: cur.group || "" });
   }
   const next = { ...((await kv.get("prof:" + ss.sid, { type: "json" })) || {}) };
   if (body.name !== undefined) {
@@ -1899,6 +1959,7 @@ async function handleAuth(request, env, url, ctx) {
     if (out.admin) {
       out.role = (await readRole(request, env)) || "teacher";
       try { const c0 = mergeBadgeCfg(await readBadgeRaw(env))[out.role]; out.name = c0.name || c0.label; out.label = c0.label; } catch {}
+      try { const r0 = (await readBadgeRaw(env))[out.role] || {}; out.subject = String(r0.subject || ""); out.group = r0.group === "A" || r0.group === "B" ? r0.group : ""; } catch {}
       if (out.role === "owner") out.perms = SUP_PERMS.slice();
     }
     if (ss.ok) {
