@@ -7800,7 +7800,7 @@ html[data-theme=dark] .badge-role-row,html[data-theme=dark] .badge-sup-row{backg
 (function(){
  "use strict";
  const $=id=>document.getElementById(id);
- const ROLES=[["owner","المالك","صاحب الموقع · رمز الإدارة الأكاديمية"],["teacher","الأستاذ","من يدخل برمز المحاضرات"],["supervisor","المشرف (الشارة العامة)","طالب تعيّنه أنت فقط · لكل مشرف شارة خاصة تعدّلها أسفل اسمه ولا تتأثر بهذه الشارة"]];
+ const ROLES=[["owner","المالك","صاحب الموقع · رمز الإدارة الأكاديمية"],["teacher","الأستاذ","من يدخل برمز المحاضرات"],["supervisor","المشرف (الشارة العامة)","طالب تعيّنه أنت فقط"]];
  const DEF={owner:{label:"المالك",color:"#b9802f",name:""},teacher:{label:"الأستاذ",color:"#3b6fb6",name:""},supervisor:{label:"مشرف",color:"#2f8f6b",name:""}};
  const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
  const ERR={unauthorized:"رمز الإدارة غير صحيح.",student_not_found:"لم أجد طالباً بهذا الاسم ورقم التسجيل.",already_supervisor:"هذا الطالب مشرف بالفعل.",invalid_input:"أدخل الاسم الكامل ورقم التسجيل.",too_many_supervisors:"بلغت الحد الأقصى للمشرفين."};
