@@ -487,7 +487,11 @@ async function uploaderInfo(request, env) {
   } catch {}
   return { role: "", name: name === "المشرف" ? "الإدارة" : name, uid, group };
 }
-const supOut = (list) => list.map((x) => ({ id: String(x.sid).slice(0, 12), name: x.name, at: x.at, perms: supEntryPerms(x) }));
+/* شارة خاصة بكل مشرف (اسم الشارة + لونها): تُحفظ نسخة مستقلة في سجل المشرف، فلا يغيّرها تعديل الشارة العامة */
+const supCustom = (x) => (x && /^#[0-9a-fA-F]{6}$/.test(String(x.bc || "")))
+  ? { label: badgeText(x.bl, 24) || BADGE_DEFAULTS.supervisor.label, color: x.bc } : null;
+const supUid = async (env, sid) => (await mac(env, "u|" + sid)).slice(0, 16);
+const supOut = (list) => list.map((x) => ({ id: String(x.sid).slice(0, 12), name: x.name, at: x.at, perms: supEntryPerms(x), badge: supCustom(x) }));
 async function handleBadges(request, env) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "";
   const owner = isAcademicAdmin(request, env);
@@ -500,7 +504,9 @@ async function handleBadges(request, env) {
       const supervisors = supOut(await readSupervisors(env));
       return json({ ok: true, badges, supervisors });
     }
-    return json({ ok: true, badges });
+    const custom = {};
+    for (const x of await readSupervisors(env)) { const c = supCustom(x); if (c) custom[await supUid(env, x.sid)] = c; }
+    return json({ ok: true, badges, custom });
   }
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   if (!owner) return json({ error: "unauthorized" }, 401);
@@ -534,6 +540,19 @@ async function handleBadges(request, env) {
     const id = String(b.id || ""), i = list.findIndex((x) => String(x.sid).slice(0, 12) === id);
     if (i < 0) return json({ error: "not_found" }, 404);
     list[i].perms = [...new Set((Array.isArray(b.perms) ? b.perms : []).map(String).filter((p) => SUP_PERMS.includes(p)))];
+    await kv.put("badges:sup", JSON.stringify(list));
+    return json({ ok: true, supervisors: supOut(list) });
+  }
+  if (action === "set_sup_badge" || action === "reset_sup_badge") {
+    const id = String(b.id || ""), i = list.findIndex((x) => String(x.sid).slice(0, 12) === id);
+    if (i < 0) return json({ error: "not_found" }, 404);
+    if (action === "reset_sup_badge") { delete list[i].bl; delete list[i].bc; }
+    else {
+      const color = String(b.color || "");
+      if (!/^#[0-9a-fA-F]{6}$/.test(color)) return json({ error: "invalid_input" }, 400);
+      list[i].bl = badgeText(b.label, 24) || BADGE_DEFAULTS.supervisor.label;
+      list[i].bc = color;
+    }
     await kv.put("badges:sup", JSON.stringify(list));
     return json({ ok: true, supervisors: supOut(list) });
   }
@@ -979,7 +998,7 @@ async function rxPerson(env, me, ctxData) {
   }
   const sup = ctxData.sups.find((x) => x.sid === me);
   const hit = personCache.get(me);
-  if (hit && Date.now() - hit.t < 300000) return { name: sup && sup.name ? sup.name : hit.name, role: sup ? "supervisor" : "" };
+  if (hit && Date.now() - hit.t < 300000) return { name: sup && sup.name ? sup.name : hit.name, role: sup ? "supervisor" : "", u: sup ? await supUid(env, me) : "" };
   const kv = kvOf(env);
   let name = "";
   try { name = ((await kv.get("prof:" + me, { type: "json" })) || {}).n || ""; } catch {}
@@ -988,7 +1007,7 @@ async function rxPerson(env, me, ctxData) {
   name = String(name || "طالب").slice(0, 60);
   if (personCache.size > 500) personCache.clear();
   personCache.set(me, { name, t: Date.now() });
-  return { name: sup && sup.name ? sup.name : name, role: sup ? "supervisor" : "" };
+  return { name: sup && sup.name ? sup.name : name, role: sup ? "supervisor" : "", u: sup ? await supUid(env, me) : "" };
 }
 async function rxPersonCtx(env, needRoster) {
   const kv = kvOf(env);
@@ -1012,7 +1031,7 @@ async function notifyOwnerOfReaction(env, id, reactor) {
   if (list.some((x) => x.i === nid)) return; // نفس الشخص لا يكرّر الإشعار
   let person = { name: "", role: "" };
   try { person = await rxPerson(env, reactor.me, await rxPersonCtx(env, true)); } catch {}
-  list.push({ i: nid, r: id, x: title, t: Date.now(), n: person.name, o: person.role });
+  list.push({ i: nid, r: id, x: title, t: Date.now(), n: person.name, o: person.role, u: person.role === "supervisor" ? String(person.u || "") : "" });
   if (list.length > NT_MAX) list = list.slice(-NT_MAX);
   await kv.put(nk, JSON.stringify(list), { expirationTtl: 60 * 86400 });
 }
@@ -1026,7 +1045,7 @@ async function handleNotifications(request, env) {
     if (request.method === "GET") {
       let list = (await kv.get(nk, { type: "json" })) || [];
       if (!Array.isArray(list)) list = [];
-      return json({ ok: true, list: list.slice().reverse().map((x) => ({ i: x.i, r: x.r, x: x.x, t: x.t, n: x.n || "", o: x.o || "" })), n: list.length });
+      return json({ ok: true, list: list.slice().reverse().map((x) => ({ i: x.i, r: x.r, x: x.x, t: x.t, n: x.n || "", o: x.o || "", u: x.u || "" })), n: list.length });
     }
     if (request.method === "POST") {
       await kv.delete(nk);
@@ -1182,7 +1201,13 @@ async function handleComments(request, env) {
     if (!Array.isArray(list)) list = [];
     const roleOf = (c) => c.role || (c.adm ? "supervisor" : "");
     if (request.method === "GET") {
-      return json({ ok: true, admin, me: ss.ok ? ss.sid : "", list: list.map((c) => ({ i: c.i, n: c.n, t: c.t, x: c.x, own: !!(ss.ok && c.s === ss.sid), adm: !!c.adm, role: roleOf(c) })) });
+      const uc = new Map(), outList = [];
+      for (const c of list) {
+        const role = roleOf(c); let u = "";
+        if (role === "supervisor" && c.s && c.s !== "admin") { if (!uc.has(c.s)) uc.set(c.s, await supUid(env, c.s)); u = uc.get(c.s); }
+        outList.push({ i: c.i, n: c.n, t: c.t, x: c.x, own: !!(ss.ok && c.s === ss.sid), adm: !!c.adm, role, u });
+      }
+      return json({ ok: true, admin, me: ss.ok ? ss.sid : "", list: outList });
     }
     if (request.method === "DELETE") {
       const cid = u.searchParams.get("cid") || "";
@@ -1479,10 +1504,29 @@ function isHistoryAdmin(request, env) {
   return Boolean(expectedB) && supplied === expectedB;
 }
 
+/* هوية من يسجّل العملية (تُحدَّد في الخادم فقط): أستاذ/مالك، أو مشرف معيَّن */
+async function historyActor(request, env) {
+  try {
+    const ss = await readSession(request, env);
+    const id = await staffIdentity(request, env, ss);
+    if (id) return { by: await staffLabel(env, id) };
+    if (ss.ok && ss.sid !== "admin") {
+      const hit = (await readSupervisors(env)).find((x) => x.sid === ss.sid);
+      if (hit) {
+        const c = supCustom(hit) || mergeBadgeCfg(await readBadgeRaw(env)).supervisor;
+        return { by: String((hit.name || "مشرف") + " · " + c.label).slice(0, 60) };
+      }
+    }
+  } catch {}
+  return null;
+}
+
 async function handleHistory(request, env) {
-  if (!isHistoryAdmin(request, env)) return json({ ok: false, error: "unauthorized" }, 401);
-  if (!env.HISTORY_KV) return json({ ok: false, error: "history_not_configured" }, 501);
   const url = new URL(request.url);
+  const isLog = request.method === "POST" && url.searchParams.get("action") === "log";
+  const actor = isLog ? await historyActor(request, env) : null;
+  if (!isHistoryAdmin(request, env) && !actor) return json({ ok: false, error: "unauthorized" }, 401);
+  if (!env.HISTORY_KV) return json({ ok: false, error: "history_not_configured" }, 501);
 
   if (request.method === "GET") {
     const items = (await env.HISTORY_KV.get("history", "json")) || [];
@@ -1496,10 +1540,10 @@ async function handleHistory(request, env) {
     const clean = incoming.map((e) => ({
       id: String(e.id || "").slice(0, 24),
       ts: Number(e.ts) || Date.now(),
-      kind: ["add", "edit", "delete", "approve", "other"].includes(e.kind) ? e.kind : "other",
+      kind: ["add", "edit", "delete", "approve", "login", "logout", "activity", "other"].includes(e.kind) ? e.kind : "other",
       text: String(e.text || "").slice(0, 160),
       target: String(e.target || "").slice(0, 220),
-      by: String(e.by || "").slice(0, 30),
+      by: actor ? actor.by : String(e.by || "").slice(0, 60),
     })).filter((e) => e.id && e.text);
     if (!clean.length) return json({ ok: true, added: 0 });
 
@@ -1585,6 +1629,77 @@ async function readRole(request, env) {
   if (!(Number(exp) > Date.now() / 1000)) return "";
   const ok = (await mac(env, "r|" + role + "|" + exp)).slice(0, 40);
   return safeEq(sig, ok) ? role : "";
+}
+
+/* فوج الأستاذ (A/B) في كوكي موقّع منفصل، ليُعرف أي أستاذ هو صاحب الجلسة */
+async function groupCookie(env, group) {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  const sig = (await mac(env, "g|" + group + "|" + exp)).slice(0, 40);
+  return setCookie("ensd_g", group + "." + exp + "." + sig, SESSION_DAYS * 86400);
+}
+async function readGroup(request, env) {
+  const v = String(readCookies(request).ensd_g || "").split(".");
+  if (v.length !== 3) return "";
+  const [g, exp, sig] = v;
+  if (g !== "A" && g !== "B") return "";
+  if (!(Number(exp) > Date.now() / 1000)) return "";
+  return safeEq(sig, (await mac(env, "g|" + g + "|" + exp)).slice(0, 40)) ? g : "";
+}
+
+/* ===== حضور الأساتذة (دخول / خروج / نشاط) ===== */
+function staffByCode(request, env) {
+  const supplied = [request.headers.get("x-academic-admin-code"), request.headers.get("x-admin-code")]
+    .map((v) => String(v || "").trim()).filter(Boolean);
+  if (!supplied.length) return null;
+  const owner = String(env.ADMIN_CODE_MOD || "").trim();
+  if (owner && supplied.some((x) => safeEq(x, owner))) return { role: "owner", group: "" };
+  const a = String(env.ADMIN_CODE_A || "").trim(), b = String(env.ADMIN_CODE_B || "").trim();
+  if (a && supplied.some((x) => safeEq(x, a))) return { role: "teacher", group: "A" };
+  if (b && supplied.some((x) => safeEq(x, b))) return { role: "teacher", group: "B" };
+  return null;
+}
+async function staffIdentity(request, env, ss) {
+  let id = staffByCode(request, env);
+  if (!id) {
+    if (!ss || !ss.ok || ss.sid !== "admin") return null;
+    const role = (await readRole(request, env)) || "teacher";
+    const group = role === "owner" ? "" : await readGroup(request, env);
+    if (role === "teacher" && !group) return null;
+    id = { role, group };
+  }
+  id.key = id.role === "owner" ? "owner" : "teacher-" + id.group;
+  return id;
+}
+async function staffLabel(env, id) {
+  const c = mergeBadgeCfg(await readBadgeRaw(env))[id.role], base = c.name || c.label;
+  return String(id.role === "teacher" ? base + " · فوج " + id.group : base).slice(0, 60);
+}
+const staffSeen = new Map();
+async function markStaff(env, id, t) {
+  const kv = kvOf(env); if (!kv) return;
+  staffSeen.set(id.key, t);
+  try { await kv.put("staff:" + id.key, "1", { expirationTtl: 30 * 86400, metadata: { t, role: id.role, group: id.group } }); } catch {}
+}
+async function logStaffEvent(env, id, kind, text) {
+  try {
+    await logHistoryEvent(env, {
+      id: ("st" + kind.charAt(0) + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).slice(0, 24),
+      ts: Date.now(), kind, text, target: "", by: await staffLabel(env, id)
+    });
+  } catch {}
+}
+/* نشاط الأستاذ: كتابة محدودة كل 4 دقائق؛ وإن عاد بعد خمول أكثر من 30 دقيقة يُسجَّل «عاد إلى النشاط» */
+async function trackStaff(request, env, ss) {
+  try {
+    const id = await staffIdentity(request, env, ss); if (!id) return;
+    const now = Date.now();
+    if (now - (staffSeen.get(id.key) || 0) < 240000) return;
+    const kv = kvOf(env); if (!kv) return;
+    let prev = 0;
+    try { if (typeof kv.getWithMetadata === "function") { const r = await kv.getWithMetadata("staff:" + id.key); prev = Number(r && r.metadata && r.metadata.t) || 0; } } catch {}
+    await markStaff(env, id, now);
+    if (now - prev > 1800000) await logStaffEvent(env, id, "activity", "عاد إلى النشاط");
+  } catch {}
 }
 
 /* ----- آخر نشاط للطلبة (لعدّاد النشطين): كتابة محدودة كل 4 دقائق لكل طالب ----- */
@@ -1756,7 +1871,10 @@ async function authLogin(request, env, kind) {
     const ownerCode = String(env.ADMIN_CODE_MOD || "").trim(), aCode = String(env.ADMIN_CODE_A || "").trim();
     const role = ownerCode && safeEq(sup, ownerCode) ? "owner" : "teacher";
     const group = role === "owner" ? "" : (aCode && safeEq(sup, aCode) ? "A" : "B");
-    return jsonC({ status: "ok", role, group }, 200, [await sessionCookie(env, "admin"), await roleCookie(env, role)]);
+    const sid0 = { role, group, key: role === "owner" ? "owner" : "teacher-" + group };
+    await markStaff(env, sid0, Date.now());
+    await logStaffEvent(env, sid0, "login", "سجّل الدخول");
+    return jsonC({ status: "ok", role, group }, 200, [await sessionCookie(env, "admin"), await roleCookie(env, role), group ? await groupCookie(env, group) : setCookie("ensd_g", "", 0)]);
   }
 
   if (rlCount("fail:" + ip, 900000) >= 10) return jsonC({ error: "rate_limited" }, 429);
@@ -1846,7 +1964,20 @@ async function authAdmin(request, env, url) {
       const active = { now: cnt(600000), day: cnt(86400000), week: cnt(7 * 86400000) };
       pend.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       users.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-      return jsonC({ pending: pend, users, rosterCount: Object.keys(roster).length, bans: bans.length, active });
+      // الأساتذة (رمزا الفوجين A/B) والمالك والمشرفون: العدد وهل هم نشطون
+      const stf = new Map((await listAll(kv, "staff:")).map((k) => [k.name.slice(6), Number(k.metadata && k.metadata.t) || 0]));
+      const bcfg = mergeBadgeCfg(await readBadgeRaw(env));
+      const mk = (ls) => ({ ls, on: !!ls && nowMs - ls < 600000 });
+      const teachers = [["A", env.ADMIN_CODE_A], ["B", env.ADMIN_CODE_B]]
+        .filter(([g, c]) => String(c || "").trim())
+        .map(([g]) => ({ group: g, name: bcfg.teacher.name || bcfg.teacher.label, ...mk(stf.get("teacher-" + g) || 0) }));
+      const supsL = (await readSupervisors(env)).map((x) => ({ name: x.name, ...mk(seen.get(x.sid) || 0) }));
+      const staff = {
+        teachers, teacherCount: teachers.length, teacherActive: teachers.filter((t) => t.on).length,
+        owner: { name: bcfg.owner.name || bcfg.owner.label, ...mk(stf.get("owner") || 0) },
+        supervisors: supsL, supCount: supsL.length, supActive: supsL.filter((x) => x.on).length
+      };
+      return jsonC({ pending: pend, users, rosterCount: Object.keys(roster).length, bans: bans.length, active, staff });
     }
     if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
 
@@ -1964,6 +2095,7 @@ async function handleAuth(request, env, url, ctx) {
     }
     if (ss.ok) {
       touchSeen(env, ss.sid, ctx);
+      if (ss.sid === "admin" && ctx && ctx.waitUntil) ctx.waitUntil(trackStaff(request, env, ss));
       const exp = Number(String(readCookies(request).ensd_s || "").split(".")[1]);
       if (exp) out.exp = exp;
       if (!out.admin) {
@@ -1991,7 +2123,16 @@ async function handleAuth(request, env, url, ctx) {
   if (a === "profile") return authProfile(request, env);
   if (a === "login") return authLogin(request, env, "login");
   if (a === "request") return authLogin(request, env, "request");
-  if (a === "logout") return jsonC({ ok: true }, 200, [setCookie("ensd_s", "", 0), setCookie("ensd_r", "", 0)]);
+  if (a === "logout") {
+    try {
+      const ss = await readSession(request, env);
+      if (ss.ok && ss.sid === "admin") {
+        const id = await staffIdentity(request, env, ss);
+        if (id) { await markStaff(env, id, 0); await logStaffEvent(env, id, "logout", "سجّل الخروج"); }
+      }
+    } catch {}
+    return jsonC({ ok: true }, 200, [setCookie("ensd_s", "", 0), setCookie("ensd_r", "", 0), setCookie("ensd_g", "", 0)]);
+  }
   return jsonC({ error: "not_found" }, 404);
 }
 
@@ -2013,8 +2154,15 @@ async function authGate(request, env, url, ctx) {
     return new Response("الحماية غير مهيّأة: أضف السر AUTH_SECRET واربط KV.", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
   }
   const s = await readSession(request, env);
-  if (s.ok) { touchSeen(env, s.sid, ctx); return null; }
-  if (p.startsWith("/api/") && anyAdmin(request, env)) return null;
+  if (s.ok) {
+    touchSeen(env, s.sid, ctx);
+    if (s.sid === "admin" && ctx && ctx.waitUntil) ctx.waitUntil(trackStaff(request, env, s));
+    return null;
+  }
+  if (p.startsWith("/api/") && anyAdmin(request, env)) {
+    if (ctx && ctx.waitUntil) ctx.waitUntil(trackStaff(request, env, s));
+    return null;
+  }
   // الواجهة (HTML/JS/CSS) عامة لتظهر الصفحة الرئيسية، أما البيانات والملفات فمحمية بتسجيل الدخول
   const isData = p.startsWith("/api/") || p.startsWith("/data/") || (/\.json$/i.test(p) && p !== "/manifest.json");
   if (isData) return json({ error: "login_required", banned: !!s.banned }, 401);
@@ -2188,11 +2336,14 @@ button{cursor:pointer}
   <div class="card stat warn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l2 2"/><circle cx="12" cy="12" r="9"/></svg></span><div><b id="sPend">0</b><small>بانتظار الموافقة</small></div></div>
   <div class="card stat"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.500h16v13H4zM8 10h8M8 14h5"/></svg></span><div><b id="sRoster">0</b><small>طلبة القائمة</small></div></div>
   <div class="card stat bad"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.600 5.600l12.800 12.800"/></svg></span><div><b id="sBan">0</b><small>المحظورون</small></div></div>
+ <div class="card stat"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 9l10 5 10-5z"/><path d="M6 11.5V16c0 1.4 2.7 3 6 3s6-1.6 6-3v-4.5"/></svg></span><div><b id="sTeach">0</b><small>عدد الأساتذة</small></div></div>
+  <div class="card stat live"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 9l10 5 10-5z"/><path d="M6 11.5V16c0 1.4 2.7 3 6 3s6-1.6 6-3v-4.5"/></svg></span><div><b id="sTeachOn">0</b><small>أساتذة نشطون الآن</small></div></div>
  </section>
 
  <nav class="tabs" role="tablist">
   <button class="tab" role="tab" data-t="pending" aria-selected="true">الطلبات<i id="tPend" hidden>0</i></button>
   <button class="tab" role="tab" data-t="users" aria-selected="false">المسجّلون</button>
+  <button class="tab" role="tab" data-t="staff" aria-selected="false">الأساتذة</button>
   <button class="tab" role="tab" data-t="import" aria-selected="false">الاستيراد</button>
  </nav>
 
@@ -2211,6 +2362,11 @@ button{cursor:pointer}
    <button class="chip" data-f="ban" aria-pressed="false">المحظورون</button>
   </div>
   <div id="users"></div>
+ </section>
+
+ <section class="card panel" id="p-staff" hidden>
+  <div class="panel-h"><h2>الأساتذة والمشرفون</h2><span id="stCount"></span></div>
+  <div id="staffBox"></div>
  </section>
 
  <section class="card panel" id="p-import" hidden>
@@ -2257,6 +2413,7 @@ function renderStats(){
  $('sNow').textContent=a.now||0;$('sDay').textContent=a.day||0;
  $('sUsers').textContent=data.users.length;$('sPend').textContent=data.pending.length;
  $('sRoster').textContent=data.rosterCount;$('sBan').textContent=data.bans;
+ var sf=data.staff||{};$('sTeach').textContent=sf.teacherCount||0;$('sTeachOn').textContent=sf.teacherActive||0;
  var t=$('tPend');t.hidden=!data.pending.length;t.textContent=data.pending.length;
  $('upd').textContent='آخر تحديث: '+new Date().toLocaleTimeString('ar-DZ');
 }
@@ -2312,11 +2469,33 @@ function renderUsers(){
   b.appendChild(ac);it.appendChild(b);U.appendChild(it);
  });
 }
-function render(){renderStats();renderPending();renderUsers()}
+function staffItem(name,tagText,tagCls,ls,on,i){
+ var it=el('div',null,'item');it.style.animationDelay=Math.min(i,10)*30+'ms';
+ it.appendChild(avatar(name,on));
+ var b=el('div',null,'body'),nm=el('div',null,'name');
+ nm.appendChild(el('span',name||''));nm.appendChild(el('span',tagText,'tag '+tagCls));
+ b.appendChild(nm);
+ var m=el('div',null,'meta');m.appendChild(el('span',on?'نشط الآن':(ls?ago(ls):'لم يدخل بعد'),'seen'+(on?' on':'')));
+ b.appendChild(m);it.appendChild(b);return it;
+}
+function renderStaff(){
+ var S=$('staffBox'),sf=data.staff||{};S.textContent='';
+ var T=sf.teachers||[],P=sf.supervisors||[],i=0;
+ $('stCount').textContent=(sf.teacherCount||0)+' أستاذ · نشط: '+(sf.teacherActive||0);
+ var h1=el('h3','الأساتذة ('+(sf.teacherCount||0)+') · نشطون: '+(sf.teacherActive||0));h1.style.cssText='margin:6px 0 10px;font-size:14px';S.appendChild(h1);
+ if(!T.length)S.appendChild(el('div','لم يُضبط أي رمز أستاذ.','empty'));
+ T.forEach(function(t){S.appendChild(staffItem((t.name||'الأستاذ')+' · فوج '+t.group,t.on?'نشط':'غير نشط',t.on?'ok':'',t.ls,t.on,i++))});
+ if(sf.owner){var h0=el('h3','المالك');h0.style.cssText='margin:14px 0 10px;font-size:14px';S.appendChild(h0);
+  S.appendChild(staffItem(sf.owner.name||'المالك',sf.owner.on?'نشط':'غير نشط',sf.owner.on?'ok':'',sf.owner.ls,sf.owner.on,i++))}
+ var h2=el('h3','المشرفون ('+(sf.supCount||0)+') · نشطون: '+(sf.supActive||0));h2.style.cssText='margin:14px 0 10px;font-size:14px';S.appendChild(h2);
+ if(!P.length)S.appendChild(el('div','لا يوجد مشرفون معيَّنون.','empty'));
+ P.forEach(function(x){S.appendChild(staffItem(x.name||'',x.on?'نشط':'غير نشط',x.on?'ok':'',x.ls,x.on,i++))});
+}
+function render(){renderStats();renderPending();renderUsers();renderStaff()}
 function setTab(t){
  tab=t;
  [].forEach.call(document.querySelectorAll('.tab'),function(b){b.setAttribute('aria-selected',String(b.getAttribute('data-t')===t))});
- ['pending','users','import'].forEach(function(k){$('p-'+k).hidden=k!==t});
+ ['pending','users','staff','import'].forEach(function(k){$('p-'+k).hidden=k!==t});
 }
 function load(silent){
  var rf=$('rf');if(!silent)rf.classList.add('spin');
