@@ -7685,7 +7685,7 @@ function wirePhoto(){
    return saveServerPhoto({image:d}).then(function(j){
     if(j&&j.ok){ls.set(photoKey(),d);if(S.me)S.me.photo=true;paint();viewProfile();toast("تم اعتماد الصورة");return}
     var e=j&&j.error;
-    say(e==="image_rejected"?"رفض الخادم الصورة لأنها غير مناسبة. اختر صورة أخرى.":e==="moderation_unavailable"?"خدمة الفحص غير متاحة حالياً. حاول لاحقاً.":e==="rate_limited"?"محاولات كثيرة. انتظر قليلاً.":"تعذّر حفظ الصورة. أعد المحاولة.",1);
+    say(e==="image_rejected"?"رفض الخادم الصورة لأنها غير مناسبة. اختر صورة أخرى.":e==="image_unclear"?"لم يستطع الفحص الحكم على الصورة. جرّب صورة أوضح ("+(j.detail?"رد النموذج: "+j.detail:"")+").":e==="moderation_unavailable"?"خدمة الفحص غير متاحة حالياً. حاول لاحقاً.":e==="rate_limited"?"محاولات كثيرة. انتظر قليلاً.":"تعذّر حفظ الصورة. أعد المحاولة.",1);
     if(e==="image_rejected")shake();
     add.disabled=false;if(del)del.disabled=false;
    });
