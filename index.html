@@ -4366,7 +4366,7 @@ function rxAgo(t){const d=Math.max(0,Date.now()-t),m=Math.floor(d/60000);if(m<1)
 function showRxNotifs(){
  const list=window.__rxNotifs||[];if(!list.length)return;
  const ov=document.createElement("div");
- ov.style.cssText="position:fixed;inset:0;z-index:120;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center;padding:0";
+ ov.style.cssText="position:fixed;inset:0;z-index:2147483645;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center;padding:0";
  const box=document.createElement("div");
  box.style.cssText="width:min(480px,100%);max-height:78vh;overflow:auto;background:var(--surface,#fff);color:var(--ink,#14202a);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));box-shadow:0 -12px 40px rgba(0,0,0,.25)";
  box.innerHTML='<h3 style="margin:0 0 12px;font-size:17px">تفاعلات على ملفاتك</h3>'+list.map(x=>'<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line,#e3ebee)"><span style="color:#e11d48;font-size:20px">♥</span><div style="flex:1;min-width:0"><b style="display:block;font-size:14px">تفاعل '+esc(x.n||"أحدهم")+(x.o?' <em style="font-style:normal;font-size:11px;padding:1px 7px;border-radius:99px;background:rgba(31,122,112,.15);color:#1f7a70">'+esc(x.o==="owner"?"المالك":x.o==="teacher"?"الأستاذ":"مشرف")+'</em>':"")+' مع ملفك</b><small style="color:var(--muted,#64727e)">'+esc(x.x||"ملف")+" · "+rxAgo(x.t)+'</small></div></div>').join("")+'<button type="button" style="width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#1f7a70;color:#fff;font-weight:700;font-size:15px">تم</button>';
@@ -4533,7 +4533,7 @@ function toggleFav(id){
   if(!id)return;
   const n=rxN(id);if(!n&&!isOn(id)){toast("لا توجد تفاعلات بعد.");return}
   const ov=document.createElement("div");
-  ov.style.cssText="position:fixed;inset:0;z-index:130;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center";
+  ov.style.cssText="position:fixed;inset:0;z-index:2147483645;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center";
   const box=document.createElement("div");
   box.setAttribute("role","dialog");box.setAttribute("aria-label","المتفاعلون");
   box.style.cssText="width:min(480px,100%);max-height:72vh;overflow:auto;background:var(--surface,#fff);color:var(--ink,#14202a);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));box-shadow:0 -12px 40px rgba(0,0,0,.25)";
@@ -5278,6 +5278,7 @@ html[data-theme=dark] .ann-card.has-bg{border-color:transparent}
  function clearPress(){if(!press)return;clearTimeout(press.timer);press.card.classList.remove("is-pressing");press.fill&&press.fill.remove();press=null}
  document.addEventListener("pointerdown",e=>{
   if(e.button!==undefined&&e.button!==0)return;
+  if(e.target.closest&&e.target.closest(".fav-btn"))return;
   const card=e.target.closest&&e.target.closest(".resource-card[data-rid]");if(!card)return;
   const it=itemOf(card);if(!it)return;
   const roles=rolesOf(it);if(!roles.owner&&!roles.admin)return;
@@ -5296,6 +5297,7 @@ html[data-theme=dark] .ann-card.has-bg{border-color:transparent}
  document.addEventListener("click",e=>{if(Date.now()<suppressUntil&&e.target.closest&&e.target.closest(".resource-card")){e.preventDefault();e.stopPropagation()}},true);
  /* قائمة السياق القياسية (النقر الأيمن / الضغط المطوّل في بعض المتصفحات) */
  document.addEventListener("contextmenu",e=>{
+  if(e.target.closest&&e.target.closest(".fav-btn"))return;
   const card=e.target.closest&&e.target.closest(".resource-card[data-rid]");if(!card)return;
   const it=itemOf(card);if(!it)return;const roles=rolesOf(it);if(!roles.owner&&!roles.admin)return;
   e.preventDefault();if(ctx&&ctx.classList.contains("is-open"))return;clearPress();suppressUntil=Date.now()+700;showMenu(it,roles);
@@ -7375,6 +7377,11 @@ html.lite-motion .au-overlay.in{-webkit-backdrop-filter:none;backdrop-filter:non
 .au-seg button{border:0;border-radius:11px;padding:10px 6px;font:inherit;font-size:13.5px;font-weight:800;background:transparent;color:var(--muted);cursor:pointer;transition:background .2s,color .2s,box-shadow .2s,transform .15s}
 .au-seg button:active{transform:scale(.96)}
 .au-seg button[aria-checked=true]{background:var(--surface,#fff);color:var(--primary-dark);box-shadow:0 2px 8px rgba(30,60,60,.14)}
+.au-card{overflow-x:hidden}
+.au-body,.au-view,.au-rows,.au-row,.au-row-tx,.au-edit{min-width:0;max-width:100%}
+.au-eye[hidden]{display:none!important}
+.au-edit input{width:0}
+.au-row-tx b,.au-row-tx small{overflow-wrap:anywhere}
 </style>
 <script id="auth-ui-20261117">
 (function(){
@@ -7465,7 +7472,7 @@ function open(v,from){
  overlay.addEventListener("pointerdown",function(e){if(e.target===overlay)close()});
  card.querySelector(".au-x").addEventListener("click",close);
  D.addEventListener("keydown",onKey,true);
- setTimeout(function(){if(!card)return;var f=matchMedia("(pointer:fine)").matches?card.querySelector("input"):null;(f||card).focus({preventScroll:true})},reduced()?0:320);
+ setTimeout(function(){if(!card)return;var f=matchMedia("(pointer:fine)").matches?card.querySelector("input"):null;(f||card).focus({preventScroll:true});card.scrollLeft=0},reduced()?0:320);
 }
 function close(){
  if(!overlay||closing)return;closing=true;stopPoll();
@@ -7607,7 +7614,7 @@ function viewProfile(){
   var tx=$("#auNameRow .au-row-tx");pen.hidden=true;
   tx.innerHTML='<small>الاسم الكامل</small><div class="au-edit"><input id="auNameIn" maxlength="60" autocomplete="name" enterkeyhint="done" value="'+esc(nm)+'" aria-label="الاسم الكامل"><button type="button" class="au-save" id="auSave" aria-label="حفظ الاسم">'+ic("check")+'</button><button type="button" class="au-cancel" id="auCancel" aria-label="إلغاء">'+ic("close")+'</button></div><small class="au-hint" id="auNameMsg">هذا الاسم للعرض فقط، ولا يؤثر على تسجيل دخولك.</small>';
   var inp=$("#auNameIn"),msg=$("#auNameMsg"),sv=$("#auSave"),busy=false;
-  inp.focus();inp.select();
+  inp.focus({preventScroll:true});inp.select();card.scrollLeft=0;
   function bad(t){msg.textContent=t;msg.className="au-hint bad";shake()}
   function save(){
    if(busy)return;
@@ -8365,7 +8372,7 @@ html body input[type=color]:active{transform:scale(.92)}
 input[type=color]::-webkit-color-swatch-wrapper{padding:0}
 input[type=color]::-webkit-color-swatch{border:0;border-radius:50%}
 input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
-.cp-ov{position:fixed;inset:0;z-index:100000;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center;animation:cpFade .18s ease}
+.cp-ov{position:fixed;inset:0;z-index:2147483640;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center;animation:cpFade .18s ease}
 .cp-sheet{width:min(440px,100%);background:var(--surface,#fff);color:var(--ink,#14202a);border-radius:26px 26px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom,0px));box-shadow:0 -16px 44px rgba(0,0,0,.28);animation:cpUp .24s cubic-bezier(.22,.8,.3,1)}
 .cp-grip{width:42px;height:5px;border-radius:9px;background:var(--line,#d5dfdb);margin:4px auto 14px}
 .cp-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
