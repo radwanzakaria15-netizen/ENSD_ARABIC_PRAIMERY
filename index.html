@@ -7632,8 +7632,8 @@ function viewProfile(){
   var subs=[];try{[typeof lessonSubjects!=="undefined"?lessonSubjects:[],typeof subjectData!=="undefined"?subjectData:[]].forEach(function(arr){(arr||[]).forEach(function(x){var t=(typeof x==="string"?x:x&&x.name)||"";t=String(t).trim();if(t&&subs.indexOf(t)<0)subs.push(t)})})}catch(e){}
   var msub=(m.subject||"").trim();if(msub&&subs.indexOf(msub)<0)subs.push(msub);
   var ag=m.group==="A"||m.group==="B"?m.group:"";
-  rows+=row(i++,"cap","المقياس",null,{inner:'<select class="au-sel" id="auSubj" aria-label="اختر المقياس"><option value="">'+(subs.length?"اختر المقياس":"لا توجد مقاييس")+'</option>'+subs.map(function(t){return '<option value="'+esc(t)+'"'+(t===msub?" selected":"")+'>'+esc(t)+'</option>'}).join("")+'</select><small class="au-hint" id="auSubjMsg">المقاييس المتوفرة في المنصة.</small>'});
-  rows+=row(i++,"group","المجموعة",null,{inner:'<div class="au-seg" id="auTSeg" role="radiogroup" aria-label="اختر المجموعة"><button type="button" role="radio" data-tg="A" aria-checked="'+(ag==="A")+'">المجموعة A</button><button type="button" role="radio" data-tg="B" aria-checked="'+(ag==="B")+'">المجموعة B</button></div><small class="au-hint" id="auTGrpMsg">'+(ag?"يمكنك تغيير المجموعة في أي وقت.":"اختر المجموعة.")+'</small>'});
+  if(!isOwner)rows+=row(i++,"cap","المقياس",null,{inner:'<select class="au-sel" id="auSubj" aria-label="اختر المقياس"><option value="">'+(subs.length?"اختر المقياس":"لا توجد مقاييس")+'</option>'+subs.map(function(t){return '<option value="'+esc(t)+'"'+(t===msub?" selected":"")+'>'+esc(t)+'</option>'}).join("")+'</select><small class="au-hint" id="auSubjMsg">المقاييس المتوفرة في المنصة.</small>'});
+  if(!isOwner)rows+=row(i++,"group","المجموعة",null,{inner:'<div class="au-seg" id="auTSeg" role="radiogroup" aria-label="اختر المجموعة"><button type="button" role="radio" data-tg="A" aria-checked="'+(ag==="A")+'">المجموعة A</button><button type="button" role="radio" data-tg="B" aria-checked="'+(ag==="B")+'">المجموعة B</button></div><small class="au-hint" id="auTGrpMsg">'+(ag?"يمكنك تغيير المجموعة في أي وقت.":"اختر المجموعة.")+'</small>'});
   rows+=row(i++,"clock","انتهاء الجلسة",exp?esc(fmtDate(exp))+" · بعد "+left+" يوم":"—");
  }else{
   hero('<span class="au-initial">'+esc(nm.charAt(0))+'</span>',nm,"طالب · التعليم الابتدائي",tagsHtml(g));
@@ -7763,7 +7763,8 @@ html[data-theme=dark] .resource-by-badge{color:color-mix(in srgb,var(--bc) 62%,#
 .badge-admin-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .badge-admin-head b{font-size:14px}.badge-admin-head span{font-size:11.5px;color:var(--muted,#7a8a86)}
 .badge-role-row{display:grid;grid-template-columns:1fr;gap:8px;padding:10px;margin-bottom:8px;border:1px solid var(--line,#e3ebe8);border-radius:12px;background:var(--card,#fff)}
-.badge-role-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.badge-role-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.badge-role-top>div{flex:1 1 100%;min-width:0;line-height:1.7}.badge-role-top .badge-preview{flex:0 0 auto;max-width:100%}
 .badge-role-top small{font-size:11px;color:var(--muted,#7a8a86)}
 .badge-role-fields{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
 .badge-role-fields .br-name,.badge-role-fields .br-btns{grid-column:1/-1}
