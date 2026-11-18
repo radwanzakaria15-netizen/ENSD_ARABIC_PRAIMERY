@@ -1348,17 +1348,6 @@ html[data-theme=dark] .auth-banner{border-color:#5b4a22}
  <section class="page" id="page-subjects">
  <div class="subjects-hero"><div class="subjects-kicker">ENSD · STUDY MATERIALS</div><h2>المواد والمقاييس</h2><p>تصفّح مقاييس السنة ومحاور برامجها، وافتح أي مادة للاطلاع على محتواها.</p></div>
  <div class="academic-context-bar" id="academicContextBar"><label>السنة الجامعية<select id="academicYearSelect"></select></label><label>السداسي<select id="academicSemesterSelect"></select></label></div>
- <details class="academic-admin sup-corner" id="supCorner" hidden><summary>ركن المشرف</summary>
-  <div class="sup-perm-box"><p class="academic-editor-note" id="supPermNote"></p><div class="sup-perm-chips" id="supPermChips"></div><div class="sup-quick" id="supQuick"></div></div>
-  <div class="academic-editor" id="supAcademic" hidden><p class="academic-editor-note">صلاحية «إدارة الدروس والمواد»: إضافة وتعديل وحذف الدروس/الوحدات والمواضيع داخل المقاييس والمحاور الموجودة. أما السنوات والسداسيات والمقاييس والمحاور والمعاملات والأفواج فمن صلاحيات المالك فقط. التغييرات لا تظهر للطلبة قبل الضغط على «حفظ التغييرات».</p>
-   <div class="academic-select-grid"><label>السنة<select id="supYear"></select></label><label>السداسي<select id="supSem"></select></label><label>المقياس<select id="supSubject"></select></label><label>المحور<select id="supAxis"></select></label><label>الدرس / الوحدة<select id="supChapter"></select></label><label>الموضوع<select id="supTopic"></select></label></div>
-   <div class="academic-actions">
-    <div><b>الدروس / الوحدات</b><button type="button" data-sup="add-chapter">إضافة</button><button type="button" data-sup="edit-chapter">تعديل</button><button type="button" data-sup="delete-chapter" class="danger">حذف</button></div>
-    <div><b>المواضيع</b><button type="button" data-sup="add-topic">إضافة</button><button type="button" data-sup="edit-topic">تعديل</button><button type="button" data-sup="delete-topic" class="danger">حذف</button></div>
-   </div>
-   <div class="academic-save-row"><button type="button" id="supSave">حفظ التغييرات</button><span id="supStatus" role="status"></span></div>
-  </div>
- </details>
  <details class="academic-admin" id="academicAdmin"><summary><span class="acx-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5C7 4 9.5 4.5 12 6v14c-2.5-1.5-5-2-8-.5z"/><path d="M20 5.5C17 4 14.5 4.5 12 6v14c2.5-1.5 5-2 8-.5z"/></svg></span><span class="acx-st"><b>إدارة البرنامج الأكاديمي</b><small>السنوات والمقاييس والمحاور والدروس</small></span></summary>
   <div class="academic-admin-login" id="academicAdminLogin"><input id="academicAdminCode" type="password" placeholder="الرمز الخاص" autocomplete="current-password"><button type="button" id="academicAdminEnter">دخول خاص</button><span id="academicAdminLoginStatus" role="status"></span></div>
   <div class="academic-editor" id="academicEditor" hidden><p class="academic-editor-note">اختر موضعك من القوائم، ثم أضف أو عدّل أو احذف من الأسفل. لا تظهر التغييرات للطلبة قبل الضغط على «حفظ التغييرات».</p>
@@ -4030,7 +4019,7 @@ $("#annChips")?.addEventListener("click",e=>{const b=e.target.closest(".ann-chip
 /* ---------- announcements admin (داخل إدارة البرنامج الأكاديمي) ---------- */
 let ANN_ADMIN="",ANN_CODE_TRY="",ANN_CAN=false;
 const supPerm=p=>(window.__SUP_PERMS||[]).indexOf(p)>-1;
-const supCode=()=>(window.__ME_ROLE==="owner"||supPerm("ann")||supPerm("res"))?"__sup__":"";
+const supCode=()=>(window.__ME_ROLE==="owner"||window.__ME_ROLE==="teacher"||supPerm("res"))?"__sup__":"";
 const persistedAdminCode=()=>{try{return localStorage.getItem("ensd_persist_academic_code")||""}catch(e){return ""}};
 async function annApi(action,opts={}){
  const code=opts.code??ANN_ADMIN,q=new URLSearchParams(Object.assign({action},opts.params||{}));
@@ -4059,9 +4048,9 @@ function resSyncAdmin(){
 }
 function annAdminUI(){const box=$("#annAdminBox");if(box)box.hidden=!(ANN_ADMIN&&ANN_CAN);resSyncAdmin();const d=$("#annDate");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);renderAnnManage()}
 document.addEventListener("ensd:perms",()=>{
- const own=window.__ME_ROLE==="owner";
- if(!ANN_ADMIN&&(own||supPerm("ann")||supPerm("res")))ANN_ADMIN="__sup__";
- if(own||supPerm("ann"))ANN_CAN=true;
+ const own=window.__ME_ROLE==="owner",tch=window.__ME_ROLE==="teacher";
+ if(!ANN_ADMIN&&(own||tch||supPerm("res")))ANN_ADMIN="__sup__";
+ if(own||tch)ANN_CAN=true;
  RES_SYNCED="\u0000";annAdminUI();
 });
 document.addEventListener("click",e=>{if(e.target.closest("#academicAdminEnter")){const v=$("#academicAdminCode")?.value.trim();if(v)ANN_CODE_TRY=v}},true);
@@ -7776,7 +7765,7 @@ html[data-theme=dark] .badge-role-row,html[data-theme=dark] .badge-sup-row{backg
  function renderSup(){
   const box=$("badgeSupList");if(!box)return;
   if(!state.supervisors.length){box.innerHTML='<div class="badge-sup-empty">لم تعيّن أي مشرف بعد.</div>';return}
-  const PERMS=[["ann","إدارة الإعلانات"],["res","إدارة الموارد"],["academic","إدارة الدروس والمواد"]];
+  const PERMS=[["res","إدارة الموارد"],["academic","إدارة الدروس والمواد"]];
    box.innerHTML=state.supervisors.map(s=>'<div class="badge-sup-row" data-id="'+esc(s.id)+'"><span>'+esc(s.name)+'</span><button type="button" class="sup-edit">تعديل</button><button type="button" class="danger sup-del">حذف</button><div class="sup-perms"><small>الصلاحيات:</small>'+PERMS.map(p=>'<label class="sup-perm"><input type="checkbox" data-perm="'+p[0]+'"'+((s.perms||[]).indexOf(p[0])>-1?' checked':'')+'><span>'+p[1]+'</span></label>').join("")+'</div></div>').join("");
  }
  function render(){renderRoles();renderSup()}
@@ -8004,117 +7993,20 @@ html[data-theme=dark] body .resource-file-icon.img{background:#12291f!important;
 /* إدارة البرنامج الأكاديمي: للمالك فقط · إدارة المحاضرات: للأستاذ والمالك */
 html:not([data-role="owner"]) #academicAdmin{display:none!important}
 html:not([data-role="owner"]) .resource-admin-area,html:not([data-role="owner"]) #libAdminBar{display:none!important}
-.sup-corner[hidden]{display:none!important}
+html:not([data-role="owner"]):not([data-role="teacher"]) #annAdminBox{display:none!important}
 html:not([data-role="owner"]):not([data-role="teacher"]) .lesson-admin-footer{display:none!important}
 </style>
-<script id="supervisor-corner-20261118">
-/* ركن المشرف: تعديل الدروس/الوحدات والمواضيع فقط (الخادم يرفض أي تغيير آخر) */
+<script id="role-perms-20261118">
+/* يحدّد دور المستخدم (مالك / أستاذ / مشرف) لواجهة الموقع */
 (function(){
  "use strict";
- var D=document,$=function(i){return D.getElementById(i)},box=$("supCorner");if(!box)return;
- var cfg=null,dirty=false,asOwner=false;
- var clean=function(v){return String(v||"").trim().replace(/[<>"'`]/g,"").slice(0,180)};
- var uid=function(){return "a-"+(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2))};
- function ask(label,val){
-  if(typeof window.uiPrompt==="function")return window.uiPrompt({title:"إدخال",label:label,value:val||"",allowEmpty:false,confirmText:"حسنًا",maxLength:180}).then(function(r){return r===null?null:clean(r)});
-  var r=window.prompt(label,val||"");return Promise.resolve(r===null?null:clean(r));
- }
- function sure(msg){
-  if(typeof window.uiConfirm==="function")return Promise.resolve(window.uiConfirm(msg,{title:"تأكيد الحذف",confirmText:"حذف",type:"danger"}));
-  return Promise.resolve(window.confirm(msg));
- }
- function fill(sel,items,label,keep){
-  sel.replaceChildren();
-  if(!items.length){var o=D.createElement("option");o.value="";o.textContent=label;sel.append(o);return}
-  items.forEach(function(it,i){var o=D.createElement("option");o.value=it.id!==undefined?it.id:String(i);o.textContent=it.name;sel.append(o)});
-  if(keep&&items.some(function(it,i){return(it.id!==undefined?it.id:String(i))===keep}))sel.value=keep;
- }
- var y=function(){return(cfg.years||[]).find(function(x){return x.id===$("supYear").value})};
- var sm=function(){var a=y();return a&&(a.semesters||[]).find(function(x){return x.id===$("supSem").value})};
- var sb=function(){var a=sm();return a&&(a.subjects||[]).find(function(x){return x.id===$("supSubject").value})};
- var ax=function(){var a=sb();return a&&(a.axes||[]).find(function(x){return x.id===$("supAxis").value})};
- var ch=function(){var a=ax();return a&&(a.chapters||[]).find(function(x){return x.id===$("supChapter").value})};
- var ti=function(){var v=$("supTopic").value;return v===""?-1:Number(v)};
- function paint(keep){
-  keep=keep||{};
-  fill($("supYear"),cfg.years||[],"لا توجد سنوات",keep.y||$("supYear").value);
-  fill($("supSem"),(y()||{}).semesters||[],"لا توجد سداسيات",keep.s||$("supSem").value);
-  fill($("supSubject"),(sm()||{}).subjects||[],"لا توجد مقاييس",keep.b||$("supSubject").value);
-  fill($("supAxis"),(sb()||{}).axes||[],"لا توجد محاور",keep.a||$("supAxis").value);
-  fill($("supChapter"),(ax()||{}).chapters||[],"لا توجد دروس/وحدات",keep.c||$("supChapter").value);
-  var c=ch();fill($("supTopic"),((c&&c.topics)||[]).map(function(t,i){return{id:String(i),name:t}}),"لا توجد مواضيع",keep.t);
- }
- function st(t){$("supStatus").textContent=t||""}
- async function load(){
-  try{
-   var r=await fetch("/api/academic?fresh="+Date.now(),{cache:"no-store"});
-   var j=await r.json();cfg=j&&j.config&&j.config.years?j.config:null;
-  }catch(e){cfg=null}
-  if(!cfg){st("تعذر تحميل البرنامج الأكاديمي.");cfg={years:[]}}
-  paint();
- }
- ["supYear","supSem","supSubject","supAxis","supChapter"].forEach(function(id){$(id).addEventListener("change",function(){paint()})});
- box.addEventListener("click",async function(e){
-  var b=e.target.closest("[data-sup]");if(!b||!cfg)return;
-  var parts=b.dataset.sup.split("-"),act=parts[0],kind=parts[1];
-  if(kind==="chapter"){
-   var a=ax();if(!a){st("اختر المحور أولًا.");return}
-   if(act==="add"){var v=await ask("اسم الدرس أو الوحدة","");if(!v)return;var n={id:uid(),name:v,topics:[]};(a.chapters=a.chapters||[]).push(n);paint({c:n.id})}
-   else{var c=ch();if(!c){st("اختر الدرس أو الوحدة أولًا.");return}
-    if(act==="edit"){var v2=await ask("اسم الدرس أو الوحدة",c.name);if(!v2)return;c.name=v2;paint({c:c.id})}
-    else{if(!(await sure("هل تريد حذف «"+c.name+"»؟")))return;a.chapters=a.chapters.filter(function(x){return x!==c});paint()}}
-  }else{
-   var c2=ch();if(!c2){st("اختر الدرس أو الوحدة أولًا.");return}
-   c2.topics=c2.topics||[];
-   if(act==="add"){var v3=await ask("اسم الموضوع","");if(!v3)return;c2.topics.push(v3);paint({c:c2.id,t:String(c2.topics.length-1)})}
-   else{var i=ti();if(i<0||c2.topics[i]===undefined){st("اختر الموضوع أولًا.");return}
-    if(act==="edit"){var v4=await ask("اسم الموضوع",c2.topics[i]);if(!v4)return;c2.topics[i]=v4;paint({c:c2.id,t:String(i)})}
-    else{if(!(await sure("هل تريد حذف «"+c2.topics[i]+"»؟")))return;c2.topics.splice(i,1);paint({c:c2.id})}}
-  }
-  dirty=true;st("تغييرات غير محفوظة.");
- });
- $("supSave").addEventListener("click",async function(){
-  if(!cfg||!dirty){st("لا توجد تغييرات للحفظ.");return}
-  var btn=$("supSave");btn.disabled=true;st("جارٍ الحفظ...");
-  try{
-   var h={"content-type":"application/json"};
-   if(asOwner){try{var c=localStorage.getItem("ensd_persist_academic_code")||"";if(c)h["x-academic-admin-code"]=c}catch(e){}}
-   var r=await fetch("/api/academic",{method:"PUT",headers:h,body:JSON.stringify(cfg),credentials:"same-origin"});
-   var j=await r.json().catch(function(){return{}});
-   if(!r.ok){
-    if(j.error==="supervisor_scope")throw new Error("البرنامج تغيّر منذ فتحك الصفحة؛ حدّثها ثم أعد المحاولة.");
-    if(j.error==="unauthorized")throw new Error("ليست لديك صلاحية الحفظ.");
-    throw new Error("تعذر الحفظ ("+(j.error||r.status)+").");
-   }
-   dirty=false;st("تم الحفظ. جارٍ تحديث الصفحة...");setTimeout(function(){location.reload()},900);
-  }catch(err){st(err.message||"تعذر الحفظ.")}finally{btn.disabled=false}
- });
- /* يظهر للمشرف (الطالب المعيّن) وللمالك فقط، وكل قسم بحسب الصلاحيات التي منحها المالك */
- var PLABEL={ann:"إدارة الإعلانات",res:"إدارة الموارد",academic:"إدارة الدروس والمواد"};
- function goTo(page,focusId){
-  try{(window.goPage||function(pg){location.hash="#"+pg})(page)}catch(e){location.hash="#"+page}
-  if(focusId)setTimeout(function(){var el=$(focusId);if(el&&!el.hidden)el.scrollIntoView({behavior:"smooth",block:"start"})},450);
- }
- function paintCorner(perms){
-  var chips=$("supPermChips"),note=$("supPermNote"),quick=$("supQuick");
-  if(!perms.length){note.textContent="لم يمنحك المالك أي صلاحية بعد. عندما يمنحك صلاحيات (إدارة الإعلانات، الموارد، الدروس والمواد…) ستظهر أدواتها هنا.";chips.replaceChildren();quick.replaceChildren();return}
-  note.textContent=asOwner?"أنت المالك: كل أدوات الإدارة متاحة لك.":"هذه هي الصلاحيات التي منحك إياها المالك. لا تظهر لك إلا الأدوات المرتبطة بها.";
-  chips.replaceChildren();
-  perms.forEach(function(k){var c=D.createElement("span");c.className="sup-chip";c.textContent=PLABEL[k]||k;chips.append(c)});
-  quick.replaceChildren();
-  if(perms.indexOf("ann")>-1){var b1=D.createElement("button");b1.type="button";b1.textContent="فتح إدارة الإعلانات";b1.addEventListener("click",function(){goTo("announcements","annAdminBox")});quick.append(b1)}
-  if(perms.indexOf("res")>-1){var b2=D.createElement("button");b2.type="button";b2.textContent="مراجعة الموارد المعلّقة";b2.addEventListener("click",function(){goTo("resources")});quick.append(b2)}
- }
  fetch("/api/auth/me",{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
   if(!j||!j.in)return;
-  asOwner=!!(j.admin&&j.role==="owner");
-  var perms=asOwner?["ann","res","academic"]:(Array.isArray(j.perms)?j.perms:[]);
+  var asOwner=!!(j.admin&&j.role==="owner");
+  var perms=asOwner?["ann","res","academic"]:(Array.isArray(j.perms)?j.perms:[]).filter(function(p){return p!=="ann"});
   window.__ME_ROLE=j.admin?(j.role||"teacher"):(j.supervisor?"supervisor":"");
   window.__SUP_PERMS=perms;
   try{document.dispatchEvent(new CustomEvent("ensd:perms"))}catch(e){}
-  if(!(j.supervisor||asOwner))return;
-  box.hidden=false;paintCorner(perms);
-  if(perms.indexOf("academic")>-1){var ac=$("supAcademic");if(ac)ac.hidden=false;load()}
  }).catch(function(){});
 })();
 </script>
@@ -8133,7 +8025,7 @@ html[data-theme=dark] #annAdminBox.aax,html[data-theme=dark] #academicAdmin{--ad
 
 /* ---------- إدارة الإعلانات ---------- */
 #annAdminBox.aax{margin:22px 0 0;padding:0;border:0;background:transparent;display:grid;gap:14px}
-#annAdminBox[hidden],#supCorner[hidden],.sup-corner[hidden]{display:none!important}
+#annAdminBox[hidden]{display:none!important}
 #annAdminBox .aax-head{display:flex;align-items:center;gap:13px;padding:2px 2px 0}
 #annAdminBox .aax-ic{flex:none;width:46px;height:46px;border-radius:15px;display:grid;place-items:center;background:var(--soft);color:var(--primary-dark)}
 #annAdminBox .aax-ic svg{width:23px;height:23px}
@@ -8286,29 +8178,6 @@ html[data-theme=dark] #annAdminBox.aax .ann-check input[type=checkbox]{backgroun
 #academicAdmin .academic-save-row button:disabled{opacity:.6}
 @media(max-width:700px){#annAdminBox .aax-bar,#academicAdmin .academic-save-row{bottom:calc(80px + env(safe-area-inset-bottom,0px))}}
 @media(prefers-reduced-motion:reduce){#annAdminBox *,#academicAdmin *{transition:none!important}}
-/* ركن المشرف يرث نفس الشكل */
-#supCorner.academic-admin{margin:0 0 18px;padding:0;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
-#supCorner>summary{padding:15px 16px;font-size:16px;font-weight:800;color:var(--ink);cursor:pointer}
-#supCorner .academic-editor{display:grid;gap:14px;padding:16px}
-#supCorner .academic-editor[hidden]{display:none}
-#supCorner .sup-perm-box{display:grid;gap:12px;padding:16px 16px 4px}
-#supCorner .sup-perm-chips{display:flex;flex-wrap:wrap;gap:8px}
-#supCorner .sup-chip{padding:6px 12px;border-radius:99px;background:var(--primary);color:#fff;font-size:12.5px;font-weight:800}
-#supCorner .sup-quick{display:flex;flex-wrap:wrap;gap:8px}
-#supCorner .sup-quick button{padding:10px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--soft);color:var(--primary-dark);font:inherit;font-size:13px;font-weight:800;cursor:pointer}
-#supCorner .academic-editor-note{margin:0;padding:11px 13px;border-radius:13px;background:var(--soft);color:var(--primary-dark);font-size:12.5px;line-height:1.8}
-#supCorner .academic-select-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px;border:1px solid var(--line);border-radius:16px}
-#supCorner label{display:block;font-size:12.5px;font-weight:700;color:var(--muted)}
-#supCorner select{width:100%;min-height:46px;margin-top:6px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface-2,var(--bg));color:var(--ink);font:inherit}
-#supCorner .academic-actions{display:grid;border:1px solid var(--line);border-radius:16px;overflow:hidden}
-#supCorner .academic-actions>div{display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:7px;padding:10px 14px;border-top:1px solid var(--line)}
-#supCorner .academic-actions>div:first-child{border-top:0}
-#supCorner .academic-actions button{min-height:36px;padding:6px 12px;border:1.5px solid var(--line);border-radius:10px;background:transparent;color:var(--ink);font:inherit;font-size:12px;font-weight:700}
-#supCorner .academic-actions button[data-sup^=add]{border-color:transparent;background:var(--soft);color:var(--primary-dark)}
-#supCorner .academic-actions button.danger{border-color:transparent;background:#fbeceb;color:#b3402f}
-#supCorner .academic-save-row{display:flex;align-items:center;gap:12px}
-#supCorner .academic-save-row span{flex:1;font-size:12.5px;color:var(--muted)}
-#supCorner .academic-save-row button{min-height:48px;padding:0 24px;border:0;border-radius:14px;background:var(--primary);color:#fff;font:inherit;font-weight:800}
 </style>
 <script id="admin-redesign-js-20261118">
 (function(){
