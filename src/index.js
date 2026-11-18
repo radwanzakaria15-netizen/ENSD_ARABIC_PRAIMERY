@@ -368,7 +368,7 @@ async function handleResourceOwnerAction(request,env,action,id,admin){
  }catch(e){return json({error:"storage_error",message:String(e.message||e).slice(0,200)},502)}
 }
 async function handleResources(request,env){
- const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=isModerator(request,env);
+ const u=new URL(request.url),action=u.searchParams.get("action")||"",id=u.searchParams.get("id")||"",admin=await canModerateRes(request,env);
  if(request.method==="GET"){
   const status=u.searchParams.get("status")==="pending"&&admin?"pending":"approved";
   if(u.searchParams.get("status")==="pending"&&!admin)return json({error:"unauthorized"},401);
@@ -466,6 +466,7 @@ async function uploaderInfo(request, env) {
   } catch {}
   return { role: "", name: name === "المشرف" ? "الإدارة" : name, uid, group };
 }
+const supOut = (list) => list.map((x) => ({ id: String(x.sid).slice(0, 12), name: x.name, at: x.at, perms: supEntryPerms(x) }));
 async function handleBadges(request, env) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "";
   const owner = isAcademicAdmin(request, env);
@@ -475,7 +476,7 @@ async function handleBadges(request, env) {
     const badges = mergeBadgeCfg(await readBadgeRaw(env));
     if (u.searchParams.get("manage") === "1") {
       if (!owner) return json({ error: "unauthorized" }, 401);
-      const supervisors = (await readSupervisors(env)).map((x) => ({ id: String(x.sid).slice(0, 12), name: x.name, at: x.at }));
+      const supervisors = supOut(await readSupervisors(env));
       return json({ ok: true, badges, supervisors });
     }
     return json({ ok: true, badges });
@@ -504,9 +505,16 @@ async function handleBadges(request, env) {
     if (!rec || !nameMatches(name, rec[0])) return json({ error: "student_not_found" }, 404);
     if (list.some((x) => x.sid === sid)) return json({ error: "already_supervisor" }, 409);
     if (list.length >= 50) return json({ error: "too_many_supervisors" }, 400);
-    list.push({ sid, name: badgeText(rec[0], 60), at: Date.now() });
+    list.push({ sid, name: badgeText(rec[0], 60), at: Date.now(), perms: [] });
     await kv.put("badges:sup", JSON.stringify(list));
-    return json({ ok: true, supervisors: list.map((x) => ({ id: x.sid.slice(0, 12), name: x.name, at: x.at })) });
+    return json({ ok: true, supervisors: supOut(list) });
+  }
+  if (action === "set_perms") {
+    const id = String(b.id || ""), i = list.findIndex((x) => String(x.sid).slice(0, 12) === id);
+    if (i < 0) return json({ error: "not_found" }, 404);
+    list[i].perms = [...new Set((Array.isArray(b.perms) ? b.perms : []).map(String).filter((p) => SUP_PERMS.includes(p)))];
+    await kv.put("badges:sup", JSON.stringify(list));
+    return json({ ok: true, supervisors: supOut(list) });
   }
   if (action === "edit_supervisor" || action === "delete_supervisor") {
     const id = String(b.id || ""), i = list.findIndex((x) => String(x.sid).slice(0, 12) === id);
@@ -514,7 +522,7 @@ async function handleBadges(request, env) {
     if (action === "delete_supervisor") list.splice(i, 1);
     else { const nm = badgeText(b.name, 60); if (!nm) return json({ error: "invalid_input" }, 400); list[i].name = nm; }
     await kv.put("badges:sup", JSON.stringify(list));
-    return json({ ok: true, supervisors: list.map((x) => ({ id: x.sid.slice(0, 12), name: x.name, at: x.at })) });
+    return json({ ok: true, supervisors: supOut(list) });
   }
   return json({ error: "unknown_action" }, 400);
 }
@@ -552,7 +560,7 @@ async function handleResourceFile(request,env){
   return json({ok:true,pending:true,id:meta.id});
  }
  if(request.method==="GET"){
-  const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&isModerator(request,env);
+  const approved=key.startsWith("resources/approved/")&&!key.includes(".."),pending=key.startsWith("resources/pending/")&&!key.includes("..")&&(await canModerateRes(request,env));
   if(!approved&&!pending)return json({error:"not_found"},404);
   const serve=async()=>{
   const r=await signedB2Request(env,"GET",key);if(r.status===404)return json({error:"not_found"},404);if(!r.ok)return json({error:"storage_error"},502);
@@ -566,11 +574,7 @@ async function handleResourceFile(request,env){
 
 
 async function isSupervisorSession(request, env) {
-  try {
-    const ss = await readSession(request, env);
-    if (!ss.ok || ss.sid === "admin") return false;
-    return (await readSupervisors(env)).some((x) => x.sid === ss.sid);
-  } catch { return false; }
+  return supervisorHas(request, env, "academic");
 }
 /* بنية البرنامج بدون الدروس/الوحدات (chapters) ولا وقت التحديث: ما لا يحق للمشرف تغييره */
 function academicSkeleton(config) {
@@ -758,6 +762,31 @@ function isModerator(request, env) {
   const expected = String(env.ADMIN_CODE_MOD || "").trim();
   return Boolean(expected) && String(request.headers.get("x-admin-code") || "").trim() === expected;
 }
+/* ===== الصلاحيات: المالك فقط / المشرف بصلاحيات يمنحها المالك =====
+   ann = إدارة الإعلانات · res = إدارة الموارد · academic = إدارة الدروس والمواد (الوحدات والمواضيع) */
+const SUP_PERMS = ["ann", "res", "academic"];
+const supEntryPerms = (e) => Array.isArray(e && e.perms) ? e.perms.filter((p) => SUP_PERMS.includes(p)) : ["academic"]; // المشرفون القدامى يحتفظون بما كان لهم
+function isOwnerCode(request, env) {
+  const expected = String(env.ADMIN_CODE_MOD || "").trim();
+  if (!expected) return false;
+  return [request.headers.get("x-academic-admin-code"), request.headers.get("x-admin-code")]
+    .some((v) => safeEq(String(v || "").trim(), expected));
+}
+async function isOwnerSession(request, env) {
+  if (isOwnerCode(request, env)) return true;
+  try { const ss = await readSession(request, env); return !!(ss.ok && ss.sid === "admin" && (await readRole(request, env)) === "owner"); } catch { return false; }
+}
+async function supervisorPerms(request, env) {
+  try {
+    const ss = await readSession(request, env);
+    if (!ss.ok || ss.sid === "admin") return [];
+    const hit = (await readSupervisors(env)).find((x) => x.sid === ss.sid);
+    return hit ? supEntryPerms(hit) : [];
+  } catch { return []; }
+}
+async function supervisorHas(request, env, perm) { return (await supervisorPerms(request, env)).includes(perm); }
+async function canManageAnn(request, env) { return (await isOwnerSession(request, env)) || (await supervisorHas(request, env, "ann")); }
+async function canModerateRes(request, env) { return isModerator(request, env) || (await isOwnerSession(request, env)) || (await supervisorHas(request, env, "res")); }
 async function handleAnnouncements(request, env) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "";
   try {
@@ -766,8 +795,13 @@ async function handleAnnouncements(request, env) {
       catch (e) { return json({ ok: false, error: "storage_error", message: String(e.message || e).slice(0, 200) }, 502); }
     });
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-    if (!isModerator(request, env)) return json({ ok: false, error: "unauthorized" }, 401);
-    if (action === "check") return json({ ok: true });
+    const annOk = await canManageAnn(request, env);
+    if (action === "check") {
+      // check يخدم واجهة الموارد أيضاً: الأستاذ يمرّ للموارد فقط، أما الإعلانات فللمالك ومن له صلاحية
+      const resOk = annOk || (await canModerateRes(request, env));
+      return resOk ? json({ ok: true, ann: annOk, res: resOk }) : json({ ok: false, error: "unauthorized" }, 401);
+    }
+    if (!annOk) return json({ ok: false, error: "unauthorized" }, 401);
 
     const list = await readAnnouncements(env);
     if (action === "add") {
@@ -882,7 +916,33 @@ async function rxIdentity(request, env, ss) {
   }
   return { me: ss.sid, uid: (await mac(env, "u|" + ss.sid)).slice(0, 16), admin: false };
 }
-/* ===== إشعارات صاحب الملف: nt:<uid> = [{i,r,x,t}] ===== */
+/* اسم المتفاعل ودوره (للقائمة المطوّلة وللإشعارات) */
+const personCache = new Map();
+async function rxPerson(env, me, ctxData) {
+  if (String(me).startsWith("a-")) {
+    const role = String(me).slice(2), c = ctxData.cfg[role];
+    return { name: (c && (c.name || c.label)) || "الإدارة", role: BADGE_ROLES.includes(role) ? role : "" };
+  }
+  const sup = ctxData.sups.find((x) => x.sid === me);
+  const hit = personCache.get(me);
+  if (hit && Date.now() - hit.t < 300000) return { name: sup && sup.name ? sup.name : hit.name, role: sup ? "supervisor" : "" };
+  const kv = kvOf(env);
+  let name = "";
+  try { name = ((await kv.get("prof:" + me, { type: "json" })) || {}).n || ""; } catch {}
+  if (!name) { const r = ctxData.roster && ctxData.roster[me]; if (r && r[0]) name = r[0]; }
+  if (!name) { try { const rec = await kv.get("dev:" + me, { type: "json" }); if (rec && rec.n) name = rec.n; } catch {} }
+  name = String(name || "طالب").slice(0, 60);
+  if (personCache.size > 500) personCache.clear();
+  personCache.set(me, { name, t: Date.now() });
+  return { name: sup && sup.name ? sup.name : name, role: sup ? "supervisor" : "" };
+}
+async function rxPersonCtx(env, needRoster) {
+  const kv = kvOf(env);
+  let roster = null;
+  if (needRoster) { try { roster = (await kv.get("roster", { type: "json", cacheTtl: 60 })) || {}; } catch { roster = {}; } }
+  return { cfg: mergeBadgeCfg(await readBadgeRaw(env)), sups: await readSupervisors(env), roster };
+}
+/* ===== إشعارات صاحب الملف: nt:<uid> = [{i,r,x,t,n,o}]  (n = اسم المتفاعل، o = دوره) ===== */
 const NT_MAX = 60;
 async function notifyOwnerOfReaction(env, id, reactor) {
   if (!id.startsWith("res:")) return;
@@ -896,7 +956,9 @@ async function notifyOwnerOfReaction(env, id, reactor) {
   if (!Array.isArray(list)) list = [];
   const nid = (await sha256Hex(reactor.me + "|" + id)).slice(0, 10);
   if (list.some((x) => x.i === nid)) return; // نفس الشخص لا يكرّر الإشعار
-  list.push({ i: nid, r: id, x: title, t: Date.now() });
+  let person = { name: "", role: "" };
+  try { person = await rxPerson(env, reactor.me, await rxPersonCtx(env, true)); } catch {}
+  list.push({ i: nid, r: id, x: title, t: Date.now(), n: person.name, o: person.role });
   if (list.length > NT_MAX) list = list.slice(-NT_MAX);
   await kv.put(nk, JSON.stringify(list), { expirationTtl: 60 * 86400 });
 }
@@ -910,7 +972,7 @@ async function handleNotifications(request, env) {
     if (request.method === "GET") {
       let list = (await kv.get(nk, { type: "json" })) || [];
       if (!Array.isArray(list)) list = [];
-      return json({ ok: true, list: list.slice().reverse().map((x) => ({ i: x.i, r: x.r, x: x.x, t: x.t })), n: list.length });
+      return json({ ok: true, list: list.slice().reverse().map((x) => ({ i: x.i, r: x.r, x: x.x, t: x.t, n: x.n || "", o: x.o || "" })), n: list.length });
     }
     if (request.method === "POST") {
       await kv.delete(nk);
@@ -924,6 +986,21 @@ async function handleReactions(request, env, ctx) {
   const kv = kvOf(env);
   if (!kv) return json({ error: "kv_not_configured" }, 503);
   const ss = await readSession(request, env);
+  if (request.method === "GET" && action === "who") {
+    // من تفاعل مع العنصر (للضغط المطوّل على القلب): يتطلب تسجيل الدخول
+    if (!ss.ok) return json({ error: "login_required" }, 401);
+    const id = String(u.searchParams.get("id") || "");
+    if (!RX_ID.test(id)) return json({ error: "invalid_input" }, 400);
+    try {
+      const v = await kv.get(await rxKey(id), { type: "json" });
+      const all = Array.isArray(v) ? v : [];
+      const shown = all.slice(-30).reverse();
+      const ctxData = await rxPersonCtx(env, true);
+      const list = [];
+      for (const me of shown) list.push(await rxPerson(env, me, ctxData));
+      return json({ ok: true, total: all.length, list });
+    } catch { return json({ error: "storage_error" }, 503); }
+  }
   if (request.method === "GET") {
     let counts = {};
     try { const d = await (await rxCounts(env)).json(); if (d && d.counts) counts = d.counts; } catch {}
@@ -1027,18 +1104,32 @@ async function handlePolls(request, env) {
     return json({ ok: true, counts: r.counts, voters: r.voters, mine: pick });
   } catch (e) { return json({ error: "storage_error" }, 503); }
 }
+/* سجل التاريخ (History): حذف التعليقات يُسجَّل في الخادم نفسه ليشمل الجميع */
+async function logHistoryEvent(env, ev) {
+  const hk = env && env.HISTORY_KV;
+  if (!isKv(hk)) return;
+  try {
+    const cur = (await hk.get("history", "json")) || [];
+    if (cur.some((x) => x.id === ev.id)) return;
+    cur.push(ev);
+    cur.sort((a, b) => a.ts - b.ts);
+    await hk.put("history", JSON.stringify(cur.slice(-HISTORY_MAX)));
+  } catch {}
+}
 async function handleComments(request, env) {
   const u = new URL(request.url), id = u.searchParams.get("id") || "";
   const kv = kvOf(env);
   if (!kv) return json({ error: "kv_not_configured" }, 503);
   if (!annKeyOk(id)) return json({ error: "invalid_input" }, 400);
   const ss = await readSession(request, env);
-  const admin = isModerator(request, env) || (ss.ok && ss.sid === "admin");
+  const supAnn = await supervisorHas(request, env, "ann");
+  const admin = isModerator(request, env) || (ss.ok && ss.sid === "admin") || supAnn;
   try {
     let list = (await kv.get("cm:" + id, { type: "json" })) || [];
     if (!Array.isArray(list)) list = [];
+    const roleOf = (c) => c.role || (c.adm ? "supervisor" : "");
     if (request.method === "GET") {
-      return json({ ok: true, admin, me: ss.ok ? ss.sid : "", list: list.map((c) => ({ i: c.i, n: c.n, t: c.t, x: c.x, own: !!(ss.ok && c.s === ss.sid), adm: !!c.adm })) });
+      return json({ ok: true, admin, me: ss.ok ? ss.sid : "", list: list.map((c) => ({ i: c.i, n: c.n, t: c.t, x: c.x, own: !!(ss.ok && c.s === ss.sid), adm: !!c.adm, role: roleOf(c) })) });
     }
     if (request.method === "DELETE") {
       const cid = u.searchParams.get("cid") || "";
@@ -1047,6 +1138,22 @@ async function handleComments(request, env) {
       if (!admin && !(ss.ok && c.s === ss.sid)) return json({ error: "forbidden" }, 403);
       list = list.filter((x) => x.i !== cid);
       if (list.length) await kv.put("cm:" + id, JSON.stringify(list)); else await kv.delete("cm:" + id);
+      // تسجيل الحذف في History: من حذف، ومن كتب التعليق، ونصه، وعلى أي إعلان
+      try {
+        const me = await uploaderInfo(request, env), cfg = mergeBadgeCfg(await readBadgeRaw(env));
+        const byRole = me.role || (admin ? "teacher" : "");
+        const by = byRole ? (me.name || cfg[byRole].label) : (me.name || "طالب");
+        const ann = await annFind(env, id), title = ann ? String(ann.title || "").slice(0, 60) : "إعلان محذوف";
+        const own = !!(ss.ok && c.s === ss.sid) && !byRole;
+        await logHistoryEvent(env, {
+          id: ("cm" + cid + Date.now().toString(36)).slice(0, 24),
+          ts: Date.now(),
+          kind: "delete",
+          text: ("حُذف تعليق " + c.n + (own ? " (حذفه صاحبه)" : "") + " على «" + title + "»").slice(0, 160),
+          target: String(c.x || "").slice(0, 220),
+          by: String(by).slice(0, 30),
+        });
+      } catch {}
       return json({ ok: true });
     }
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -1060,12 +1167,16 @@ async function handleComments(request, env) {
     let b = {}; try { b = await request.json(); } catch {}
     const x = String(b.text || "").trim().slice(0, CM_LEN);
     if (!x) return json({ error: "invalid_input" }, 400);
-    const n = admin ? "المشرف" : ((await uploaderName(request, env)) || "طالب");
-    const c = { i: crypto.randomUUID().slice(0, 8), s: who, n, t: Date.now(), x, adm: admin };
+    // هوية المعلّق: مالك / أستاذ / مشرف / طالب (تُحدَّد في الخادم فقط)
+    const info = await uploaderInfo(request, env), cfg = mergeBadgeCfg(await readBadgeRaw(env));
+    let role = info.role;
+    if (!role && (isModerator(request, env) || (ss.ok && ss.sid === "admin"))) role = "teacher";
+    const n = role ? (info.name || cfg[role].name || cfg[role].label) : (info.name || "طالب");
+    const c = { i: crypto.randomUUID().slice(0, 8), s: who, n, t: Date.now(), x, adm: !!role, role };
     list.push(c);
     if (list.length > CM_MAX) list = list.slice(-CM_MAX);
     await kv.put("cm:" + id, JSON.stringify(list));
-    return json({ ok: true, c: { i: c.i, n, t: c.t, x, own: true, adm: admin } });
+    return json({ ok: true, c: { i: c.i, n, t: c.t, x, own: true, adm: !!role, role } });
   } catch (e) { return json({ error: "storage_error" }, 503); }
 }
 
@@ -1666,7 +1777,8 @@ async function listAll(kv, prefix) {
 }
 
 async function authAdmin(request, env, url) {
-  if (!isModerator(request, env)) return jsonC({ error: "unauthorized" }, 401);
+  // إدارة الدخول (قبول الطلبة والحظر واستيراد القائمة): للمالك فقط
+  if (!isOwnerCode(request, env)) return jsonC({ error: "unauthorized" }, 401);
   const kv = kvOf(env), action = url.searchParams.get("action") || "";
   try {
     if (action === "list" && request.method === "GET") {
@@ -1760,7 +1872,11 @@ async function handleAuth(request, env, url, ctx) {
   if (a === "me" && request.method === "GET") {
     const ss = await readSession(request, env);
     const out = { in: !!ss.ok, admin: !!ss.ok && ss.sid === "admin" };
-    if (out.admin) out.role = (await readRole(request, env)) || "teacher";
+    if (out.admin) {
+      out.role = (await readRole(request, env)) || "teacher";
+      try { const c0 = mergeBadgeCfg(await readBadgeRaw(env))[out.role]; out.name = c0.name || c0.label; out.label = c0.label; } catch {}
+      if (out.role === "owner") out.perms = SUP_PERMS.slice();
+    }
     if (ss.ok) {
       touchSeen(env, ss.sid, ctx);
       const exp = Number(String(readCookies(request).ensd_s || "").split(".")[1]);
@@ -1777,7 +1893,9 @@ async function handleAuth(request, env, url, ctx) {
           out.devices = rec && Array.isArray(rec.d) ? rec.d.length : 1;
           out.since = (rec && rec.ts) || 0;
           out.maxDevices = MAX_DEVICES;
-          out.supervisor = (await readSupervisors(env)).some((x) => x.sid === ss.sid);
+          const supHit = (await readSupervisors(env)).find((x) => x.sid === ss.sid);
+          out.supervisor = !!supHit;
+          if (supHit) out.perms = supEntryPerms(supHit);
         } catch {}
       }
     }
