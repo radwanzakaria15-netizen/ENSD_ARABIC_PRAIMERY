@@ -43,10 +43,10 @@ async function handleHistory(request, env) {
     const clean = incoming.map((e) => ({
       id: String(e.id || "").slice(0, 24),
       ts: Number(e.ts) || Date.now(),
-      kind: ["add", "edit", "delete", "approve", "other"].includes(e.kind) ? e.kind : "other",
+      kind: ["add", "edit", "delete", "approve", "login", "logout", "activity", "other"].includes(e.kind) ? e.kind : "other",
       text: String(e.text || "").slice(0, 160),
       target: String(e.target || "").slice(0, 220),
-      by: String(e.by || "").slice(0, 30),
+      by: String(e.by || "").slice(0, 60),
     })).filter((e) => e.id && e.text);
     if (!clean.length) return json({ ok: true, added: 0 });
 
