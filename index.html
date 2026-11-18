@@ -1362,7 +1362,7 @@ html[data-theme=dark] .auth-banner{border-color:#5b4a22}
     <div><b>الدروس والوحدات</b><button data-academic-action="add-chapter">إضافة</button><button data-academic-action="edit-chapter">تعديل</button><button data-academic-action="delete-chapter" class="danger">حذف</button></div>
     <div><b>الموضوعات</b><button data-academic-action="add-topic">إضافة</button><button data-academic-action="edit-topic">تعديل</button><button data-academic-action="delete-topic" class="danger">حذف</button></div>
    </div>
-   <div class="badge-admin" id="badgeAdmin"><div class="badge-admin-head"><b>إدارة الشارات</b><span id="badgeAdminStatus" role="status"></span></div><div id="badgeRoles"></div><div class="badge-sup-title">المشرفون (تعيين المالك فقط)</div><div id="badgeSupList"></div><div class="badge-sup-add"><input id="badgeSupName" type="text" placeholder="الاسم الكامل للطالب" autocomplete="off"><input id="badgeSupRegno" type="text" inputmode="numeric" placeholder="رقم التسجيل" autocomplete="off"><button type="button" class="primary" id="badgeSupAdd">إضافة مشرف</button></div><p class="badge-note">هذه التغييرات تُحفظ فوراً ولا تحتاج «حفظ التغييرات». المشرف طالب تعيّنه أنت، فتظهر شارته على الموارد التي يرفعها بعد تعيينه. حدّد لكل مشرف الصلاحيات التي تريدها (إدارة الإعلانات · الموارد · الدروس والمواد) وتُحفظ فوراً؛ وبدونها لا يرى أي أداة إدارة. شارتا المالك والأستاذ تظهران حسب الرمز المستعمل عند الرفع.</p></div>
+   <div class="badge-admin" id="badgeAdmin"><div class="badge-admin-head"><b>إدارة الشارات</b><span id="badgeAdminStatus" role="status"></span></div><div id="badgeRoles"></div><div class="badge-sup-title">المشرفون (تعيين المالك فقط)</div><div id="badgeSupList"></div><div class="badge-sup-add"><input id="badgeSupName" type="text" placeholder="الاسم الكامل للطالب" autocomplete="off"><input id="badgeSupRegno" type="text" inputmode="numeric" placeholder="رقم التسجيل" autocomplete="off"><button type="button" class="primary" id="badgeSupAdd">إضافة مشرف</button></div><p class="badge-note">هذه التغييرات تُحفظ فوراً ولا تحتاج «حفظ التغييرات». المشرف طالب تعيّنه أنت، فتظهر شارته على الموارد التي يرفعها بعد تعيينه. حدّد لكل مشرف الصلاحيات التي تريدها (إدارة الإعلانات · الموارد · الدروس والمواد) وتُحفظ فوراً؛ وبدونها لا يرى أي أداة إدارة. لكل مشرف شارة خاصة (نص ولون) تعدّلها من بطاقته؛ وبعد حفظها لا يؤثر عليها تغيير «الشارة العامة للمشرف». شارتا المالك والأستاذ تظهران حسب الرمز المستعمل عند الرفع.</p></div>
    <div class="academic-save-row"><span id="academicSaveStatus" role="status">لا توجد تغييرات غير محفوظة.</span><button type="button" id="academicSave">حفظ التغييرات</button></div>
   </div></details> <div class="subjects-toolbar"><div class="subject-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="subjectSearch" type="search" placeholder="ابحث عن مادة أو محور..."></div><span class="subject-count" id="subjectCount">10 مقاييس</span></div>
  <div class="subjects-grid" id="subjectsGrid"></div>
@@ -2029,10 +2029,10 @@ function resourceByHue(s){let n=0;for(const c of String(s))n=(n*31+c.charCodeAt(
 const RES_BADGE_DEF={owner:{label:"المالك",color:"#b9802f"},teacher:{label:"الأستاذ",color:"#3b6fb6"},supervisor:{label:"مشرف",color:"#2f8f6b"}};
 const RES_BADGE_ICON={owner:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><path d="M3 18h18l-1.5-10-4.5 4-3-6-3 6-4.5-4z"/></svg>',teacher:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4 2 9l10 5 10-5z"/><path d="M6 11.5V16c0 1.4 2.7 3 6 3s6-1.6 6-3v-4.5"/></svg>',supervisor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3 5 6v5c0 4.4 3 8 7 10 4-2 7-5.6 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg>'};
 window.__badgeCfg=window.__badgeCfg||JSON.parse(JSON.stringify(RES_BADGE_DEF));
-function resourceBadgeCfg(role){return (window.__badgeCfg||{})[role]||RES_BADGE_DEF[role]}
-function resourceByHtml(name,role,uid){name=String(name||"").trim();role=RES_BADGE_DEF[role]?role:"";if(!name&&!role)return "";const c=role?resourceBadgeCfg(role):null,shown=name||(c?c.label:""),hue=resourceByHue(shown);return '<div class="resource-by'+(role?' has-badge role-'+role:'')+'" role="button" tabindex="0" data-uid="'+resourceEscape(uid||'')+'" data-name="'+resourceEscape(name)+'" data-role="'+role+'"'+(c?' style="--bc:'+c.color+'"':'')+' title="'+(role?resourceEscape(c.label)+(name?' · '+resourceEscape(name):''):'رفعه '+resourceEscape(name))+' — اضغط لعرض الحساب"><span class="resource-by-av" style="--h:'+hue+'" aria-hidden="true">'+resourceEscape(shown.charAt(0))+'</span><span class="resource-by-tx">'+(name?'<b>'+resourceEscape(name)+'</b>':'')+(role?'<i class="resource-by-badge">'+RES_BADGE_ICON[role]+'<em>'+resourceEscape(c.label)+'</em></i>':'')+'</span></div>';}
-window.resourceApplyBadgeCfg=function(){document.querySelectorAll(".resource-by[data-role]").forEach(el=>{const r=el.getAttribute("data-role");if(!r)return;const c=resourceBadgeCfg(r);el.style.setProperty("--bc",c.color);const em=el.querySelector(".resource-by-badge em");if(em)em.textContent=c.label})};
-window.resourceLoadBadgeCfg=function(){fetch("/api/badges",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{if(j&&j.badges){window.__badgeCfg=j.badges;window.resourceApplyBadgeCfg()}}).catch(()=>{})};
+function resourceBadgeCfg(role,uid){if(role==="supervisor"&&uid){const cu=(window.__badgeCustom||{})[uid];if(cu&&cu.color)return cu}return (window.__badgeCfg||{})[role]||RES_BADGE_DEF[role]}
+function resourceByHtml(name,role,uid){name=String(name||"").trim();role=RES_BADGE_DEF[role]?role:"";if(!name&&!role)return "";const c=role?resourceBadgeCfg(role,uid):null,shown=name||(c?c.label:""),hue=resourceByHue(shown);return '<div class="resource-by'+(role?' has-badge role-'+role:'')+'" role="button" tabindex="0" data-uid="'+resourceEscape(uid||'')+'" data-name="'+resourceEscape(name)+'" data-role="'+role+'"'+(c?' style="--bc:'+c.color+'"':'')+' title="'+(role?resourceEscape(c.label)+(name?' · '+resourceEscape(name):''):'رفعه '+resourceEscape(name))+' — اضغط لعرض الحساب"><span class="resource-by-av" style="--h:'+hue+'" aria-hidden="true">'+resourceEscape(shown.charAt(0))+'</span><span class="resource-by-tx">'+(name?'<b>'+resourceEscape(name)+'</b>':'')+(role?'<i class="resource-by-badge">'+RES_BADGE_ICON[role]+'<em>'+resourceEscape(c.label)+'</em></i>':'')+'</span></div>';}
+window.resourceApplyBadgeCfg=function(){document.querySelectorAll(".resource-by[data-role]").forEach(el=>{const r=el.getAttribute("data-role");if(!r)return;const c=resourceBadgeCfg(r,el.getAttribute("data-uid"));el.style.setProperty("--bc",c.color);const em=el.querySelector(".resource-by-badge em");if(em)em.textContent=c.label})};
+window.resourceLoadBadgeCfg=function(){fetch("/api/badges",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(j=>{if(j&&j.badges){window.__badgeCfg=j.badges;window.__badgeCustom=j.custom||{};window.resourceApplyBadgeCfg()}}).catch(()=>{})};
 window.resourceLoadBadgeCfg();
 
 /* ===== حساب صاحب الملف: الضغط على شارته يفتح بطاقة حسابه وملفاته ===== */
@@ -2048,7 +2048,7 @@ window.resourceLoadBadgeCfg();
  function onKey(e){if(e.key==="Escape"){e.stopPropagation();close()}}
  function open(uid,name,role){
   close();
-  const c=role?resourceBadgeCfg(role):null,shown=name||(c?c.label:"طالب"),hue=resourceByHue(shown),files=filesOf(uid,role,name);
+  const c=role?resourceBadgeCfg(role,uid):null,shown=name||(c?c.label:"طالب"),hue=resourceByHue(shown),files=filesOf(uid,role,name);
   const grp=files.map(f=>f.uploaderGroup).find(Boolean)||"";
   const kind=role?(c.label):"طالب";
   const o=document.createElement("div");o.id="ownerAcctOverlay";o.className="oa-overlay";
@@ -3970,7 +3970,7 @@ function annCmHtml(a){
 }
 function cmRole(c){
  const r=c.role||(c.adm?"supervisor":"");if(!r)return "";
- const cf=(typeof resourceBadgeCfg==="function"&&resourceBadgeCfg(r))||{label:r==="owner"?"المالك":r==="teacher"?"الأستاذ":"مشرف",color:"#2f8f6b"};
+ const cf=(typeof resourceBadgeCfg==="function"&&resourceBadgeCfg(r,c.u))||{label:r==="owner"?"المالك":r==="teacher"?"الأستاذ":"مشرف",color:"#2f8f6b"};
  return ' <em class="cm-role role-'+esc(r)+'" style="--bc:'+esc(cf.color)+'">'+esc(cf.label)+'</em>';
 }
 function cmBody(a){
@@ -4396,7 +4396,7 @@ function showRxNotifs(){
  ov.style.cssText="position:fixed;inset:0;z-index:2147483645;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center;padding:0";
  const box=document.createElement("div");
  box.style.cssText="width:min(480px,100%);max-height:78vh;overflow:auto;background:var(--surface,#fff);color:var(--ink,#14202a);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));box-shadow:0 -12px 40px rgba(0,0,0,.25)";
- box.innerHTML='<h3 style="margin:0 0 12px;font-size:17px">تفاعلات على ملفاتك</h3>'+list.map(x=>'<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line,#e3ebee)"><span style="color:#e11d48;font-size:20px">♥</span><div style="flex:1;min-width:0"><b style="display:block;font-size:14px">تفاعل '+esc(x.n||"أحدهم")+(x.o?' <em style="font-style:normal;font-size:11px;padding:1px 7px;border-radius:99px;background:rgba(31,122,112,.15);color:#1f7a70">'+esc(x.o==="owner"?"المالك":x.o==="teacher"?"الأستاذ":"مشرف")+'</em>':"")+' مع ملفك</b><small style="color:var(--muted,#64727e)">'+esc(x.x||"ملف")+" · "+rxAgo(x.t)+'</small></div></div>').join("")+'<button type="button" style="width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#1f7a70;color:#fff;font-weight:700;font-size:15px">تم</button>';
+ box.innerHTML='<h3 style="margin:0 0 12px;font-size:17px">تفاعلات على ملفاتك</h3>'+list.map(x=>'<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line,#e3ebee)"><span style="color:#e11d48;font-size:20px">♥</span><div style="flex:1;min-width:0"><b style="display:block;font-size:14px">تفاعل '+esc(x.n||"أحدهم")+(x.o?' <em style="font-style:normal;font-size:11px;padding:1px 7px;border-radius:99px;background:rgba(31,122,112,.15);color:#1f7a70">'+esc(((typeof resourceBadgeCfg==="function"&&resourceBadgeCfg(x.o,x.u))||{}).label||(x.o==="owner"?"المالك":x.o==="teacher"?"الأستاذ":"مشرف"))+'</em>':"")+' مع ملفك</b><small style="color:var(--muted,#64727e)">'+esc(x.x||"ملف")+" · "+rxAgo(x.t)+'</small></div></div>').join("")+'<button type="button" style="width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#1f7a70;color:#fff;font-weight:700;font-size:15px">تم</button>';
  ov.appendChild(box);document.body.appendChild(ov);
  const done=()=>{ov.remove();window.__rxNotifs=[];paintBell();fetch("/api/notifications",{method:"POST",cache:"no-store"}).catch(()=>{})};
  box.querySelector("button").addEventListener("click",done);
@@ -4551,9 +4551,9 @@ function toggleFav(id){
  let tm=0,fired=false,sx=0,sy=0,rst=0;
  const clear=()=>{clearTimeout(tm);tm=0};
  const hueOf=n=>{let h=0;for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%360;return h};
- function roleTag(r){
+ function roleTag(r,u){
   if(!r)return "";
-  const cf=(typeof resourceBadgeCfg==="function"&&resourceBadgeCfg(r))||{label:r==="owner"?"المالك":r==="teacher"?"الأستاذ":"مشرف",color:"#2f8f6b"};
+  const cf=(typeof resourceBadgeCfg==="function"&&resourceBadgeCfg(r,u))||{label:r==="owner"?"المالك":r==="teacher"?"الأستاذ":"مشرف",color:"#2f8f6b"};
   return '<em style="font-style:normal;font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;color:#fff;background:'+esc(cf.color)+'">'+esc(cf.label)+'</em>';
  }
  async function showWho(id){
@@ -4576,7 +4576,7 @@ function toggleFav(id){
    const j=await r.json();if(!r.ok||!j.ok)throw 0;
    box.querySelector("#whoN").textContent="· "+j.total;
    if(!j.list.length){list.innerHTML='<p style="margin:8px 0;color:var(--muted,#64727e)">لا توجد تفاعلات بعد.</p>';return}
-   list.innerHTML=j.list.map(x=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line,#e3ebee)"><span style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex:none;font-weight:800;color:#fff;background:hsl('+hueOf(x.name||"")+' 45% 42%)">'+esc((x.name||"؟").charAt(0))+'</span><b style="flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.name||"طالب")+'</b>'+roleTag(x.role)+'<span style="color:#e11d48">♥</span></div>').join("")+(j.total>j.list.length?'<p style="margin:10px 0 0;color:var(--muted,#64727e);font-size:13px">و '+(j.total-j.list.length)+' آخرين</p>':"");
+   list.innerHTML=j.list.map(x=>'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line,#e3ebee)"><span style="width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex:none;font-weight:800;color:#fff;background:hsl('+hueOf(x.name||"")+' 45% 42%)">'+esc((x.name||"؟").charAt(0))+'</span><b style="flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.name||"طالب")+'</b>'+roleTag(x.role,x.u)+'<span style="color:#e11d48">♥</span></div>').join("")+(j.total>j.list.length?'<p style="margin:10px 0 0;color:var(--muted,#64727e);font-size:13px">و '+(j.total-j.list.length)+' آخرين</p>':"");
   }catch(e){list.innerHTML='<p style="margin:8px 0">تعذر تحميل القائمة.</p>'}
  }
  document.addEventListener("pointerdown",e=>{
@@ -7173,6 +7173,10 @@ html[data-theme=dark] .resource-group-btn.danger{background:#2c1f1f;border-color
 .hist-row div{min-width:0;flex:1}.hist-row strong{display:block;font-size:13px}.hist-row span{display:block;font-size:12px;overflow-wrap:anywhere}
 .hist-row small{display:block;font-size:11px;color:#78867d;margin-top:2px}
 .hist-empty{text-align:center;color:#78867d;font-size:13px;padding:24px 0}
+.hist-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.hist-chips button{border:1px solid #dce8df;background:transparent;border-radius:999px;padding:5px 11px;font:inherit;font-size:11.5px;font-weight:800;color:#3e6b50;cursor:pointer}
+.hist-chips button.on{background:#3e6b50;color:#fff;border-color:#3e6b50}
+.hist-row.k-login,.hist-row.k-logout,.hist-row.k-activity{background:rgba(62,107,80,.06)}
 </style>
 <script id="site-history-20261117">
 (function(){
@@ -7213,22 +7217,28 @@ window.fetch=function(input,init){
  return p};
 
 /* ---- واجهة السجل ---- */
-var ICON={add:"➕",edit:"✎",delete:"🗑",approve:"✔",other:"•"};
+var ICON={add:"➕",edit:"✎",delete:"🗑",approve:"✔",login:"🔑",logout:"🚪",activity:"🟢",other:"•"};
+var SESS={login:1,logout:1,activity:1},HF="all",HALL=[],HREMOTE=false;
 function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function fmt(t){try{return new Date(t).toLocaleString("ar",{dateStyle:"medium",timeStyle:"short"})}catch(e){return new Date(t).toLocaleString()}}
 var ov=null;
 function ensure(){if(ov)return ov;ov=document.createElement("div");ov.className="hist-ov";
- ov.innerHTML='<div class="hist-sheet" role="dialog" aria-modal="true"><div class="hist-head"><b>سجل النشاط</b><span><button type="button" data-h="r">تحديث</button> <button type="button" data-h="c">إغلاق</button></span></div><p class="hist-note" id="histNote"></p><div class="hist-list" id="histList"></div></div>';
- ov.addEventListener("click",function(e){if(e.target===ov||e.target.closest('[data-h="c"]'))ov.classList.remove("on");else if(e.target.closest('[data-h="r"]'))show()});
+ ov.innerHTML='<div class="hist-sheet" role="dialog" aria-modal="true"><div class="hist-head"><b>سجل النشاط</b><span><button type="button" data-h="r">تحديث</button> <button type="button" data-h="c">إغلاق</button></span></div><p class="hist-note" id="histNote"></p><div class="hist-chips" id="histChips"><button type="button" data-f="all" class="on">الكل</button><button type="button" data-f="sess">الدخول والخروج والنشاط</button><button type="button" data-f="ops">العمليات</button></div><div class="hist-list" id="histList"></div></div>';
+ ov.addEventListener("click",function(e){if(e.target===ov||e.target.closest('[data-h="c"]'))ov.classList.remove("on");else if(e.target.closest('[data-h="r"]'))show();else{var fb=e.target.closest("[data-f]");if(fb){HF=fb.getAttribute("data-f");paint()}}});
  document.body.appendChild(ov);return ov}
+function paint(){
+ var o=ensure(),list=o.querySelector("#histList"),note=o.querySelector("#histNote");
+ Array.prototype.forEach.call(o.querySelectorAll("#histChips button"),function(c){c.classList.toggle("on",c.getAttribute("data-f")===HF)});
+ note.textContent=HREMOTE?"السجل مأخوذ من الخادم ويشمل نشاط الجميع: دخول وخروج ونشاط الأساتذة والعمليات التي قاموا بها.":"الخادم لا يدعم السجل بعد، فيُعرض هنا ما حدث من هذا الجهاز فقط.";
+ var rows=HALL.filter(function(x){return HF==="sess"?!!SESS[x.kind]:HF==="ops"?!SESS[x.kind]:true});
+ list.innerHTML=rows.length?rows.map(function(x){return'<div class="hist-row k-'+esc(x.kind||"other")+'"><i>'+(ICON[x.kind]||"•")+'</i><div><strong>'+esc(x.by||"")+" — "+esc(x.text)+'</strong>'+(x.target?'<span>'+esc(x.target)+'</span>':"")+'<small>'+esc(fmt(x.ts))+'</small></div></div>'}).join(""):'<div class="hist-empty">لا توجد أحداث مسجّلة بعد.</div>'}
 async function show(){
- var o=ensure(),list=o.querySelector("#histList"),note=o.querySelector("#histNote");o.classList.add("on");list.innerHTML='<div class="hist-empty">جارٍ التحميل…</div>';
- var all=load(),remote=false;
+ var o=ensure(),list=o.querySelector("#histList");o.classList.add("on");list.innerHTML='<div class="hist-empty">جارٍ التحميل…</div>';
+ var byId={},remote=false;
+ load().forEach(function(x){if(x&&x.id)byId[x.id]=x});
  try{var r=await orig("/api/history",{headers:{"x-admin-code":adminCode(),"x-academic-admin-code":adminCode()},cache:"no-store"});
-  if(r.ok){var d=await r.json();var arr=Array.isArray(d)?d:(d&&(d.items||d.events))||[];if(Array.isArray(arr)){remote=true;var seen={};all.forEach(function(x){seen[x.id]=1});arr.forEach(function(x){if(x&&!seen[x.id])all.push(x)})}}}catch(e){}
- all.sort(function(a,b){return b.ts-a.ts});
- note.textContent=remote?"السجل مأخوذ من الخادم ويشمل نشاط الجميع.":"الخادم لا يدعم السجل بعد، فيُعرض هنا ما حدث من هذا الجهاز فقط.";
- list.innerHTML=all.length?all.map(function(x){return'<div class="hist-row"><i>'+(ICON[x.kind]||"•")+'</i><div><strong>'+esc(x.text)+'</strong>'+(x.target?'<span>'+esc(x.target)+'</span>':"")+'<small>'+esc(x.by||"")+" · "+esc(fmt(x.ts))+'</small></div></div>'}).join(""):'<div class="hist-empty">لا توجد أحداث مسجّلة بعد.</div>'}
+  if(r.ok){var d=await r.json();var arr=Array.isArray(d)?d:(d&&(d.items||d.events))||[];if(Array.isArray(arr)){remote=true;arr.forEach(function(x){if(x&&x.id)byId[x.id]=x})}}}catch(e){}
+ HALL=Object.keys(byId).map(function(k){return byId[k]}).sort(function(a,b){return b.ts-a.ts});HREMOTE=remote;paint()}
 function mount(){var ed=document.getElementById("academicEditor");if(!ed||ed.querySelector(".hist-btn"))return;
  var b=document.createElement("button");b.type="button";b.className="hist-btn";b.textContent="🕘 السجل (History)";b.addEventListener("click",show);ed.appendChild(b)}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",mount);else mount();
@@ -7773,6 +7783,13 @@ html[data-theme=dark] .resource-by-badge{color:color-mix(in srgb,var(--bc) 62%,#
 .sup-perm{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;cursor:pointer}
 .sup-perm input{width:17px;height:17px;accent-color:#1f6f5c;margin:0}
 .badge-sup-empty{font-size:12px;color:var(--muted,#7a8a86);padding:4px 2px 8px}
+.sup-badge{flex:1 1 100%;display:flex;flex-direction:column;gap:8px;padding-top:6px;border-top:1px dashed var(--line,#e3ebe8)}
+.sup-badge-top{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.sup-badge-top small{font-size:11.5px;color:var(--muted,#7a8a86);font-weight:700}
+.sup-badge-state{font-style:normal;font-size:11px;font-weight:800;padding:2px 9px;border-radius:99px;background:rgba(31,111,92,.12);color:#1f6f5c}
+.sup-badge-fields{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sup-badge-fields input[type=text]{flex:1 1 120px;min-width:0;padding:8px 10px;border:1px solid var(--line,#d5e0dc);border-radius:10px;font:inherit;font-size:13px;background:transparent;color:inherit}
+.sup-badge-fields input[type=color]{width:38px;height:34px;padding:2px;border:1px solid var(--line,#d5e0dc);border-radius:10px;background:transparent}
 .badge-sup-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .badge-sup-add input{flex:1 1 130px;min-width:0;padding:8px 10px;border:1px solid var(--line,#d5e0dc);border-radius:10px;font:inherit;font-size:13px;background:transparent;color:inherit}
 .badge-note{font-size:11.5px;color:var(--muted,#7a8a86);margin:6px 0 0;line-height:1.7}
@@ -7783,7 +7800,7 @@ html[data-theme=dark] .badge-role-row,html[data-theme=dark] .badge-sup-row{backg
 (function(){
  "use strict";
  const $=id=>document.getElementById(id);
- const ROLES=[["owner","المالك","صاحب الموقع · رمز الإدارة الأكاديمية"],["teacher","الأستاذ","من يدخل برمز المحاضرات"],["supervisor","المشرف","طالب تعيّنه أنت فقط"]];
+ const ROLES=[["owner","المالك","صاحب الموقع · رمز الإدارة الأكاديمية"],["teacher","الأستاذ","من يدخل برمز المحاضرات"],["supervisor","المشرف (الشارة العامة)","طالب تعيّنه أنت فقط · لكل مشرف شارة خاصة تعدّلها أسفل اسمه ولا تتأثر بهذه الشارة"]];
  const DEF={owner:{label:"المالك",color:"#b9802f",name:""},teacher:{label:"الأستاذ",color:"#3b6fb6",name:""},supervisor:{label:"مشرف",color:"#2f8f6b",name:""}};
  const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
  const ERR={unauthorized:"رمز الإدارة غير صحيح.",student_not_found:"لم أجد طالباً بهذا الاسم ورقم التسجيل.",already_supervisor:"هذا الطالب مشرف بالفعل.",invalid_input:"أدخل الاسم الكامل ورقم التسجيل.",too_many_supervisors:"بلغت الحد الأقصى للمشرفين."};
@@ -7821,11 +7838,22 @@ html[data-theme=dark] .badge-role-row,html[data-theme=dark] .badge-sup-row{backg
    return '<div class="badge-role-row" data-role="'+role+'"><div class="badge-role-top"><div><b>'+title+'</b><br><small>'+hint+'</small></div><span class="badge-preview">'+preview(role,c.label,c.color,c.name)+'</span></div><div class="badge-role-fields"><input type="text" class="br-label" maxlength="24" value="'+esc(c.label)+'" placeholder="نص الشارة" aria-label="نص الشارة"><input type="color" class="br-color" value="'+esc(c.color)+'" aria-label="لون الشارة">'+(role==="supervisor"?'':'<input type="text" class="br-name" maxlength="60" value="'+esc(c.name)+'" placeholder="الاسم الظاهر (اختياري)" aria-label="الاسم الظاهر">')+'<div class="br-btns"><button type="button" class="primary br-save">حفظ</button><button type="button" class="br-reset">الافتراضي</button></div></div></div>';
   }).join("");
  }
+ function supEff(s){return s.badge||state.badges.supervisor||DEF.supervisor}
+ function previewSup(name,label,color){
+  const cfg=window.__badgeCfg;window.__badgeCfg=Object.assign({},cfg||{},{supervisor:{label:label||DEF.supervisor.label,color:color}});
+  let html="";try{html=resourceByHtml(name,"supervisor")}catch(e){}
+  window.__badgeCfg=cfg;return html;
+ }
+ function supBadgeHtml(s){
+  const c=supEff(s),custom=!!s.badge;
+  return '<div class="sup-badge"><div class="sup-badge-top"><small>شارة هذا المشرف:</small><span class="sup-badge-pv badge-preview">'+previewSup(s.name,c.label,c.color)+'</span><em class="sup-badge-state">'+(custom?'شارة خاصة به':'تتبع الشارة العامة')+'</em></div><div class="sup-badge-fields"><input type="text" class="sb-label" maxlength="24" value="'+esc(c.label)+'" placeholder="نص الشارة" aria-label="نص شارة المشرف"><input type="color" class="sb-color" value="'+esc(c.color)+'" aria-label="لون شارة المشرف"><button type="button" class="primary sup-bsave">حفظ شارته</button>'+(custom?'<button type="button" class="sup-breset">اتباع العامة</button>':'')+'</div></div>';
+ }
+ const refreshCustom=()=>{if(typeof window.resourceLoadBadgeCfg==="function")window.resourceLoadBadgeCfg()};
  function renderSup(){
   const box=$("badgeSupList");if(!box)return;
   if(!state.supervisors.length){box.innerHTML='<div class="badge-sup-empty">لم تعيّن أي مشرف بعد.</div>';return}
   const PERMS=[["ann","إدارة الإعلانات"],["res","إدارة المشاركات الجديدة"],["academic","إدارة الدروس والمواد"]];
-   box.innerHTML=state.supervisors.map(s=>'<div class="badge-sup-row" data-id="'+esc(s.id)+'"><span>'+esc(s.name)+'</span><button type="button" class="sup-edit">تعديل</button><button type="button" class="danger sup-del">حذف</button><div class="sup-perms"><small>الصلاحيات:</small>'+PERMS.map(p=>'<label class="sup-perm"><input type="checkbox" data-perm="'+p[0]+'"'+((s.perms||[]).indexOf(p[0])>-1?' checked':'')+'><span>'+p[1]+'</span></label>').join("")+'</div></div>').join("");
+   box.innerHTML=state.supervisors.map(s=>'<div class="badge-sup-row" data-id="'+esc(s.id)+'"><span>'+esc(s.name)+'</span><button type="button" class="sup-edit">تعديل</button><button type="button" class="danger sup-del">حذف</button><div class="sup-perms"><small>الصلاحيات:</small>'+PERMS.map(p=>'<label class="sup-perm"><input type="checkbox" data-perm="'+p[0]+'"'+((s.perms||[]).indexOf(p[0])>-1?' checked':'')+'><span>'+p[1]+'</span></label>').join("")+'</div>'+supBadgeHtml(s)+'</div>').join("");
  }
  function render(){renderRoles();renderSup()}
  async function load(){
@@ -7838,6 +7866,11 @@ html[data-theme=dark] .badge-role-row,html[data-theme=dark] .badge-sup-row{backg
   const row=ev.target.closest&&ev.target.closest(".badge-role-row");if(!row)return;
   const role=row.dataset.role,l=row.querySelector(".br-label"),c=row.querySelector(".br-color"),n=row.querySelector(".br-name");
   row.querySelector(".badge-preview").innerHTML=preview(role,l.value.trim(),c.value,n?n.value.trim():"");
+ });
+ document.addEventListener("input",ev=>{
+  const f=ev.target.closest&&ev.target.closest("#badgeAdmin .sup-badge-fields");if(!f)return;
+  const sup=f.closest(".badge-sup-row"),s=state.supervisors.find(x=>x.id===sup.dataset.id);
+  sup.querySelector(".sup-badge-pv").innerHTML=previewSup(s?s.name:"",sup.querySelector(".sb-label").value.trim(),sup.querySelector(".sb-color").value);
  });
  document.addEventListener("change",async ev=>{
   const cb=ev.target.closest&&ev.target.closest("#badgeAdmin .sup-perm input");if(!cb)return;
@@ -7856,6 +7889,14 @@ html[data-theme=dark] .badge-role-row,html[data-theme=dark] .badge-sup-row{backg
    }
    if(row&&t.classList.contains("br-reset")){
     const j=await api("reset_badge",{role:row.dataset.role});state.badges=j.badges;pushGlobal();render();status("أُعيدت الشارة إلى الافتراضي.");return;
+   }
+   if(sup&&t.classList.contains("sup-bsave")){
+    const j=await api("set_sup_badge",{id:sup.dataset.id,label:sup.querySelector(".sb-label").value,color:sup.querySelector(".sb-color").value});
+    state.supervisors=j.supervisors;renderSup();refreshCustom();status("تم حفظ شارة المشرف.");return;
+   }
+   if(sup&&t.classList.contains("sup-breset")){
+    const j=await api("reset_sup_badge",{id:sup.dataset.id});
+    state.supervisors=j.supervisors;renderSup();refreshCustom();status("عادت شارة المشرف لتتبع الشارة العامة.");return;
    }
    if(sup&&t.classList.contains("sup-edit")){
     const cur=state.supervisors.find(x=>x.id===sup.dataset.id),nm=await askName("الاسم الظاهر للمشرف",cur&&cur.name);
