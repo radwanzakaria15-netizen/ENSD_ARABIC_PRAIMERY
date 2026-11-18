@@ -764,7 +764,7 @@ function isModerator(request, env) {
 }
 /* ===== الصلاحيات: المالك فقط / المشرف بصلاحيات يمنحها المالك =====
    ann = إدارة الإعلانات · res = إدارة الموارد · academic = إدارة الدروس والمواد (الوحدات والمواضيع) */
-const SUP_PERMS = ["ann", "res", "academic"];
+const SUP_PERMS = ["res", "academic"];
 const supEntryPerms = (e) => Array.isArray(e && e.perms) ? e.perms.filter((p) => SUP_PERMS.includes(p)) : ["academic"]; // المشرفون القدامى يحتفظون بما كان لهم
 function isOwnerCode(request, env) {
   const expected = String(env.ADMIN_CODE_MOD || "").trim();
@@ -785,7 +785,13 @@ async function supervisorPerms(request, env) {
   } catch { return []; }
 }
 async function supervisorHas(request, env, perm) { return (await supervisorPerms(request, env)).includes(perm); }
-async function canManageAnn(request, env) { return (await isOwnerSession(request, env)) || (await supervisorHas(request, env, "ann")); }
+/* إدارة الإعلانات: المالك (رمز الإدارة الأكاديمية) والأستاذ (رمز المحاضرات) فقط، ولا أحد غيرهما */
+async function isTeacherAccess(request, env) {
+  const hdr = String(request.headers.get("x-admin-code") || "").trim();
+  if (hdr && [env.ADMIN_CODE_A, env.ADMIN_CODE_B].some((v) => { const e = String(v || "").trim(); return e && safeEq(hdr, e); })) return true;
+  try { const ss = await readSession(request, env); return !!(ss.ok && ss.sid === "admin" && (await readRole(request, env)) === "teacher"); } catch { return false; }
+}
+async function canManageAnn(request, env) { return (await isOwnerSession(request, env)) || (await isTeacherAccess(request, env)); }
 async function canModerateRes(request, env) { return isModerator(request, env) || (await isOwnerSession(request, env)) || (await supervisorHas(request, env, "res")); }
 async function handleAnnouncements(request, env) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "";
@@ -797,7 +803,7 @@ async function handleAnnouncements(request, env) {
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
     const annOk = await canManageAnn(request, env);
     if (action === "check") {
-      // check يخدم واجهة الموارد أيضاً: الأستاذ يمرّ للموارد فقط، أما الإعلانات فللمالك ومن له صلاحية
+      // check يخدم واجهة الموارد أيضاً: الإعلانات للمالك والأستاذ فقط، والمشرف بصلاحية الموارد يمرّ للموارد فقط
       const resOk = annOk || (await canModerateRes(request, env));
       return resOk ? json({ ok: true, ann: annOk, res: resOk }) : json({ ok: false, error: "unauthorized" }, 401);
     }
@@ -1122,8 +1128,7 @@ async function handleComments(request, env) {
   if (!kv) return json({ error: "kv_not_configured" }, 503);
   if (!annKeyOk(id)) return json({ error: "invalid_input" }, 400);
   const ss = await readSession(request, env);
-  const supAnn = await supervisorHas(request, env, "ann");
-  const admin = isModerator(request, env) || (ss.ok && ss.sid === "admin") || supAnn;
+  const admin = isModerator(request, env) || (ss.ok && ss.sid === "admin");
   try {
     let list = (await kv.get("cm:" + id, { type: "json" })) || [];
     if (!Array.isArray(list)) list = [];
