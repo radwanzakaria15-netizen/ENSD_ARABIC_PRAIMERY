@@ -128,7 +128,7 @@
 
   /* عند فشل الخادم: نبقي آخر نسخة محفوظة إن وُجدت، وإلا نعيد الواجهة الثابتة الأصلية بدل رسالة الخطأ */
   function showOffline(message) {
-    noteText = message;
+    noteText = ""; /* لا تُعرض رسالة خطأ للمستخدم: نكتفي بآخر نسخة محفوظة بصمت */
     if (years.length) { render(); return; }
     years = [];
     lastLoaded = "";
