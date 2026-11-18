@@ -1873,13 +1873,20 @@ function openLessonSubjectDialog(card){
    if(!label)return;
    label.classList.add("is-busy");
    label.textContent="جارٍ رفع "+files.length+" ملف…";
-   const done=[];let failure="";
-   for(const file of files){
-    try{done.push(await lessonUploadFile(key,file,LESSON_ADMIN_CODE,currentGroup));}
-    catch(error){console.error("Lesson file upload failed:",error);failure=file.name+": "+(error&&error.message?error.message:"خطأ غير معروف");break;}
-   }
-   await refreshPublishedLessons(false);
+   const results=new Array(files.length);let failure="",nextIdx=0,finished=0;
+   const uploadWorker=async()=>{
+    while(!failure&&nextIdx<files.length){
+     const i=nextIdx++,file=files[i];
+     try{results[i]=await lessonUploadFile(key,file,LESSON_ADMIN_CODE,currentGroup);}
+     catch(error){console.error("Lesson file upload failed:",error);if(!failure)failure=file.name+": "+(error&&error.message?error.message:"خطأ غير معروف");}
+     finished++;if(files.length>1)label.textContent="جارٍ الرفع "+finished+" من "+files.length+"…";
+    }
+   };
+   await Promise.all(Array.from({length:Math.min(3,files.length)},uploadWorker));
+   const done=results.filter(Boolean);
+   /* نعرض الملفات المرفوعة فورًا، ونحدّث القائمة الكاملة من الخادم في الخلفية دون انتظار */
    lessonMergeUploaded(done);
+   refreshPublishedLessons(false).then(()=>lessonMergeUploaded(done)).catch(()=>{});
    renderLessonSubjects(currentGroup);
    openLessonSubjectDialog(card);
    if(failure)alert("تم رفع "+done.length+" من "+files.length+" ملف. تعذر إكمال البقية — "+failure);
@@ -2296,7 +2303,8 @@ document.getElementById("resourceFileInput").addEventListener("change",e=>{const
 
 document.getElementById("resourceUploadForm").addEventListener("submit",async event=>{
  event.preventDefault();const form=event.currentTarget,fd=new FormData(form),button=document.getElementById("resourceUploadButton"),message=document.getElementById("resourceUploadMessage");let file=fd.get("file");
- const DEFAULT_MSG="ستُراجع المساهمة قبل ظهورها في المكتبة.";
+ const DIRECT_PUB=document.documentElement.getAttribute("data-direct-publish")==="1";
+ const DEFAULT_MSG=DIRECT_PUB?"سيُنشر المورد في المكتبة مباشرة دون مراجعة.":"ستُراجع المساهمة قبل ظهورها في المكتبة.";
  if(button.disabled)return;
  if(!(file instanceof File)||!file.size){message.textContent="اختر ملفاً أولاً.";return;}
  if(!["subject","year","semester","kind"].every(k=>fd.get(k))){message.textContent="اختر المقياس والسنة والسداسي ونوع المورد.";return;}
@@ -2319,7 +2327,7 @@ document.getElementById("resourceUploadForm").addEventListener("submit",async ev
    if(!r.ok||data.ok===false||data.error){
     throw new Error(r.status===413||data.error==="file_too_large"?"حجم الملف أكبر من المسموح على الخادم.":data.error==="invalid_resource_metadata"?"تحقق من اختيارات التصنيف.":(data.message||data.error||("رفض الخادم الملف (HTTP "+r.status+").")));
    }
-   return{title:String(p.get("title")||"").trim(),subject:fd.get("subject"),year:fd.get("year"),semester:fd.get("semester"),kind:fd.get("kind"),fileName:f.name,id:String(data.id||(data.resource&&data.resource.id)||(data.item&&data.item.id)||""),token:ownerToken};
+   return{title:String(p.get("title")||"").trim(),subject:fd.get("subject"),year:fd.get("year"),semester:fd.get("semester"),kind:fd.get("kind"),fileName:f.name,id:String(data.id||(data.resource&&data.resource.id)||(data.item&&data.item.id)||""),token:ownerToken,published:data.published===true};
   }finally{clearTimeout(tm)}
  };
  button.disabled=true;button.textContent="جارٍ الإرسال...";message.textContent=multi?"جارٍ رفع الأجزاء (0 من "+total+")...":"يتم رفع الملف...";
@@ -2338,15 +2346,17 @@ document.getElementById("resourceUploadForm").addEventListener("submit",async ev
   form.reset();form.querySelectorAll("select").forEach(el=>el.dispatchEvent(new Event("change",{bubbles:true})));try{ensdRestoreSel()}catch(e){}document.getElementById("resourceChosenFile").hidden=true;
   message.textContent="تم رفع الملف، جارٍ تحديث القائمة...";
   let published=true;const pq=okMetas.slice();
-  const pw=async()=>{while(pq.length){const m=pq.shift();const ok=await resourceAutoPublish(m);if(!ok){resourceRememberPending(m);published=false;}}};
+  const pw=async()=>{while(pq.length){const m=pq.shift();if(m.published)continue;const ok=await resourceAutoPublish(m);if(!ok){resourceRememberPending(m);published=false;}}};
   await Promise.all(Array.from({length:Math.min(4,Math.max(1,pq.length))},()=>pw()));
+  /* عدة أجزاء نُشرت مباشرة بالتوازي: نُعيد بناء فهرس المنشور مرة واحدة حتى لا يضيع جزء بسبب كتابة متزامنة */
+  if(okMetas.length>1&&okMetas.some(m=>m.published)){try{await fetch("/api/resource?action=reindex",{method:"POST",headers:resourceUploadHeaders("application/json"),cache:"no-store"})}catch(e){}}
   resourceCloseModal(document.getElementById("resourceUploadModal"));
-  await loadResources();
+  loadResources();
   if(resourceAdminCodeNow())loadPendingResources();
   message.textContent=DEFAULT_MSG;
   if(multi){const failNames=failed.map(f=>f.idx+1).sort((a,b)=>a-b).map(n=>"الجزء "+n);
    showDialog({type:failed.length?"warning":"success",title:failed.length?"اكتمل الرفع جزئيًا":(published?"تم نشر الملف":"تم إرسال الملف"),message:"قُسِّم الملف لكبر حجمه ورُفع "+okMetas.length+" من "+total+" أجزاء، وتظهر في المكتبة كملف واحد."+(failed.length?" تعذّر رفع: "+failNames.join("، ")+".":(published?"":" ستظهر بعد المراجعة والموافقة.")),confirmText:"حسنًا"});}
-  else if(published)showDialog({type:"success",title:"تم نشر المورد",message:"ظهر المورد في المكتبة مباشرة لأنك مسجّل كمشرف.",confirmText:"حسنًا"});
+  else if(published)showDialog({type:"success",title:"تم نشر المورد",message:"ظهر المورد في المكتبة مباشرة دون مراجعة.",confirmText:"حسنًا"});
   else showDialog({type:"success",title:"تم إرسال المورد",message:"وصلت مساهمتك بنجاح، وستظهر بعد مراجعتها والموافقة عليها. تجدها الآن في قائمة «أحدث الموارد» بوسم «بانتظار المراجعة».",confirmText:"حسنًا"});
   const feed=document.getElementById("resourceFeed");if(feed)setTimeout(()=>feed.scrollIntoView({behavior:"smooth",block:"start"}),260);
  }catch(e){
@@ -2354,7 +2364,7 @@ document.getElementById("resourceUploadForm").addEventListener("submit",async ev
   message.textContent="تعذر إرسال المورد: "+msg;
   showDialog({type:"warning",title:"تعذر رفع المورد",message:msg,confirmText:"حسنًا"});
  }
- finally{button.disabled=false;button.textContent="إرسال للمراجعة";}
+ finally{button.disabled=false;button.textContent=DIRECT_PUB?"نشر المورد":"إرسال للمراجعة";}
 });
 document.getElementById("resourceFeedAll")?.addEventListener("click",()=>{resourceOpenModal("resourceBrowseModal");loadResources();});
 async function loadPendingResources(){const area=document.getElementById("resourcePendingList");const code=resourceAdminCodeNow();if(!code){area.innerHTML="";return;}try{const r=await fetch("/api/resources?status=pending",{headers:{"x-admin-code":code},cache:"no-store"});if(!r.ok)throw new Error("تعذر جلب المشاركات");const items=await r.json();if(!Array.isArray(items))throw new Error("bad");if(!RESOURCE_ADMIN_CODE)RESOURCE_ADMIN_CODE=code;const ents=resourceGroupItems(items);window.__PEND_GROUPS={};area.innerHTML=ents.length?ents.map(e=>{if(!e.group){const item=e.single;return '<article class="resource-pending-card"><div><b>'+resourceEscape(item.title||item.fileName)+'</b><p>'+resourceEscape(item.subject)+' · '+resourceEscape(item.year)+' · '+resourceEscape(item.semester)+' · '+resourceEscape(item.kind)+'</p><small>'+resourceEscape(item.fileName)+'</small>'+(item.uploader?'<small>رفعه: '+resourceEscape(item.uploader)+'</small>':'')+'<span>بانتظار المراجعة</span></div><div><button type="button" data-resource-approve="'+resourceEscape(item.id)+'">موافقة ونشر</button><button type="button" class="reject" data-resource-reject="'+resourceEscape(item.id)+'">رفض</button></div></article>';}window.__PEND_GROUPS[e.key]=e.parts.map(p=>String(p.id));return '<article class="resource-pending-card"><div><b>'+resourceEscape(e.base)+'</b><p>'+resourceEscape(e.subject)+' · '+resourceEscape(e.year)+' · '+resourceEscape(e.semester)+' · '+resourceEscape(e.kind)+'</p><small>'+e.n+' أجزاء في ملف واحد'+(e.parts.length<e.n?' · وصل '+e.parts.length+' من '+e.n:'')+'</small><span>بانتظار المراجعة</span></div><div><button type="button" data-group-approve="'+resourceEscape(e.key)+'">موافقة ونشر الكل</button><button type="button" class="reject" data-group-reject="'+resourceEscape(e.key)+'">رفض الكل</button></div></article>';}).join(""):'<div class="resource-empty">لا توجد مشاركات بانتظار المراجعة.</div>';const sum=document.getElementById("resourceAdminSummary"),det=document.getElementById("resourceAdminDetails");if(sum)sum.textContent="إدارة المشاركات الجديدة"+(ents.length?" ("+ents.length+")":"");if(det&&ents.length)det.open=true;document.getElementById("resourceAdminLogin").hidden=true;document.getElementById("resourceAdminLogout").hidden=false;}catch(e){area.innerHTML='<div class="resource-empty">تعذر تحميل قائمة المراجعة. تحقق من رمز الإدارة.</div>';}}
@@ -4029,7 +4039,7 @@ $("#annChips")?.addEventListener("click",e=>{const b=e.target.closest(".ann-chip
 /* ---------- announcements admin (داخل إدارة البرنامج الأكاديمي) ---------- */
 let ANN_ADMIN="",ANN_CODE_TRY="",ANN_CAN=false;
 const supPerm=p=>(window.__SUP_PERMS||[]).indexOf(p)>-1;
-const supCode=()=>(window.__ME_ROLE==="owner"||window.__ME_ROLE==="teacher"||supPerm("res"))?"__sup__":"";
+const supCode=()=>(window.__ME_ROLE==="owner"||window.__ME_ROLE==="teacher"||supPerm("res")||supPerm("ann"))?"__sup__":"";
 const persistedAdminCode=()=>{try{return localStorage.getItem("ensd_persist_academic_code")||""}catch(e){return ""}};
 async function annApi(action,opts={}){
  const code=opts.code??ANN_ADMIN,q=new URLSearchParams(Object.assign({action},opts.params||{}));
@@ -4059,8 +4069,8 @@ function resSyncAdmin(){
 function annAdminUI(){const box=$("#annAdminBox");if(box)box.hidden=!(ANN_ADMIN&&ANN_CAN);resSyncAdmin();const d=$("#annDate");if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);renderAnnManage()}
 document.addEventListener("ensd:perms",()=>{
  const own=window.__ME_ROLE==="owner",tch=window.__ME_ROLE==="teacher";
- if(!ANN_ADMIN&&(own||tch||supPerm("res")))ANN_ADMIN="__sup__";
- if(own||tch)ANN_CAN=true;
+ if(!ANN_ADMIN&&(own||tch||supPerm("res")||supPerm("ann")))ANN_ADMIN="__sup__";
+ if(own||tch||supPerm("ann"))ANN_CAN=true;
  RES_SYNCED="\u0000";annAdminUI();
 });
 document.addEventListener("click",e=>{if(e.target.closest("#academicAdminEnter")){const v=$("#academicAdminCode")?.value.trim();if(v)ANN_CODE_TRY=v}},true);
@@ -7391,6 +7401,7 @@ html.lite-motion .au-overlay.in{-webkit-backdrop-filter:none;backdrop-filter:non
 .au-edit .au-save{background:var(--primary);color:#fff}
 .au-edit .au-cancel{background:var(--soft);color:var(--muted)}
 .au-edit button:disabled{opacity:.5}
+.au-sel{width:100%;margin-top:7px;height:42px;padding:0 12px;border-radius:12px;border:1.5px solid var(--line,rgba(0,0,0,.15));background:var(--surface,#fff);color:var(--ink);font:inherit;font-size:14px;outline:0}.au-sel:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(40,124,120,.15)}
 .au-seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px;padding:4px;border-radius:14px;background:var(--soft)}
 .au-seg button{border:0;border-radius:11px;padding:10px 6px;font:inherit;font-size:13.5px;font-weight:800;background:transparent;color:var(--muted);cursor:pointer;transition:background .2s,color .2s,box-shadow .2s,transform .15s}
 .au-seg button:active{transform:scale(.96)}
@@ -7608,7 +7619,11 @@ function viewProfile(){
   nm=anm;
   rows+=row(i++,"user","الاسم الكامل",esc(anm),{rid:"auNameRow",id:"auNameVal",after:'<button type="button" class="au-eye" id="auPen" aria-label="تعديل الاسم" title="تعديل الاسم">'+ic("pen")+'</button>'});
   rows+=row(i++,"shield","الصفة",roleName);
-  rows+=row(i++,"cap","التخصص","اللغة العربية · التعليم الابتدائي");
+  var subs=[];try{[typeof lessonSubjects!=="undefined"?lessonSubjects:[],typeof subjectData!=="undefined"?subjectData:[]].forEach(function(arr){(arr||[]).forEach(function(x){var t=(typeof x==="string"?x:x&&x.name)||"";t=String(t).trim();if(t&&subs.indexOf(t)<0)subs.push(t)})})}catch(e){}
+  var msub=(m.subject||"").trim();if(msub&&subs.indexOf(msub)<0)subs.push(msub);
+  var ag=m.group==="A"||m.group==="B"?m.group:"";
+  rows+=row(i++,"cap","المقياس",null,{inner:'<select class="au-sel" id="auSubj" aria-label="اختر المقياس"><option value="">'+(subs.length?"اختر المقياس":"لا توجد مقاييس")+'</option>'+subs.map(function(t){return '<option value="'+esc(t)+'"'+(t===msub?" selected":"")+'>'+esc(t)+'</option>'}).join("")+'</select><small class="au-hint" id="auSubjMsg">المقاييس المتوفرة في المنصة.</small>'});
+  rows+=row(i++,"group","المجموعة",null,{inner:'<div class="au-seg" id="auTSeg" role="radiogroup" aria-label="اختر المجموعة"><button type="button" role="radio" data-tg="A" aria-checked="'+(ag==="A")+'">المجموعة A</button><button type="button" role="radio" data-tg="B" aria-checked="'+(ag==="B")+'">المجموعة B</button></div><small class="au-hint" id="auTGrpMsg">'+(ag?"يمكنك تغيير المجموعة في أي وقت.":"اختر المجموعة.")+'</small>'});
   rows+=row(i++,"clock","انتهاء الجلسة",exp?esc(fmtDate(exp))+" · بعد "+left+" يوم":"—");
  }else{
   hero('<span class="au-initial">'+esc(nm.charAt(0))+'</span>',nm,"طالب · التعليم الابتدائي",tagsHtml(g));
@@ -7652,8 +7667,23 @@ function viewProfile(){
   inp.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();save()}else if(e.key==="Escape"){e.stopPropagation();viewProfile()}});
  });
 
- /* اختيار المجموعة */
- [].forEach.call(card.querySelectorAll(".au-seg button"),function(b){
+ /* مقياس ومجموعة الأستاذ */
+ var ssel=$("#auSubj");
+ if(ssel)ssel.addEventListener("change",function(){
+  var v=ssel.value,mg=$("#auSubjMsg");mg.className="au-hint";mg.textContent="جارٍ الحفظ…";
+  saveProfile({subject:v}).then(function(j){if(j.ok){S.me.subject=j.subject||"";ls.set(KHINT,JSON.stringify(S.me));mg.textContent="تم حفظ المقياس."}else{mg.className="au-hint bad";mg.textContent="تعذّر الحفظ. أعد المحاولة."}}).catch(function(){mg.className="au-hint bad";mg.textContent="تعذّر الاتصال. أعد المحاولة."});
+ });
+ [].forEach.call(card.querySelectorAll("#auTSeg button"),function(b){
+  b.addEventListener("click",function(){
+   var ng=b.getAttribute("data-tg"),mg=$("#auTGrpMsg");if(ng===S.me.group)return;
+   [].forEach.call(card.querySelectorAll("#auTSeg button"),function(x){x.setAttribute("aria-checked",String(x===b))});
+   mg.className="au-hint";mg.textContent="جارٍ الحفظ…";
+   saveProfile({group:ng}).then(function(j){if(j.ok){S.me.group=ng;ls.set(KHINT,JSON.stringify(S.me));mg.textContent="تم اختيار المجموعة "+ng+"."}else{mg.className="au-hint bad";mg.textContent="تعذّر الحفظ. أعد المحاولة."}}).catch(function(){mg.className="au-hint bad";mg.textContent="تعذّر الاتصال. أعد المحاولة."});
+  });
+ });
+
+ /* اختيار المجموعة (الطالب) */
+ [].forEach.call(card.querySelectorAll(".au-seg button[data-g]"),function(b){
   b.addEventListener("click",function(){
    var ng=b.getAttribute("data-g");if(ng===myGroup(S.me))return;
    try{window.setGroup&&window.setGroup(ng)}catch(e){}
@@ -7794,7 +7824,7 @@ html[data-theme=dark] .badge-role-row,html[data-theme=dark] .badge-sup-row{backg
  function renderSup(){
   const box=$("badgeSupList");if(!box)return;
   if(!state.supervisors.length){box.innerHTML='<div class="badge-sup-empty">لم تعيّن أي مشرف بعد.</div>';return}
-  const PERMS=[["res","إدارة الموارد"],["academic","إدارة الدروس والمواد"]];
+  const PERMS=[["ann","إدارة الإعلانات"],["res","إدارة المشاركات الجديدة"],["academic","إدارة الدروس والمواد"]];
    box.innerHTML=state.supervisors.map(s=>'<div class="badge-sup-row" data-id="'+esc(s.id)+'"><span>'+esc(s.name)+'</span><button type="button" class="sup-edit">تعديل</button><button type="button" class="danger sup-del">حذف</button><div class="sup-perms"><small>الصلاحيات:</small>'+PERMS.map(p=>'<label class="sup-perm"><input type="checkbox" data-perm="'+p[0]+'"'+((s.perms||[]).indexOf(p[0])>-1?' checked':'')+'><span>'+p[1]+'</span></label>').join("")+'</div></div>').join("");
  }
  function render(){renderRoles();renderSup()}
@@ -8021,8 +8051,9 @@ html[data-theme=dark] body .resource-file-icon.img{background:#12291f!important;
 <style id="role-based-admin-buttons">
 /* إدارة البرنامج الأكاديمي: للمالك فقط · إدارة المحاضرات: للأستاذ والمالك */
 html:not([data-role="owner"]) #academicAdmin{display:none!important}
-html:not([data-role="owner"]) .resource-admin-area,html:not([data-role="owner"]) #libAdminBar{display:none!important}
-html:not([data-role="owner"]):not([data-role="teacher"]) #annAdminBox{display:none!important}
+html:not([data-role="owner"]):not([data-sup-res="1"]) .resource-admin-area{display:none!important}
+html:not([data-role="owner"]) #libAdminBar{display:none!important}
+html:not([data-role="owner"]):not([data-role="teacher"]):not([data-sup-ann="1"]) #annAdminBox{display:none!important}
 html:not([data-role="owner"]):not([data-role="teacher"]) .lesson-admin-footer{display:none!important}
 </style>
 <script id="role-perms-20261118">
@@ -8032,9 +8063,19 @@ html:not([data-role="owner"]):not([data-role="teacher"]) .lesson-admin-footer{di
  fetch("/api/auth/me",{credentials:"same-origin",cache:"no-store"}).then(function(r){return r.json()}).then(function(j){
   if(!j||!j.in)return;
   var asOwner=!!(j.admin&&j.role==="owner");
-  var perms=asOwner?["ann","res","academic"]:(Array.isArray(j.perms)?j.perms:[]).filter(function(p){return p!=="ann"});
+  var perms=asOwner?["ann","res","academic"]:(Array.isArray(j.perms)?j.perms:[]);
   window.__ME_ROLE=j.admin?(j.role||"teacher"):(j.supervisor?"supervisor":"");
   window.__SUP_PERMS=perms;
+  var root=document.documentElement,isSup=!j.admin&&!!j.supervisor;
+  root.setAttribute("data-sup-ann",isSup&&perms.indexOf("ann")>-1?"1":"0");
+  root.setAttribute("data-sup-res",isSup&&perms.indexOf("res")>-1?"1":"0");
+  /* المالك والأستاذ والمشرف: ينشرون مواردهم مباشرة دون مراجعة */
+  if(j.admin||isSup){
+   root.setAttribute("data-direct-publish","1");
+   var ub=document.getElementById("resourceUploadButton"),um=document.getElementById("resourceUploadMessage");
+   if(ub)ub.textContent="نشر المورد";
+   if(um)um.textContent="سيُنشر المورد في المكتبة مباشرة دون مراجعة.";
+  }
   try{document.dispatchEvent(new CustomEvent("ensd:perms"))}catch(e){}
  }).catch(function(){});
 })();
