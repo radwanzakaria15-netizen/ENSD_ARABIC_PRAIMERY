@@ -2092,6 +2092,69 @@ async function authProfile(request, env) {
   return jsonC({ ok: true, name: next.n || "", group: next.g || "" });
 }
 
+/* ===== الصورة الشخصية: تخزين في KV + فحص بالذكاء الاصطناعي (Workers AI) على الخادم =====
+   يتطلب Binding باسم AI (Workers AI). إن لم يوجد، تُرفض كل الصور (فشل آمن). */
+const PHOTO_MAX = 150 * 1024;
+async function photoKeyOf(request, env, ss) {
+  if (ss.sid !== "admin") return "photo:" + ss.sid;
+  const role = (await readRole(request, env)) || "teacher";
+  if (role === "owner") return "photo:owner";
+  try { const tid = await staffIdentity(request, env, ss); if (tid && tid.key) return "photo:t:" + tid.key; } catch {}
+  return "photo:teacher";
+}
+function b64ToBytes(b64) {
+  const bin = atob(b64), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function moderatePhoto(env, bytes) {
+  if (!env.AI || typeof env.AI.run !== "function") return "unavailable";
+  try {
+    const r = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
+      image: Array.from(bytes),
+      prompt: "You are a strict content moderator for a school platform. Does this image contain nudity, sexual or suggestive content, pornography, gore, graphic violence, or hate symbols? Reply with exactly one word: UNSAFE if it does, otherwise SAFE.",
+      max_tokens: 8,
+    });
+    const t = String((r && (r.description || r.response)) || "").trim().toUpperCase();
+    if (t.includes("UNSAFE")) return "unsafe";
+    if (t.startsWith("SAFE")) return "safe";
+    return "unsafe"; // رد غير مفهوم: لا تُقبل الصورة
+  } catch { return "unavailable"; }
+}
+async function authPhoto(request, env) {
+  const ss = await readSession(request, env);
+  if (!ss.ok) return jsonC({ error: "login_required" }, 401);
+  const kv = kvOf(env), key = await photoKeyOf(request, env, ss);
+  if (request.method === "GET") {
+    const v = await kv.get(key);
+    return v ? jsonC({ ok: true, image: v }) : jsonC({ ok: true, image: "" });
+  }
+  if (rlCount("photo:" + ss.sid, 600000) >= 8) return jsonC({ error: "rate_limited" }, 429);
+  rlAdd("photo:" + ss.sid, 600000);
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const setFlag = async (on) => {
+    if (ss.sid === "admin") return;
+    const p = { ...((await kv.get("prof:" + ss.sid, { type: "json" })) || {}) };
+    if (on) p.p = 1; else delete p.p;
+    await kv.put("prof:" + ss.sid, JSON.stringify(p), { metadata: { g: p.g || "", n: p.n || "" } });
+  };
+  if (body.remove) {
+    try { await kv.delete(key); await setFlag(false); } catch { return jsonC({ error: "kv_error" }, 502); }
+    return jsonC({ ok: true });
+  }
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+\/=]+)$/.exec(String(body.image || ""));
+  if (!m) return jsonC({ error: "invalid_image" }, 400);
+  let bytes;
+  try { bytes = b64ToBytes(m[1]); } catch { return jsonC({ error: "invalid_image" }, 400); }
+  if (bytes.length > PHOTO_MAX || bytes.length < 200 || bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF) return jsonC({ error: "invalid_image" }, 400);
+  const verdict = await moderatePhoto(env, bytes);
+  if (verdict === "unavailable") return jsonC({ error: "moderation_unavailable" }, 503);
+  if (verdict !== "safe") return jsonC({ error: "image_rejected" }, 422);
+  try { await kv.put(key, "data:image/jpeg;base64," + m[1]); await setFlag(true); } catch { return jsonC({ error: "kv_error" }, 502); }
+  return jsonC({ ok: true });
+}
+
 async function handleAuth(request, env, url, ctx) {
   if (!kvOf(env) || !secretOf(env)) return jsonC({ error: "auth_not_configured" }, 503);
   const a = url.pathname.slice("/api/auth/".length);
@@ -2111,6 +2174,7 @@ async function handleAuth(request, env, url, ctx) {
         }
       } catch {}
       if (out.role === "owner") out.perms = SUP_PERMS.slice();
+      try { out.photo = !!(await kvOf(env).get(await photoKeyOf(request, env, ss))); } catch {}
     }
     if (ss.ok) {
       touchSeen(env, ss.sid, ctx);
@@ -2126,6 +2190,7 @@ async function handleAuth(request, env, url, ctx) {
           // الاسم: ما اختاره الطالب، وإلا اسمه في القائمة. المجموعة: اختياره هو فقط (لا تُستنتج من القائمة)
           out.name = prof.n || (known ? known[0] : (rec && rec.n) || "");
           out.group = prof.g === "A" || prof.g === "B" ? prof.g : "";
+          out.photo = prof.p === 1;
           out.devices = rec && Array.isArray(rec.d) ? rec.d.length : 1;
           out.since = (rec && rec.ts) || 0;
           out.maxDevices = MAX_DEVICES;
@@ -2138,6 +2203,7 @@ async function handleAuth(request, env, url, ctx) {
     return jsonC(out);
   }
   if (a === "status" && request.method === "GET") return authStatus(request, env);
+  if (a === "photo") return authPhoto(request, env);
   if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
   if (a === "profile") return authProfile(request, env);
   if (a === "login") return authLogin(request, env, "login");
