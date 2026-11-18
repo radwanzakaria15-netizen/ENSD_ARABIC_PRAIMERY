@@ -7421,6 +7421,9 @@ html.lite-motion .au-overlay.in{-webkit-backdrop-filter:none;backdrop-filter:non
 .au-eye[hidden]{display:none!important}
 .au-edit input{width:0}
 .au-row-tx b,.au-row-tx small{overflow-wrap:anywhere}
+.au-badge{overflow:hidden}.au-badge img.au-photo{width:100%;height:100%;object-fit:cover;display:block}
+.profile .avatar img.av-photo{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+.au-ph{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.au-ph-btn{padding:8px 14px;border-radius:12px;border:1px solid var(--line,#cfe0da);background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:700;cursor:pointer}.au-ph-btn.del{color:#b3261e;border-color:rgba(179,38,30,.35)}.au-ph-btn:disabled{opacity:.55;cursor:wait}
 </style>
 <script id="auth-ui-20261117">
 (function(){
@@ -7471,11 +7474,12 @@ function paint(){
  var c=btn.classList;c.remove("is-out","is-in","is-wait","is-admin");
  var m=S.me||{};
  H.setAttribute("data-role",S.st==="in"?(m.admin?(m.role==="owner"?"owner":"teacher"):"student"):(S.st==="off"?"owner":"guest"));
- if(S.st==="in"&&m.admin){c.add("is-in","is-admin");avatar.innerHTML=ic("shield");var an=(m.name||"").trim(),rn=m.role==="owner"?"المالك":"الأستاذ";avatar.innerHTML='<span class="av-letter">'+esc((an||rn).charAt(0))+'</span>';tEl.textContent=an||rn;sEl.textContent=m.role==="owner"?"المالك · صلاحيات كاملة":"الأستاذ · صلاحيات المحاضرات"}
- else if(S.st==="in"){c.add("is-in");var nm=(m.name||"").trim();avatar.innerHTML='<span class="av-letter">'+esc(nm?nm.charAt(0):"ط")+'</span>';tEl.textContent=nm||"فضاء الطالب";var cg=myGroup(m);sEl.textContent="طالب"+(cg?" · المجموعة "+cg:" · التعليم الابتدائي")}
+ if(S.st==="in"&&m.admin){c.add("is-in","is-admin");avatar.innerHTML=ic("shield");var an=(m.name||"").trim(),rn=m.role==="owner"?"المالك":"الأستاذ";avatar.innerHTML=avHtml(esc((an||rn).charAt(0)));tEl.textContent=an||rn;sEl.textContent=m.role==="owner"?"المالك · صلاحيات كاملة":"الأستاذ · صلاحيات المحاضرات"}
+ else if(S.st==="in"){c.add("is-in");var nm=(m.name||"").trim();avatar.innerHTML=avHtml(esc(nm?nm.charAt(0):"ط"));tEl.textContent=nm||"فضاء الطالب";var cg=myGroup(m);sEl.textContent="طالب"+(cg?" · المجموعة "+cg:" · التعليم الابتدائي")}
  else if(S.st==="wait"){c.add("is-wait");avatar.innerHTML=AV0;tEl.textContent="طلبك قيد المراجعة";sEl.textContent="بانتظار موافقة الإدارة"}
  else if(S.st==="out"){c.add("is-out");avatar.innerHTML=AV0;tEl.textContent="تسجيل الدخول";sEl.textContent="اضغط للدخول إلى فضاء الطالب"}
  else{avatar.innerHTML=AV0;tEl.textContent=T0;sEl.textContent=S0}
+ if(S.st==="in")syncPhoto();
  if(banner)banner.hidden=S.st!=="out";
 }
 try{var h=JSON.parse(ls.get(KHINT)||"null");if(h&&h.in){S.st="in";S.me=h}}catch(e){}
@@ -7618,6 +7622,79 @@ function viewSuccess(){
 function row(i,icon,label,val,extra){extra=extra||{};return '<div class="au-row"'+(extra.rid?' id="'+extra.rid+'"':'')+' style="--i:'+i+'"><span class="au-row-ic">'+ic(icon)+'</span><div class="au-row-tx"><small>'+esc(label)+'</small>'+(val!==null?'<b'+(extra.num?' class="num"':'')+(extra.id?' id="'+extra.id+'"':'')+'>'+val+'</b>':'')+(extra.inner||"")+'</div>'+(extra.after||"")+'</div>'}
 function mask(r){return r.length>4?new Array(r.length-3).join("•")+r.slice(-4):r}
 function tagsHtml(g){return '<span class="au-tag"><i></i>حساب نشط</span>'+(g?'<span class="au-tag">المجموعة '+esc(g)+'</span>':"")}
+/* --- الصورة الشخصية (مع فحص بالذكاء الاصطناعي) --- */
+var TFJS="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js",NSFW="https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/dist/nsfwjs.min.js",modelP=null;
+function photoKey(){var m=S.me||{};return "ensd_profile_photo_"+(m.admin?(m.role||"admin"):(ls.get(KREG)||"student"))}
+function getPhoto(){var p=ls.get(photoKey());return p&&/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(p)?p:""}
+function badgeHtml(l){var p=getPhoto();return p?'<img class="au-photo" alt="" src="'+p+'">':'<span class="au-initial">'+l+'</span>'}
+function avHtml(l){var p=getPhoto();return p?'<img class="av-photo" alt="" src="'+p+'">':'<span class="av-letter">'+l+'</span>'}
+function loadScript(src){return new Promise(function(res,rej){var s=D.createElement("script");s.src=src;s.onload=res;s.onerror=function(){rej(new Error("load"))};D.head.appendChild(s)})}
+function getModel(){
+ if(modelP)return modelP;
+ modelP=(window.nsfwjs?Promise.resolve():loadScript(TFJS).then(function(){return loadScript(NSFW)})).then(function(){
+  return window.nsfwjs.load().catch(function(){return window.nsfwjs.load("https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/models/mobilenet_v2/",{size:224})});
+ }).catch(function(e){modelP=null;throw e});
+ return modelP;
+}
+function toCanvas(file){
+ return new Promise(function(res,rej){
+  var url=URL.createObjectURL(file),im=new Image();
+  im.onload=function(){
+   var N=256,c=D.createElement("canvas");c.width=c.height=N;var x=c.getContext("2d"),w=im.naturalWidth,h=im.naturalHeight,sz=Math.min(w,h);
+   if(!sz){URL.revokeObjectURL(url);rej(new Error("bad"));return}
+   x.fillStyle="#fff";x.fillRect(0,0,N,N);x.drawImage(im,(w-sz)/2,(h-sz)/2,sz,sz,0,0,N,N);URL.revokeObjectURL(url);res(c);
+  };
+  im.onerror=function(){URL.revokeObjectURL(url);rej(new Error("bad"))};
+  im.src=url;
+ });
+}
+/* يعيد true إذا كانت الصورة مرفوضة */
+function isUnsafe(model,canvas){
+ return model.classify(canvas).then(function(r){
+  var p={};r.forEach(function(o){p[o.className]=o.probability});
+  return (p.Porn||0)+(p.Hentai||0)>0.35||(p.Sexy||0)>0.6;
+ });
+}
+function saveServerPhoto(data){return api("/api/auth/photo",{method:"POST",body:data})}
+var syncing=false;
+function syncPhoto(){
+ if(syncing||!S.me||!S.me.photo||getPhoto())return;
+ syncing=true;
+ api("/api/auth/photo").then(function(j){
+  if(j&&j.ok&&typeof j.image==="string"&&/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(j.image)){ls.set(photoKey(),j.image);paint()}
+ }).catch(function(){}).then(function(){syncing=false});
+}
+function photoRow(i){
+ var has=!!getPhoto();
+ return row(i,"user","الصورة الشخصية",null,{rid:"auPhotoRow",inner:'<div class="au-ph"><button type="button" class="au-ph-btn" id="auPhAdd">'+(has?"تغيير الصورة":"إضافة صورة")+'</button>'+(has?'<button type="button" class="au-ph-btn del" id="auPhDel">حذف الصورة</button>':'')+'<input type="file" id="auPhFile" accept="image/*" hidden></div><small class="au-hint" id="auPhMsg">تُفحص الصورة بالذكاء الاصطناعي قبل اعتمادها، وتُرفض الصور غير اللائقة.</small>'});
+}
+function wirePhoto(){
+ var add=$("#auPhAdd"),del=$("#auPhDel"),inp=$("#auPhFile"),msg=$("#auPhMsg");if(!add||!inp)return;
+ function say(t,bad){msg.textContent=t;msg.className=bad?"au-hint bad":"au-hint"}
+ add.addEventListener("click",function(){inp.click()});
+ if(del)del.addEventListener("click",function(){del.disabled=true;add.disabled=true;say("جارٍ الحذف…");saveServerPhoto({remove:true}).then(function(j){if(j&&j.ok){ls.del(photoKey());if(S.me)S.me.photo=false;paint();viewProfile()}else{say("تعذّر الحذف. أعد المحاولة.",1);del.disabled=false;add.disabled=false}}).catch(function(){say("تعذّر الاتصال. أعد المحاولة.",1);del.disabled=false;add.disabled=false})});
+ inp.addEventListener("change",function(){
+  var f=inp.files&&inp.files[0];inp.value="";if(!f)return;
+  if(!/^image\//.test(f.type)){say("اختر ملف صورة فقط.",1);return}
+  if(f.size>10*1024*1024){say("حجم الصورة كبير (الأقصى 10 ميغابايت).",1);return}
+  add.disabled=true;if(del)del.disabled=true;say("جارٍ فحص الصورة بالذكاء الاصطناعي…");
+  var cv;
+  toCanvas(f).then(function(c){cv=c;return getModel()}).then(function(model){return isUnsafe(model,cv)}).then(function(bad){
+   if(bad){say("رُفضت الصورة لأنها غير مناسبة. اختر صورة أخرى.",1);shake();add.disabled=false;if(del)del.disabled=false;return}
+   var d=cv.toDataURL("image/jpeg",.85);
+   say("جارٍ المراجعة النهائية على الخادم…");
+   return saveServerPhoto({image:d}).then(function(j){
+    if(j&&j.ok){ls.set(photoKey(),d);if(S.me)S.me.photo=true;paint();viewProfile();toast("تم اعتماد الصورة");return}
+    var e=j&&j.error;
+    say(e==="image_rejected"?"رفض الخادم الصورة لأنها غير مناسبة. اختر صورة أخرى.":e==="moderation_unavailable"?"خدمة الفحص غير متاحة حالياً. حاول لاحقاً.":e==="rate_limited"?"محاولات كثيرة. انتظر قليلاً.":"تعذّر حفظ الصورة. أعد المحاولة.",1);
+    if(e==="image_rejected")shake();
+    add.disabled=false;if(del)del.disabled=false;
+   });
+  }).catch(function(){
+   say("تعذّر فحص الصورة الآن، ولا تُقبل صورة دون فحص. تحقق من الاتصال وأعد المحاولة.",1);add.disabled=false;if(del)del.disabled=false;
+  });
+ });
+}
 function saveProfile(data){return api("/api/auth/profile",{method:"POST",body:data})}
 function viewProfile(){
  var m=S.me||{},rows="",i=0,reg=ls.get(KREG)||"";
@@ -7625,9 +7702,9 @@ function viewProfile(){
  var g=myGroup(m),nm=m.name||"طالب";
  if(m.admin){
   var isOwner=m.role==="owner",roleName=isOwner?"المالك":"الأستاذ",anm=(m.name||"").trim()||roleName;
-  hero('<span class="au-initial">'+esc(anm.charAt(0))+'</span>',anm,roleName+" · التعليم الابتدائي",'<span class="au-tag"><i></i>حساب نشط</span><span class="au-tag">'+roleName+'</span>');
+  hero(badgeHtml(esc(anm.charAt(0))),anm,roleName+" · التعليم الابتدائي",'<span class="au-tag"><i></i>حساب نشط</span><span class="au-tag">'+roleName+'</span>');
   nm=anm;
-  rows+=row(i++,"user","الاسم الكامل",esc(anm),{rid:"auNameRow",id:"auNameVal",after:'<button type="button" class="au-eye" id="auPen" aria-label="تعديل الاسم" title="تعديل الاسم">'+ic("pen")+'</button>'});
+  rows+=row(i++,"user","الاسم الكامل",esc(anm),{rid:"auNameRow",id:"auNameVal",after:'<button type="button" class="au-eye" id="auPen" aria-label="تعديل الاسم" title="تعديل الاسم">'+ic("pen")+'</button>'});rows+=photoRow(i++);
   rows+=row(i++,"shield","الصفة",roleName);
   var subs=[];try{[typeof lessonSubjects!=="undefined"?lessonSubjects:[],typeof subjectData!=="undefined"?subjectData:[]].forEach(function(arr){(arr||[]).forEach(function(x){var t=(typeof x==="string"?x:x&&x.name)||"";t=String(t).trim();if(t&&subs.indexOf(t)<0)subs.push(t)})})}catch(e){}
   var msub=(m.subject||"").trim();if(msub&&subs.indexOf(msub)<0)subs.push(msub);
@@ -7636,8 +7713,8 @@ function viewProfile(){
   if(!isOwner)rows+=row(i++,"group","المجموعة",null,{inner:'<div class="au-seg" id="auTSeg" role="radiogroup" aria-label="اختر المجموعة"><button type="button" role="radio" data-tg="A" aria-checked="'+(ag==="A")+'">المجموعة A</button><button type="button" role="radio" data-tg="B" aria-checked="'+(ag==="B")+'">المجموعة B</button></div><small class="au-hint" id="auTGrpMsg">'+(ag?"يمكنك تغيير المجموعة في أي وقت.":"اختر المجموعة.")+'</small>'});
   rows+=row(i++,"clock","انتهاء الجلسة",exp?esc(fmtDate(exp))+" · بعد "+left+" يوم":"—");
  }else{
-  hero('<span class="au-initial">'+esc(nm.charAt(0))+'</span>',nm,"طالب · التعليم الابتدائي",tagsHtml(g));
-  rows+=row(i++,"user","الاسم الكامل",esc(nm),{rid:"auNameRow",id:"auNameVal",after:'<button type="button" class="au-eye" id="auPen" aria-label="تعديل الاسم" title="تعديل الاسم">'+ic("pen")+'</button>'});
+  hero(badgeHtml(esc(nm.charAt(0))),nm,"طالب · التعليم الابتدائي",tagsHtml(g));
+  rows+=row(i++,"user","الاسم الكامل",esc(nm),{rid:"auNameRow",id:"auNameVal",after:'<button type="button" class="au-eye" id="auPen" aria-label="تعديل الاسم" title="تعديل الاسم">'+ic("pen")+'</button>'});rows+=photoRow(i++);
   if(reg)rows+=row(i++,"id","رقم التسجيل",mask(reg),{num:1,id:"auRegVal",after:'<button type="button" class="au-eye" id="auEye" aria-label="إظهار رقم التسجيل" aria-pressed="false">'+ic("eye")+'</button>'});
   rows+=row(i++,"group","المجموعة",null,{inner:'<div class="au-seg" role="radiogroup" aria-label="اختر مجموعتك"><button type="button" role="radio" data-g="A" aria-checked="'+(g==="A")+'">المجموعة A</button><button type="button" role="radio" data-g="B" aria-checked="'+(g==="B")+'">المجموعة B</button></div><small class="au-hint" id="auGrpMsg">'+(g?"يمكنك تغيير مجموعتك في أي وقت.":"اختر مجموعتك لعرض المحتوى الخاص بها.")+'</small>'});
   rows+=row(i++,"hall","القاعة",esc(hallOf(g)||"تظهر بعد اختيار المجموعة"),{id:"auHall"});
@@ -7647,6 +7724,7 @@ function viewProfile(){
   rows+=row(i++,"clock","انتهاء الجلسة",exp?esc(fmtDate(exp))+" · بعد "+left+" يوم":"—");
  }
  body('<div class="au-rows">'+rows+'</div>'+(m.admin&&m.role==="owner"?'<a class="au-ghost" href="/auth-admin">'+ic("shield")+'إدارة الدخول</a>':'')+'<button type="button" class="au-danger" id="auOut">'+ic("logout")+'تسجيل الخروج</button>');
+wirePhoto();
 
  var eye=$("#auEye");
  if(eye)eye.addEventListener("click",function(){var on=eye.getAttribute("aria-pressed")!=="true";eye.setAttribute("aria-pressed",String(on));eye.innerHTML=ic(on?"eyeoff":"eye");eye.setAttribute("aria-label",on?"إخفاء رقم التسجيل":"إظهار رقم التسجيل");$("#auRegVal").textContent=on?reg:mask(reg)});
