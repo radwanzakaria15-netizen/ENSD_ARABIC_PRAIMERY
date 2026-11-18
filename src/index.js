@@ -1844,12 +1844,24 @@ async function getBansFresh(env) {
 /* ----- تعديل الملف الشخصي: الاسم المعروض + اختيار المجموعة (لا يمسّ مطابقة الدخول بالقائمة) ----- */
 async function authProfile(request, env) {
   const ss = await readSession(request, env);
-  if (!ss.ok || ss.sid === "admin") return jsonC({ error: "login_required" }, 401);
+  if (!ss.ok) return jsonC({ error: "login_required" }, 401);
   if (rlCount("prof:" + ss.sid, 600000) >= 30) return jsonC({ error: "rate_limited" }, 429);
   rlAdd("prof:" + ss.sid, 600000);
   let body = {};
   try { body = await request.json(); } catch {}
   const kv = kvOf(env);
+  if (ss.sid === "admin") {
+    // المالك/الأستاذ: يغيّر الاسم الظاهر لدوره (يُحفظ في إعدادات الشارة)
+    const role = (await readRole(request, env)) || "teacher";
+    const n = String(body.name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+    if (!/^[\p{L}\p{M}' .\-]{2,60}$/u.test(n)) return jsonC({ error: "invalid_name" }, 400);
+    try {
+      const saved = await readBadgeRaw(env);
+      saved[role] = { ...(saved[role] || {}), name: badgeText(n, 60) };
+      await kv.put("badges:cfg", JSON.stringify(saved));
+    } catch { return jsonC({ error: "kv_error" }, 502); }
+    return jsonC({ ok: true, name: n, group: "" });
+  }
   const next = { ...((await kv.get("prof:" + ss.sid, { type: "json" })) || {}) };
   if (body.name !== undefined) {
     const n = String(body.name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -1862,6 +1874,13 @@ async function authProfile(request, env) {
   }
   try { await kv.put("prof:" + ss.sid, JSON.stringify(next)); }
   catch { return jsonC({ error: "kv_error" }, 502); }
+  if (body.name !== undefined && next.n) {
+    // إن كان مشرفاً فاسمه الظاهر على تعليقاته وموارده يتبع اسمه الجديد
+    try {
+      const sups = await readSupervisors(env), hit = sups.find((x) => x.sid === ss.sid);
+      if (hit) { hit.name = badgeText(next.n, 60); await kv.put("badges:sup", JSON.stringify(sups)); }
+    } catch {}
+  }
   return jsonC({ ok: true, name: next.n || "", group: next.g || "" });
 }
 
