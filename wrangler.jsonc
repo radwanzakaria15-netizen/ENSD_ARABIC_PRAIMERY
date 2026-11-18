@@ -10,5 +10,8 @@
   },
   "kv_namespaces": [
     { "binding": "HISTORY_KV" }
-  ]
+  ],
+  "ai": {
+    "binding": "AI"
+  }
 }
