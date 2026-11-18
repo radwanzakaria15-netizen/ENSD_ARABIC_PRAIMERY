@@ -135,6 +135,9 @@ function contentTypeForName(name) {
   if (lower.endsWith(".pdf")) return "application/pdf";
   if (lower.endsWith(".doc")) return "application/msword";
   if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (/\.jpe?g$/.test(lower)) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
   return "application/octet-stream";
 }
 
@@ -301,6 +304,9 @@ function fileBytesMatch(type,data){
  if(type==="application/pdf")return new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-");
  if(type==="application/msword")return b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]);
  if(type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document")return b[0]===0x50&&b[1]===0x4B;
+ if(type==="image/jpeg")return b[0]===0xFF&&b[1]===0xD8&&b[2]===0xFF;
+ if(type==="image/png")return b.length>=8&&[0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A].every((v,i)=>b[i]===v);
+ if(type==="image/webp"){const t=new TextDecoder();return b.length>=12&&t.decode(b.slice(0,4))==="RIFF"&&t.decode(b.slice(8,12))==="WEBP"}
  return false;
 }
 /* التصنيفات (سنة/سداسي/نوع/مقياس) تُدار الآن من «إدارة المكتبة» في الواجهة، لذا يُتحقق من شكلها فقط لا من قائمة ثابتة. */
@@ -528,8 +534,7 @@ async function handleResourceFile(request,env){
   const meta={id:crypto.randomUUID(),title:String(u.searchParams.get("title")||"").trim().slice(0,120),year:metaText(u.searchParams.get("year"),40),semester:metaText(u.searchParams.get("semester"),40),subject:metaText(u.searchParams.get("subject"),100),kind:metaText(u.searchParams.get("kind"),40),fileName:name,contentType:type,createdAt:new Date().toISOString()};
   if(!validMeta(meta))return json({error:"invalid_resource_metadata"},400);
   const data=await request.arrayBuffer();if(!data.byteLength)return json({error:"empty_file"},400);if(data.byteLength>MAX_FILE_SIZE)return json({error:"file_too_large",limit:MAX_FILE_SIZE},413);
-  const b=new Uint8Array(data),pdf=type==="application/pdf"&&new TextDecoder().decode(b.slice(0,5)).startsWith("%PDF-"),doc=type==="application/msword"&&b.length>=8&&b.slice(0,8).every((v,i)=>v===[0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][i]),docx=type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"&&b[0]===0x50&&b[1]===0x4B;
-  if(!(pdf||doc||docx))return json({error:"file_type_mismatch"},400);
+  if(!fileBytesMatch(type,data))return json({error:"file_type_mismatch"},400);
   const up=await uploaderInfo(request,env);if(up.name)meta.uploader=up.name;if(up.role)meta.uploaderRole=up.role;if(up.uid)meta.uploaderId=up.uid;if(up.group)meta.uploaderGroup=up.group;
   const ownerRaw=String(u.searchParams.get("owner")||"").trim();if(/^[A-Za-z0-9_-]{16,128}$/.test(ownerRaw))meta.ownerHash=await sha256Hex(ownerRaw);
   const base="resources/pending/"+meta.id;meta.fileKey=base+"__"+name;
@@ -544,7 +549,7 @@ async function handleResourceFile(request,env){
   const serve=async()=>{
   const r=await signedB2Request(env,"GET",key);if(r.status===404)return json({error:"not_found"},404);if(!r.ok)return json({error:"storage_error"},502);
   const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
-  return new Response(r.body,{headers:{"content-type":type,"content-disposition":(type==="application/pdf"&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\x20-\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
+  return new Response(r.body,{headers:{"content-type":type,"content-disposition":((type==="application/pdf"||type.startsWith("image/"))&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\x20-\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
   };
   return approved?edgeFile(request,21600,serve):serve();
  }
@@ -746,7 +751,9 @@ async function handleAnnouncements(request, env) {
         pinned: !!body.pinned,
         link: /^(https?:\/\/|\/)/.test(link) ? link : "",
         linkText: annClip(body.linkText, 40),
-        cm: body.cm === false ? false : true,
+        cm: body.cm === true,
+        nc: body.nc === true,
+        nr: body.nr === true,
       };
       const pl = annPoll(body.poll); if (pl) item.poll = pl;
       const bi = annImg(body.bgImage); if (bi) item.bgImage = bi;
@@ -772,14 +779,18 @@ async function handleAnnouncements(request, env) {
       it.pinned = !!body.pinned;
       it.link = /^(https?:\/\/|\/)/.test(link) ? link : "";
       it.linkText = annClip(body.linkText, 40);
-      it.cm = body.cm === false ? false : true;
+      it.cm = body.cm === true;
+      it.nc = body.nc === true;
+      it.nr = body.nr === true;
       const bi = annImg(body.bgImage);
       if (bi) it.bgImage = bi; else if ("bgImage" in body) delete it.bgImage;
       await writeAnnouncements(env, list); await edgeDrop("ann");
       return json({ ok: true, id });
     }
     if (action === "delete") { list.splice(idx, 1); await writeAnnouncements(env, list); await edgeDrop("ann"); await rxPurge(env, "ann:" + id); await pcPurge(env, id); return json({ ok: true }); }
-    if (action === "toggle_comments") { list[idx].cm = list[idx].cm === false; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, cm: list[idx].cm }); }
+    if (action === "toggle_cm_btn") { list[idx].nc = !list[idx].nc; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, nc: list[idx].nc }); }
+    if (action === "toggle_rx_btn") { list[idx].nr = !list[idx].nr; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, nr: list[idx].nr }); }
+    if (action === "toggle_comments") { list[idx].cm = list[idx].cm !== true; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, cm: list[idx].cm }); }
     if (action === "toggle_poll") { if (!list[idx].poll) return json({ ok: false, error: "no_poll" }, 400); list[idx].poll.closed = !list[idx].poll.closed; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, closed: list[idx].poll.closed }); }
     if (action === "pin") { list[idx].pinned = !list[idx].pinned; await writeAnnouncements(env, list); await edgeDrop("ann"); return json({ ok: true, pinned: list[idx].pinned }); }
     return json({ ok: false, error: "bad_action" }, 400);
@@ -962,7 +973,7 @@ async function handleComments(request, env) {
     rlAdd("cm:" + who, 60000);
     const a = await annFind(env, id);
     if (!a) return json({ error: "not_found" }, 404);
-    if (a.cm === false) return json({ error: "comments_closed" }, 403);
+    if (a.cm !== true) return json({ error: "comments_closed" }, 403);
     let b = {}; try { b = await request.json(); } catch {}
     const x = String(b.text || "").trim().slice(0, CM_LEN);
     if (!x) return json({ error: "invalid_input" }, 400);
@@ -1043,7 +1054,7 @@ async function handleApi(request, env) {
       const type = info?.type || "application/pdf";
       const name = info?.name || "document.pdf";
       const fallback = name.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
-      const disposition = type === "application/pdf" && url.searchParams.get("download") !== "1"
+      const disposition = (type === "application/pdf" || type.startsWith("image/")) && url.searchParams.get("download") !== "1"
         ? "inline" : "attachment";
       const headers = new Headers({
         "content-type": type,
@@ -1063,13 +1074,7 @@ async function handleApi(request, env) {
       const data = await request.arrayBuffer();
       if (!data.byteLength) return json({ error: "empty_file" }, 400);
       if (data.byteLength > MAX_FILE_SIZE) return json({ error: "file_too_large", limit: MAX_FILE_SIZE }, 413);
-      const bytes = new Uint8Array(data);
-      const pdf = type === "application/pdf" && new TextDecoder().decode(bytes.slice(0, 5)).startsWith("%PDF-");
-      const wordDoc = type === "application/msword" &&
-        bytes.slice(0, 8).every((value, index) => value === [0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1][index]);
-      const wordDocx = type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
-        bytes[0] === 0x50 && bytes[1] === 0x4B;
-      if (!(pdf || wordDoc || wordDocx)) return json({ error: "file_type_mismatch" }, 400);
+      if (!fileBytesMatch(type, data)) return json({ error: "file_type_mismatch" }, 400);
       const objectKey = key + "/" + String(Date.now()).padStart(13, "0") + "-" + crypto.randomUUID().slice(0, 8) + "__" + name;
       const response = await signedB2Request(env, "PUT", objectKey, data, {}, type);
       if (!response.ok) throw new Error("B2 upload failed (" + response.status + "): " + (await response.text()).slice(0, 180));
@@ -1318,6 +1323,22 @@ async function sessionCookie(env, sid) {
   return setCookie("ensd_s", sid + "." + exp + "." + sig, SESSION_DAYS * 86400);
 }
 
+/* دور الإدارة (مالك/أستاذ) في كوكي موقّع منفصل؛ جلسة "admin" نفسها لا تتغير */
+async function roleCookie(env, role) {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  const sig = (await mac(env, "r|" + role + "|" + exp)).slice(0, 40);
+  return setCookie("ensd_r", role + "." + exp + "." + sig, SESSION_DAYS * 86400);
+}
+async function readRole(request, env) {
+  const v = String(readCookies(request).ensd_r || "").split(".");
+  if (v.length !== 3) return "";
+  const [role, exp, sig] = v;
+  if (role !== "owner" && role !== "teacher") return "";
+  if (!(Number(exp) > Date.now() / 1000)) return "";
+  const ok = (await mac(env, "r|" + role + "|" + exp)).slice(0, 40);
+  return safeEq(sig, ok) ? role : "";
+}
+
 /* ----- آخر نشاط للطلبة (لعدّاد النشطين): كتابة محدودة كل 4 دقائق لكل طالب ----- */
 const seenMap = new Map();
 function touchSeen(env, sid, ctx) {
@@ -1484,7 +1505,10 @@ async function authLogin(request, env, kind) {
     const codes = [env.ADMIN_CODE_A, env.ADMIN_CODE_B, env.ADMIN_CODE_MOD].map((v) => String(v || "").trim()).filter(Boolean);
     const sup = String(body.code || "").trim();
     if (!sup || !codes.some((c) => safeEq(sup, c))) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "nomatch" }, 401); }
-    return jsonC({ status: "ok" }, 200, [await sessionCookie(env, "admin")]);
+    const ownerCode = String(env.ADMIN_CODE_MOD || "").trim(), aCode = String(env.ADMIN_CODE_A || "").trim();
+    const role = ownerCode && safeEq(sup, ownerCode) ? "owner" : "teacher";
+    const group = role === "owner" ? "" : (aCode && safeEq(sup, aCode) ? "A" : "B");
+    return jsonC({ status: "ok", role, group }, 200, [await sessionCookie(env, "admin"), await roleCookie(env, role)]);
   }
 
   if (rlCount("fail:" + ip, 900000) >= 10) return jsonC({ error: "rate_limited" }, 429);
@@ -1652,6 +1676,7 @@ async function handleAuth(request, env, url, ctx) {
   if (a === "me" && request.method === "GET") {
     const ss = await readSession(request, env);
     const out = { in: !!ss.ok, admin: !!ss.ok && ss.sid === "admin" };
+    if (out.admin) out.role = (await readRole(request, env)) || "teacher";
     if (ss.ok) {
       touchSeen(env, ss.sid, ctx);
       const exp = Number(String(readCookies(request).ensd_s || "").split(".")[1]);
@@ -1678,7 +1703,7 @@ async function handleAuth(request, env, url, ctx) {
   if (a === "profile") return authProfile(request, env);
   if (a === "login") return authLogin(request, env, "login");
   if (a === "request") return authLogin(request, env, "request");
-  if (a === "logout") return jsonC({ ok: true }, 200, [setCookie("ensd_s", "", 0)]);
+  if (a === "logout") return jsonC({ ok: true }, 200, [setCookie("ensd_s", "", 0), setCookie("ensd_r", "", 0)]);
   return jsonC({ error: "not_found" }, 404);
 }
 
