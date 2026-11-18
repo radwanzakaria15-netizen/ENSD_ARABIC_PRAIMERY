@@ -7100,6 +7100,7 @@ html[data-theme=dark] .resource-group-btn.danger{background:#2c1f1f;border-color
  const groupOf=card=>(window.__RES_GROUPS||{})[card.dataset.gid];
  document.addEventListener("pointerdown",e=>{
   if(e.button!==undefined&&e.button!==0)return;
+  if(e.target.closest&&e.target.closest(".fav-btn"))return;
   const card=e.target.closest&&e.target.closest(".resource-card.resource-group[data-gid]");if(!card||card.classList.contains("is-pending"))return;
   const g=groupOf(card);if(!g)return;
   const roles=rolesOf(g);if(!roles.owner&&!roles.admin)return;
@@ -7116,6 +7117,7 @@ html[data-theme=dark] .resource-group-btn.danger{background:#2c1f1f;border-color
  ["pointerup","pointercancel","pointerleave","scroll"].forEach(n=>document.addEventListener(n,()=>clearPress(),{passive:true,capture:true}));
  document.addEventListener("click",e=>{if(Date.now()<suppressUntil&&e.target.closest&&e.target.closest(".resource-group")){e.preventDefault();e.stopPropagation()}},true);
  document.addEventListener("contextmenu",e=>{
+  if(e.target.closest&&e.target.closest(".fav-btn"))return;
   const card=e.target.closest&&e.target.closest(".resource-card.resource-group[data-gid]");if(!card||card.classList.contains("is-pending"))return;
   const g=groupOf(card);if(!g)return;const roles=rolesOf(g);if(!roles.owner&&!roles.admin)return;
   e.preventDefault();if(ctx&&ctx.classList.contains("is-open"))return;clearPress();suppressUntil=Date.now()+700;showMenu(g,roles);
@@ -7504,8 +7506,8 @@ function viewLogin(msgText){
  '<div class="au-msg" id="auMsg" role="alert" aria-live="polite"></div>'+
  '<button class="au-primary" id="auGo" type="submit"><span class="au-btn-label">دخول</span>'+ic("arrow")+'<span class="au-spin"></span></button>'+
  '<button class="au-secondary" id="auReq" type="button" hidden>بياناتي صحيحة، أرسل طلب مراجعة يدوية</button></form>'+
- '<div class="au-foot"><button class="au-link" id="auAdm" type="button">'+ic("key")+'دخول المشرف</button></div>'+
- '<form class="au-admin" id="auAf" hidden novalidate><label class="au-field"><span>رمز المشرف</span><div class="au-input">'+ic("key")+'<input id="auCode" type="password" autocomplete="off"></div></label><button class="au-primary" type="submit"><span class="au-btn-label">دخول المشرف</span><span class="au-spin"></span></button></form>');
+ '<div class="au-foot"><button class="au-link" id="auAdm" type="button">'+ic("key")+'دخول خاص</button></div>'+
+ '<form class="au-admin" id="auAf" hidden novalidate><label class="au-field"><span>رمز المشرف</span><div class="au-input">'+ic("key")+'<input id="auCode" type="password" autocomplete="off"></div></label><button class="au-primary" type="submit"><span class="au-btn-label">دخول خاص</span><span class="au-spin"></span></button></form>');
 
  var f=$("#auForm"),go=$("#auGo"),req=$("#auReq"),msg=$("#auMsg"),busy=false;
  function say(t,bad){msg.className="au-msg"+(t?(bad?" bad":" ok"):"");msg.innerHTML=t?ic(bad?"alert":"check")+"<span>"+esc(t)+"</span>":""}
@@ -7578,7 +7580,8 @@ function viewProfile(){
  if(m.admin){
   var isOwner=m.role==="owner",roleName=isOwner?"المالك":"الأستاذ",anm=(m.name||"").trim()||roleName;
   hero('<span class="au-initial">'+esc(anm.charAt(0))+'</span>',anm,roleName+" · التعليم الابتدائي",'<span class="au-tag"><i></i>حساب نشط</span><span class="au-tag">'+roleName+'</span>');
-  rows+=row(i++,"user","الاسم الكامل",esc(anm));
+  nm=anm;
+  rows+=row(i++,"user","الاسم الكامل",esc(anm),{rid:"auNameRow",id:"auNameVal",after:'<button type="button" class="au-eye" id="auPen" aria-label="تعديل الاسم" title="تعديل الاسم">'+ic("pen")+'</button>'});
   rows+=row(i++,"shield","الصفة",roleName);
   rows+=row(i++,"cap","التخصص","اللغة العربية · التعليم الابتدائي");
   rows+=row(i++,"clock","انتهاء الجلسة",exp?esc(fmtDate(exp))+" · بعد "+left+" يوم":"—");
@@ -8123,6 +8126,7 @@ html[data-theme=dark] #annAdminBox.aax,html[data-theme=dark] #academicAdmin{--ad
 
 /* ---------- إدارة الإعلانات ---------- */
 #annAdminBox.aax{margin:22px 0 0;padding:0;border:0;background:transparent;display:grid;gap:14px}
+#annAdminBox[hidden],#supCorner[hidden],.sup-corner[hidden]{display:none!important}
 #annAdminBox .aax-head{display:flex;align-items:center;gap:13px;padding:2px 2px 0}
 #annAdminBox .aax-ic{flex:none;width:46px;height:46px;border-radius:15px;display:grid;place-items:center;background:var(--soft);color:var(--primary-dark)}
 #annAdminBox .aax-ic svg{width:23px;height:23px}
@@ -8353,6 +8357,141 @@ html[data-theme=dark] #annAdminBox.aax .ann-check input[type=checkbox]{backgroun
  }
  new MutationObserver(clean).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
  clean();
+})();
+</script>
+<style id="elegant-color-css">
+html body input[type=color]{-webkit-appearance:none;appearance:none;width:44px;height:44px;min-width:44px;padding:0;border:3px solid var(--surface,#fff);border-radius:50%;background:none;cursor:pointer;overflow:hidden;box-shadow:0 0 0 1.5px var(--line,#cdd9d4),0 4px 12px rgba(0,0,0,.14);transition:transform .15s}
+html body input[type=color]:active{transform:scale(.92)}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:0;border-radius:50%}
+input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
+.cp-ov{position:fixed;inset:0;z-index:100000;background:rgba(10,20,25,.5);display:flex;align-items:flex-end;justify-content:center;animation:cpFade .18s ease}
+.cp-sheet{width:min(440px,100%);background:var(--surface,#fff);color:var(--ink,#14202a);border-radius:26px 26px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom,0px));box-shadow:0 -16px 44px rgba(0,0,0,.28);animation:cpUp .24s cubic-bezier(.22,.8,.3,1)}
+.cp-grip{width:42px;height:5px;border-radius:9px;background:var(--line,#d5dfdb);margin:4px auto 14px}
+.cp-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.cp-prev{width:58px;height:58px;border-radius:18px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12),0 6px 16px rgba(0,0,0,.14);transition:background .15s}
+.cp-head b{display:block;font-size:17px;font-weight:800}
+.cp-hex{width:100%;margin-top:6px;padding:9px 12px;border:1.5px solid var(--line,#d5dfdb);border-radius:12px;background:var(--surface-2,#f4f7f8);color:inherit;font:600 14px ui-monospace,Menlo,monospace;direction:ltr;text-align:left;text-transform:uppercase}
+.cp-hex:focus{outline:none;border-color:var(--primary,#287c78);box-shadow:0 0 0 3px rgba(40,124,120,.16)}
+.cp-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:11px;justify-items:center;margin-bottom:16px}
+.cp-sw{width:42px;height:42px;border-radius:50%;border:0;padding:0;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.14);display:grid;place-items:center;transition:transform .15s}
+.cp-sw:active{transform:scale(.9)}
+.cp-sw.on{box-shadow:0 0 0 3px var(--surface,#fff),0 0 0 5px var(--primary,#287c78)}
+.cp-sw.on::after{content:"✓";color:#fff;font-weight:900;font-size:16px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.cp-lab{font-size:12px;font-weight:700;color:var(--muted,#6b7b76);margin:4px 2px 7px}
+.cp-range{-webkit-appearance:none;appearance:none;width:100%;height:14px;border-radius:99px;outline:none;margin:0 0 14px;direction:ltr}
+.cp-range::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--primary,#287c78);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.cp-range::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--primary,#287c78)}
+#cpHue{background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+.cp-act{display:flex;gap:10px;margin-top:4px}
+.cp-act button{flex:1;min-height:48px;border-radius:14px;font:inherit;font-size:15px;font-weight:800;cursor:pointer;border:1.5px solid var(--line,#d5dfdb);background:transparent;color:inherit}
+.cp-act .cp-ok{border:0;background:var(--primary,#287c78);color:#fff}
+@keyframes cpFade{from{opacity:0}to{opacity:1}}@keyframes cpUp{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
+</style>
+<script id="elegant-color-js">
+/* منتقي ألوان أنيق يحلّ محل نافذة اللون الافتراضية للمتصفح */
+(function(){
+ var PAL=["#b9802f","#d4a017","#e67e22","#c0392b","#e84393","#8e44ad","#6c5ce7","#3b6fb6","#2980b9","#00a8cc","#16a085","#2f8f6b","#27ae60","#7f8c8d","#34495e","#1f6f6b","#4a4fa3","#a8445c","#101820","#ffffff","#f1c40f","#fd79a8","#55efc4","#a29bfe"];
+ var ov=null,cur=null,pick="#287c78";
+ function ok(h){return /^#[0-9a-fA-F]{6}$/.test(h)}
+ function h2hsl(h){var r=parseInt(h.substr(1,2),16)/255,g=parseInt(h.substr(3,2),16)/255,b=parseInt(h.substr(5,2),16)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,d=mx-mn,hh=0,ss=0;
+  if(d){ss=l>.5?d/(2-mx-mn):d/(mx+mn);hh=mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4;hh*=60}return[Math.round(hh),Math.round(ss*100),Math.round(l*100)]}
+ function hsl2h(h,s,l){s/=100;l/=100;var a=s*Math.min(l,1-l),f=function(n){var k=(n+h/30)%12,c=l-a*Math.max(Math.min(k-3,9-k,1),-1);return Math.round(255*c).toString(16).padStart(2,"0")};return"#"+f(0)+f(8)+f(4)}
+ function $(i){return ov.querySelector(i)}
+ function paint(skip){
+  $(".cp-prev").style.background=pick;
+  if(skip!=="hex")$(".cp-hex").value=pick.toUpperCase();
+  Array.prototype.forEach.call(ov.querySelectorAll(".cp-sw"),function(b){b.classList.toggle("on",b.dataset.c.toLowerCase()===pick.toLowerCase())});
+  if(skip!=="sl"){var x=h2hsl(pick);$("#cpHue").value=x[0];$("#cpLum").value=x[2]}
+  var hh=+$("#cpHue").value;$("#cpLum").style.background="linear-gradient(90deg,#000,"+hsl2h(hh,85,50)+",#fff)";
+ }
+ function close(){if(ov){ov.remove();ov=null}}
+ function open(inp){
+  close();cur=inp;pick=ok(inp.value)?inp.value:"#287c78";
+  ov=document.createElement("div");ov.className="cp-ov";
+  ov.innerHTML='<div class="cp-sheet" role="dialog" aria-label="اختيار اللون"><div class="cp-grip"></div><div class="cp-head"><div class="cp-prev"></div><div style="flex:1;min-width:0"><b>اختيار اللون</b><input class="cp-hex" maxlength="7" spellcheck="false" aria-label="رمز اللون"></div></div><div class="cp-grid">'+PAL.map(function(c){return'<button type="button" class="cp-sw" data-c="'+c+'" style="background:'+c+'" aria-label="'+c+'"></button>'}).join("")+'</div><div class="cp-lab">درجة اللون</div><input type="range" class="cp-range" id="cpHue" min="0" max="360" value="0"><div class="cp-lab">الإضاءة</div><input type="range" class="cp-range" id="cpLum" min="8" max="92" value="50"><div class="cp-act"><button type="button" class="cp-cancel">إلغاء</button><button type="button" class="cp-ok">تعيين</button></div></div>';
+  document.body.appendChild(ov);paint();
+  ov.addEventListener("click",function(e){
+   if(e.target===ov||e.target.closest(".cp-cancel")){close();return}
+   var sw=e.target.closest(".cp-sw");if(sw){pick=sw.dataset.c;paint();return}
+   if(e.target.closest(".cp-ok")){cur.value=pick;cur.dispatchEvent(new Event("input",{bubbles:true}));cur.dispatchEvent(new Event("change",{bubbles:true}));close()}
+  });
+  $(".cp-hex").addEventListener("input",function(e){var v=e.target.value.trim();if(v[0]!=="#")v="#"+v;if(ok(v)){pick=v.toLowerCase();paint("hex")}});
+  function sl(){pick=hsl2h(+$("#cpHue").value,85,+$("#cpLum").value);paint("sl")}
+  $("#cpHue").addEventListener("input",sl);$("#cpLum").addEventListener("input",sl);
+ }
+ document.addEventListener("click",function(e){var i=e.target.closest&&e.target.closest("input[type=color]");if(!i||i.disabled)return;e.preventDefault();e.stopPropagation();open(i)},true);
+ document.addEventListener("keydown",function(e){if(e.key==="Escape")close()});
+})();
+</script>
+<style id="acx-redesign">
+/* ===== تصميم جديد لواجهة إدارة البرنامج الأكاديمي ===== */
+html body #academicAdmin{--acx-a:var(--primary,#287c78);--acx-b:color-mix(in srgb,var(--primary,#287c78) 70%,#0b2b33);border:0;border-radius:26px;background:var(--surface);box-shadow:0 14px 40px rgba(20,50,60,.13),0 0 0 1px var(--line)}
+html body #academicAdmin>summary{padding:16px 18px;background:linear-gradient(135deg,var(--acx-a),var(--acx-b));color:#fff;border:0!important;position:relative;overflow:hidden}
+html body #academicAdmin>summary::before{content:"";position:absolute;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.08);inset-inline-start:-40px;top:-70px;pointer-events:none}
+html body #academicAdmin .acx-ic{width:48px;height:48px;border-radius:16px;background:rgba(255,255,255,.18);color:#fff;backdrop-filter:blur(4px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+html body #academicAdmin .acx-st b{color:#fff;font-size:17px}
+html body #academicAdmin .acx-st small{color:rgba(255,255,255,.8)}
+html body #academicAdmin>summary::after{border-color:#fff}
+html body #academicAdmin .academic-admin-login{margin:16px;padding:18px;border-radius:20px;background:var(--ad-field);border:1.5px dashed var(--line)}
+html body #academicAdmin .academic-admin-login button{background:linear-gradient(135deg,var(--acx-a),var(--acx-b));box-shadow:0 8px 20px color-mix(in srgb,var(--acx-a) 35%,transparent)}
+html body #academicAdmin .academic-editor{gap:16px;padding:16px 14px 18px;background:linear-gradient(180deg,var(--ad-field),var(--surface) 160px)}
+html body #academicAdmin .academic-editor-note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:16px;background:color-mix(in srgb,var(--acx-a) 9%,var(--surface));color:var(--ink);font-size:12.5px;line-height:1.85;border:1px solid color-mix(in srgb,var(--acx-a) 22%,transparent)}
+html body #academicAdmin .academic-editor-note::before{content:"i";flex:none;width:22px;height:22px;border-radius:50%;background:var(--acx-a);color:#fff;display:grid;place-items:center;font:800 13px/1 serif;margin-top:2px}
+/* التبويبات */
+.acx-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:5px;border-radius:18px;background:var(--surface);box-shadow:0 0 0 1px var(--line),0 6px 16px rgba(20,50,60,.06);position:sticky;top:8px;z-index:7}
+.acx-tabs button{min-height:44px;padding:6px 4px;border:0;border-radius:14px;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;line-height:1.3;transition:background .2s,color .2s,box-shadow .2s}
+.acx-tabs button[aria-selected=true]{background:linear-gradient(135deg,var(--acx-a),var(--acx-b));color:#fff;box-shadow:0 6px 14px color-mix(in srgb,var(--acx-a) 38%,transparent)}
+#academicEditor[data-tab=content]>.academic-scope-box,#academicEditor[data-tab=content]>.academic-program-image-editor,#academicEditor[data-tab=content]>#academicScheduleManager,#academicEditor[data-tab=content]>#badgeAdmin,
+#academicEditor[data-tab=media]>.acx-path,#academicEditor[data-tab=media]>.academic-select-grid,#academicEditor[data-tab=media]>.academic-coef-row,#academicEditor[data-tab=media]>.academic-actions,#academicEditor[data-tab=media]>#badgeAdmin,
+#academicEditor[data-tab=people]>.acx-path,#academicEditor[data-tab=people]>.academic-select-grid,#academicEditor[data-tab=people]>.academic-coef-row,#academicEditor[data-tab=people]>.academic-actions,#academicEditor[data-tab=people]>.academic-scope-box,#academicEditor[data-tab=people]>.academic-program-image-editor,#academicEditor[data-tab=people]>#academicScheduleManager{display:none!important}
+/* مسار الاختيار + القوائم المرقّمة */
+html body #academicAdmin .acx-path span{background:var(--surface);box-shadow:0 0 0 1px var(--line);color:var(--ink)}
+html body #academicAdmin .acx-path span:last-child{background:linear-gradient(135deg,var(--acx-a),var(--acx-b));color:#fff;box-shadow:none}
+html body #academicAdmin .academic-select-grid{counter-reset:acx;gap:12px 10px;padding:16px;border:0;border-radius:22px;box-shadow:0 0 0 1px var(--line),0 8px 22px rgba(20,50,60,.06)}
+html body #academicAdmin .academic-select-grid label{counter-increment:acx;position:relative;font-size:12px}
+html body #academicAdmin .academic-select-grid label::before{content:counter(acx);display:inline-grid;place-items:center;width:19px;height:19px;margin-inline-end:6px;border-radius:50%;background:color-mix(in srgb,var(--acx-a) 16%,transparent);color:var(--acx-a);font-size:11px;font-weight:900;vertical-align:middle}
+html body #academicAdmin select,html body #academicAdmin input:not([type=checkbox]):not([type=file]){border-radius:14px;background-color:var(--ad-field);border:1.5px solid transparent;box-shadow:0 0 0 1px var(--line)}
+html body #academicAdmin select:focus-visible,html body #academicAdmin input:focus-visible{box-shadow:0 0 0 2px var(--acx-a),0 0 0 6px var(--ad-ring)}
+html body #academicAdmin .academic-coef-row{border:0;border-radius:22px;box-shadow:0 0 0 1px var(--line);padding:16px}
+html body #academicAdmin .academic-coef-row button{background:var(--acx-a);color:#fff;box-shadow:0 6px 14px color-mix(in srgb,var(--acx-a) 32%,transparent)}
+/* بطاقات المستويات */
+html body #academicAdmin .academic-actions{border:0;background:transparent;gap:10px;overflow:visible}
+html body #academicAdmin .academic-actions::before{content:"التعديل على كل مستوى";background:transparent;border:0;padding:2px 4px;font-size:14px;font-weight:900}
+html body #academicAdmin .academic-actions>div{--c:#6c5ce7;position:relative;padding:12px 14px;border:0;border-radius:18px;background:var(--surface);box-shadow:0 0 0 1px var(--line),0 4px 12px rgba(20,50,60,.05);overflow:hidden}
+html body #academicAdmin .academic-actions>div::before{content:"";position:absolute;inset-block:0;inset-inline-start:0;width:5px;background:var(--c)}
+html body #academicAdmin .academic-actions>div:nth-of-type(1){--c:#6c5ce7}html body #academicAdmin .academic-actions>div:nth-of-type(2){--c:#3b6fb6}html body #academicAdmin .academic-actions>div:nth-of-type(3){--c:#16a085}html body #academicAdmin .academic-actions>div:nth-of-type(4){--c:#e67e22}html body #academicAdmin .academic-actions>div:nth-of-type(5){--c:#e84393}html body #academicAdmin .academic-actions>div:nth-of-type(6){--c:#b9802f}
+html body #academicAdmin .academic-actions>div>b{padding-inline-start:8px;font-size:14px;color:var(--ink)}
+html body #academicAdmin .academic-actions>div>b::before{display:none!important}
+html body #academicAdmin .academic-actions button{min-height:38px;border-radius:99px;padding:6px 14px;border:0;background:color-mix(in srgb,var(--c) 12%,transparent);color:var(--c);font-weight:800}
+html body #academicAdmin .academic-actions button[data-academic-action^=add]{background:var(--c);color:#fff;box-shadow:0 5px 12px color-mix(in srgb,var(--c) 35%,transparent)}
+html body #academicAdmin .academic-actions button[data-academic-action^=edit]::before{content:"✎ "}
+html body #academicAdmin .academic-actions button.danger{background:var(--ad-danger-bg);color:var(--ad-danger)}
+html body #academicAdmin .academic-actions button.danger::before{content:"🗑 ";font-size:11px}
+html body #academicAdmin .academic-actions button:active{transform:scale(.95)}
+/* بقية البطاقات */
+html body #academicAdmin .academic-scope-box,html body #academicAdmin .academic-program-image-editor,html body #academicAdmin #academicScheduleManager,html body #academicAdmin .badge-admin{border:0;border-radius:22px;padding:16px;box-shadow:0 0 0 1px var(--line),0 8px 22px rgba(20,50,60,.06)}
+html body #academicAdmin .academic-mode-switch{border-radius:16px}
+html body #academicAdmin .academic-mode-switch button.on,html body #academicAdmin .academic-mode-switch button[aria-pressed=true]{background:linear-gradient(135deg,var(--acx-a),var(--acx-b));color:#fff}
+html body #academicAdmin .badge-sup-row{border-radius:16px;box-shadow:0 0 0 1px var(--line);border:0}
+html body #academicAdmin .badge-sup-add button{background:linear-gradient(135deg,var(--acx-a),var(--acx-b))}
+/* شريط الحفظ */
+html body #academicAdmin .academic-save-row{border:0;border-radius:99px;padding:8px 8px 8px 16px;box-shadow:0 14px 34px rgba(20,50,60,.22),0 0 0 1px var(--line)}
+html body #academicAdmin .academic-save-row button{border-radius:99px;background:linear-gradient(135deg,var(--acx-a),var(--acx-b));box-shadow:0 8px 18px color-mix(in srgb,var(--acx-a) 38%,transparent)}
+html[data-theme=dark] body #academicAdmin,html[data-theme=dark] #academicAdmin{box-shadow:0 14px 40px rgba(0,0,0,.4),0 0 0 1px var(--line)}
+</style>
+<script id="acx-tabs-js">
+/* تبويبات لوحة البرنامج الأكاديمي: المحتوى · الصور والتوقيت · الشارات والمشرفون */
+(function(){
+ var ed=document.getElementById("academicEditor");if(!ed||document.getElementById("acxTabs"))return;
+ var nav=document.createElement("div");nav.className="acx-tabs";nav.id="acxTabs";nav.setAttribute("role","tablist");
+ var T=[["content","المحتوى الدراسي"],["media","الصور والتوقيت"],["people","الشارات والمشرفون"]];
+ function set(k){ed.setAttribute("data-tab",k);Array.prototype.forEach.call(nav.children,function(b){b.setAttribute("aria-selected",String(b.dataset.t===k))});try{sessionStorage.setItem("acx_tab",k)}catch(e){}}
+ T.forEach(function(t){var b=document.createElement("button");b.type="button";b.setAttribute("role","tab");b.dataset.t=t[0];b.textContent=t[1];b.addEventListener("click",function(){set(t[0])});nav.appendChild(b)});
+ var note=ed.querySelector(".academic-editor-note");
+ if(note&&note.nextSibling)ed.insertBefore(nav,note.nextSibling);else ed.insertBefore(nav,ed.firstChild);
+ var k="content";try{k=sessionStorage.getItem("acx_tab")||"content"}catch(e){}
+ set(T.some(function(t){return t[0]===k})?k:"content");
 })();
 </script>
 </body>
