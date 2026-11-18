@@ -448,6 +448,14 @@ async function uploaderInfo(request, env) {
   const name = await uploaderName(request, env);
   let uid = "", group = "";
   try {
+    const ss0 = await readSession(request, env);
+    if (ss0.ok && ss0.sid === "admin") {
+      const r0 = (await readRole(request, env)) || "teacher";
+      const cfg0 = mergeBadgeCfg(await readBadgeRaw(env));
+      return { role: r0, name: cfg0[r0].name, uid: "r-" + r0 };
+    }
+  } catch {}
+  try {
     const ss = await readSession(request, env);
     if (ss.ok && ss.sid !== "admin") {
       uid = (await mac(env, "u|" + ss.sid)).slice(0, 16); // معرّف مشتق لا يكشف رقم الطالب
@@ -557,6 +565,21 @@ async function handleResourceFile(request,env){
 }
 
 
+async function isSupervisorSession(request, env) {
+  try {
+    const ss = await readSession(request, env);
+    if (!ss.ok || ss.sid === "admin") return false;
+    return (await readSupervisors(env)).some((x) => x.sid === ss.sid);
+  } catch { return false; }
+}
+/* بنية البرنامج بدون الدروس/الوحدات (chapters) ولا وقت التحديث: ما لا يحق للمشرف تغييره */
+function academicSkeleton(config) {
+  const c = JSON.parse(JSON.stringify(config || {}));
+  delete c.updatedAt;
+  for (const y of c.years || []) for (const sm of y.semesters || []) for (const sb of sm.subjects || []) for (const ax of sb.axes || []) ax.chapters = [];
+  return JSON.stringify(c);
+}
+
 function isAcademicAdmin(request, env) {
   const expected = String(env.ADMIN_CODE_MOD || "").trim();
   const supplied = String(request.headers.get("x-academic-admin-code") || "").trim();
@@ -580,10 +603,21 @@ async function handleAcademic(request, env) {
     }
   });
   if (request.method === "PUT") {
-    if (!isAcademicAdmin(request, env)) return json({ error: "unauthorized" }, 401);
+    const owner = isAcademicAdmin(request, env);
+    const supervisor = !owner && await isSupervisorSession(request, env);
+    if (!owner && !supervisor) return json({ error: "unauthorized" }, 401);
     let config;
     try { config = await request.json(); }
     catch { return json({ error: "invalid_json" }, 400); }
+    if (supervisor) {
+      // المشرف يعدّل الدروس/الوحدات والمواضيع فقط؛ أي تغيير في السنوات/السداسيات/المقاييس/المحاور/المعاملات/الأفواج مرفوض
+      try {
+        const cur = await signedB2Request(env, "GET", key);
+        if (!cur.ok) return json({ error: "supervisor_scope" }, 403);
+        const existing = await cur.json();
+        if (academicSkeleton(existing) !== academicSkeleton(config)) return json({ error: "supervisor_scope" }, 403);
+      } catch { return json({ error: "supervisor_scope" }, 403); }
+    }
     if (!config || typeof config !== "object" || !Array.isArray(config.years) || config.years.length > 10) {
       return json({ error: "invalid_academic_config" }, 400);
     }
@@ -840,7 +874,52 @@ async function rxCounts(env) {
     return json({ ok: true, counts });
   });
 }
-async function handleReactions(request, env) {
+/* هوية المتفاعل: الطالب = معرّف جلسته، المالك/الأستاذ = معرّف ثابت بحسب دوره (حتى تُحسب تفاعلاتهم) */
+async function rxIdentity(request, env, ss) {
+  if (ss.sid === "admin") {
+    const role = (await readRole(request, env)) || "teacher";
+    return { me: "a-" + role, uid: "r-" + role, admin: true };
+  }
+  return { me: ss.sid, uid: (await mac(env, "u|" + ss.sid)).slice(0, 16), admin: false };
+}
+/* ===== إشعارات صاحب الملف: nt:<uid> = [{i,r,x,t}] ===== */
+const NT_MAX = 60;
+async function notifyOwnerOfReaction(env, id, reactor) {
+  if (!id.startsWith("res:")) return;
+  const key = id.slice(4), kv = kvOf(env);
+  let meta = null;
+  try { meta = (await approvedIndex(env)).find((x) => x && x.fileKey === key) || null; } catch { return; }
+  if (!meta || !meta.uploaderId || meta.uploaderId === reactor.uid) return;
+  const title = String(meta.title || meta.fileName || "ملف").replace(/[\s_]*\(\s*جزء\s*\d+\s*من\s*\d+\s*\)[\s_]*(?:\.pdf)?\s*$/i, "").slice(0, 120);
+  const nk = "nt:" + meta.uploaderId;
+  let list = (await kv.get(nk, { type: "json" })) || [];
+  if (!Array.isArray(list)) list = [];
+  const nid = (await sha256Hex(reactor.me + "|" + id)).slice(0, 10);
+  if (list.some((x) => x.i === nid)) return; // نفس الشخص لا يكرّر الإشعار
+  list.push({ i: nid, r: id, x: title, t: Date.now() });
+  if (list.length > NT_MAX) list = list.slice(-NT_MAX);
+  await kv.put(nk, JSON.stringify(list), { expirationTtl: 60 * 86400 });
+}
+async function handleNotifications(request, env) {
+  const kv = kvOf(env);
+  if (!kv) return json({ error: "kv_not_configured" }, 503);
+  const ss = await readSession(request, env);
+  if (!ss.ok) return json({ error: "login_required" }, 401);
+  const who = await rxIdentity(request, env, ss), nk = "nt:" + who.uid;
+  try {
+    if (request.method === "GET") {
+      let list = (await kv.get(nk, { type: "json" })) || [];
+      if (!Array.isArray(list)) list = [];
+      return json({ ok: true, list: list.slice().reverse().map((x) => ({ i: x.i, r: x.r, x: x.x, t: x.t })), n: list.length });
+    }
+    if (request.method === "POST") {
+      await kv.delete(nk);
+      return json({ ok: true });
+    }
+    return json({ error: "method_not_allowed" }, 405);
+  } catch { return json({ error: "storage_error" }, 503); }
+}
+async function handleReactions(request, env, ctx) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "react";
   const kv = kvOf(env);
   if (!kv) return json({ error: "kv_not_configured" }, 503);
@@ -850,18 +929,18 @@ async function handleReactions(request, env) {
     try { const d = await (await rxCounts(env)).json(); if (d && d.counts) counts = d.counts; } catch {}
     const out = { ok: true, counts };
     if (u.searchParams.get("mine") !== "0") {
-      if (ss.ok && ss.sid !== "admin") { try { out.mine = await rxMine(kv, ss.sid); } catch {} } else out.mine = [];
+      if (ss.ok) { try { out.mine = await rxMine(kv, (await rxIdentity(request, env, ss)).me); } catch {} } else out.mine = [];
     }
     return json(out);
   }
   if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   if (!ss.ok) return json({ error: "login_required" }, 401);
-  if (ss.sid === "admin") return json({ error: "no_student_session" }, 403);
-  if (rlCount("rx:" + ss.sid, 60000) >= 40) return json({ error: "rate_limited" }, 429);
-  rlAdd("rx:" + ss.sid, 60000);
+  const who = await rxIdentity(request, env, ss);
+  if (rlCount("rx:" + who.me, 60000) >= 40) return json({ error: "rate_limited" }, 429);
+  rlAdd("rx:" + who.me, 60000);
   try {
     let b = {}; try { b = await request.json(); } catch {}
-    const me = ss.sid;
+    const me = who.me;
     if (action === "sync") {
       const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String).filter((x) => RX_ID.test(x)))].slice(0, RX_SYNC_CHUNK);
       if (!ids.length) return json({ error: "invalid_input" }, 400);
@@ -881,6 +960,10 @@ async function handleReactions(request, env) {
     if (mine.length > RX_MINE_MAX) mine.splice(0, mine.length - RX_MINE_MAX);
     if (r.changed || (on !== (at > -1))) await kv.put("ru:" + me, JSON.stringify(mine));
     if (r.changed) await edgeDrop("rx");
+    if (r.changed && on) {
+      const job = notifyOwnerOfReaction(env, id, who).catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+    }
     return json({ ok: true, id, on, n: r.n });
   } catch (e) {
     return json({ error: "storage_error" }, 503);
@@ -986,7 +1069,7 @@ async function handleComments(request, env) {
   } catch (e) { return json({ error: "storage_error" }, 503); }
 }
 
-async function handleApi(request, env) {
+async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   const key = url.searchParams.get("key") || "";
   if (url.pathname === "/api/lessons" && request.method === "POST") {
@@ -1002,7 +1085,8 @@ async function handleApi(request, env) {
   }
 
   if (url.pathname === "/api/badges") return handleBadges(request, env);
-  if (url.pathname === "/api/reactions") return handleReactions(request, env);
+  if (url.pathname === "/api/reactions") return handleReactions(request, env, ctx);
+  if (url.pathname === "/api/notifications") return handleNotifications(request, env);
   if (url.pathname === "/api/polls") return handlePolls(request, env);
   if (url.pathname === "/api/comments") return handleComments(request, env);
 
@@ -1693,6 +1777,7 @@ async function handleAuth(request, env, url, ctx) {
           out.devices = rec && Array.isArray(rec.d) ? rec.d.length : 1;
           out.since = (rec && rec.ts) || 0;
           out.maxDevices = MAX_DEVICES;
+          out.supervisor = (await readSupervisors(env)).some((x) => x.sid === ss.sid);
         } catch {}
       }
     }
@@ -2071,8 +2156,8 @@ export default {
     if (gate) return gate;
     if (url.pathname === "/api/publish") return handlePublish(request, env);
     if (url.pathname === "/api/history") return handleHistory(request, env);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
-      const response = await handleApi(request, env);
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/notifications" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
+      const response = await handleApi(request, env, ctx);
       if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
       return response;
     }
