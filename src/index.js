@@ -2108,18 +2108,20 @@ function b64ToBytes(b64) {
   return out;
 }
 async function moderatePhoto(env, bytes) {
-  if (!env.AI || typeof env.AI.run !== "function") return "unavailable";
+  if (!env.AI || typeof env.AI.run !== "function") return { v: "unavailable" };
   try {
     const r = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
       image: Array.from(bytes),
-      prompt: "You are a strict content moderator for a school platform. Does this image contain nudity, sexual or suggestive content, pornography, gore, graphic violence, or hate symbols? Reply with exactly one word: UNSAFE if it does, otherwise SAFE.",
-      max_tokens: 8,
+      prompt: "Does this image contain nudity, sexual or suggestive content, pornography, gore, graphic violence, or hate symbols? Answer with only YES or NO.",
+      max_tokens: 16,
     });
-    const t = String((r && (r.description || r.response)) || "").trim().toUpperCase();
-    if (t.includes("UNSAFE")) return "unsafe";
-    if (t.startsWith("SAFE")) return "safe";
-    return "unsafe"; // رد غير مفهوم: لا تُقبل الصورة
-  } catch { return "unavailable"; }
+    const raw = String((r && (r.description || r.response)) || "").trim();
+    const t = raw.toUpperCase().replace(/^[^A-Z]+/, "");
+    let v = "unclear";
+    if (/^(NO\b|SAFE\b)/.test(t) || /(DOES NOT|DOESN'T|NOT) (CONTAIN|APPEAR|SHOW|DEPICT)/.test(t)) v = "safe";
+    else if (/^(YES\b|UNSAFE\b)/.test(t)) v = "unsafe";
+    return { v, raw: raw.slice(0, 60) };
+  } catch (e) { return { v: "unavailable", raw: String(e && e.message || e).slice(0, 80) }; }
 }
 async function authPhoto(request, env) {
   const ss = await readSession(request, env);
@@ -2148,9 +2150,10 @@ async function authPhoto(request, env) {
   let bytes;
   try { bytes = b64ToBytes(m[1]); } catch { return jsonC({ error: "invalid_image" }, 400); }
   if (bytes.length > PHOTO_MAX || bytes.length < 200 || bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF) return jsonC({ error: "invalid_image" }, 400);
-  const verdict = await moderatePhoto(env, bytes);
-  if (verdict === "unavailable") return jsonC({ error: "moderation_unavailable" }, 503);
-  if (verdict !== "safe") return jsonC({ error: "image_rejected" }, 422);
+  const mod = await moderatePhoto(env, bytes);
+  if (mod.v === "unavailable") return jsonC({ error: "moderation_unavailable", detail: mod.raw || "" }, 503);
+  if (mod.v === "unclear") return jsonC({ error: "image_unclear", detail: mod.raw || "" }, 422);
+  if (mod.v !== "safe") return jsonC({ error: "image_rejected" }, 422);
   try { await kv.put(key, "data:image/jpeg;base64," + m[1]); await setFlag(true); } catch { return jsonC({ error: "kv_error" }, 502); }
   return jsonC({ ok: true });
 }
