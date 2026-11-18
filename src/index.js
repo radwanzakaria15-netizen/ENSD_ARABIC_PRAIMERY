@@ -1968,10 +1968,13 @@ async function authAdmin(request, env, url) {
       const stf = new Map((await listAll(kv, "staff:")).map((k) => [k.name.slice(6), Number(k.metadata && k.metadata.t) || 0]));
       const bcfg = mergeBadgeCfg(await readBadgeRaw(env));
       const mk = (ls) => ({ ls, on: !!ls && nowMs - ls < 600000 });
+      const tmeta = new Map((await listAll(kv, "tprof:")).map((k) => [k.name.slice(6), k.metadata || {}]));
       const teachers = [["A", env.ADMIN_CODE_A], ["B", env.ADMIN_CODE_B]]
         .filter(([g, c]) => String(c || "").trim())
-        .map(([g]) => ({ group: g, name: bcfg.teacher.name || bcfg.teacher.label, ...mk(stf.get("teacher-" + g) || 0) }));
-      const supsL = (await readSupervisors(env)).map((x) => ({ name: x.name, ...mk(seen.get(x.sid) || 0) }));
+        .map(([g]) => { const tm = tmeta.get("teacher-" + g) || {}; return { group: g, subject: tm.s || "", pg: tm.g || "", name: bcfg.teacher.name || bcfg.teacher.label, ...mk(stf.get("teacher-" + g) || 0) }; });
+      const profs = new Map((await listAll(kv, "prof:")).map((k) => [k.name.slice(5), (k.metadata && k.metadata.g) || ""]));
+      users.forEach((u) => { u.pg = profs.get(u.sid) || ""; });
+      const supsL = (await readSupervisors(env)).map((x) => ({ name: x.name, pg: profs.get(x.sid) || "", ...mk(seen.get(x.sid) || 0) }));
       const staff = {
         teachers, teacherCount: teachers.length, teacherActive: teachers.filter((t) => t.on).length,
         owner: { name: bcfg.owner.name || bcfg.owner.label, ...mk(stf.get("owner") || 0) },
@@ -2040,23 +2043,32 @@ async function authProfile(request, env) {
     let saved;
     try { saved = await readBadgeRaw(env); } catch { return jsonC({ error: "kv_error" }, 502); }
     const cur = { ...(saved[role] || {}) };
+    // المقياس والمجموعة: للأستاذ فقط، وتُحفظ في بياناته هو (لا في إعدادات الشارة المشتركة)
+    let tp = null, tkey = "";
+    if (role === "teacher") {
+      const tid = await staffIdentity(request, env, ss);
+      if (tid) { tkey = "tprof:" + tid.key; tp = (await kv.get(tkey, { type: "json" })) || {}; }
+    }
     if (body.name !== undefined) {
       const n = String(body.name || "").normalize("NFKC").replace(/\s+/g, " ").trim();
       if (!/^[\p{L}\p{M}' .\-]{2,60}$/u.test(n)) return jsonC({ error: "invalid_name" }, 400);
       cur.name = badgeText(n, 60);
     }
-    if (body.subject !== undefined) {
+    if (body.subject !== undefined && tp) {
       const sj = String(body.subject || "").normalize("NFKC").replace(/\s+/g, " ").trim();
       if (sj.length > 80) return jsonC({ error: "invalid_subject" }, 400);
-      cur.subject = sj;
+      tp.subject = sj;
     }
-    if (body.group !== undefined) {
+    if (body.group !== undefined && tp) {
       if (body.group !== "A" && body.group !== "B" && body.group !== "") return jsonC({ error: "invalid_group" }, 400);
-      cur.group = body.group;
+      tp.group = body.group;
     }
     saved[role] = cur;
-    try { await kv.put("badges:cfg", JSON.stringify(saved)); } catch { return jsonC({ error: "kv_error" }, 502); }
-    return jsonC({ ok: true, name: cur.name || "", subject: cur.subject || "", group: cur.group || "" });
+    try {
+      await kv.put("badges:cfg", JSON.stringify(saved));
+      if (tp) await kv.put(tkey, JSON.stringify(tp), { metadata: { s: tp.subject || "", g: tp.group || "" } });
+    } catch { return jsonC({ error: "kv_error" }, 502); }
+    return jsonC({ ok: true, name: cur.name || "", subject: (tp && tp.subject) || "", group: (tp && tp.group) || "" });
   }
   const next = { ...((await kv.get("prof:" + ss.sid, { type: "json" })) || {}) };
   if (body.name !== undefined) {
@@ -2068,7 +2080,7 @@ async function authProfile(request, env) {
     if (body.group !== "A" && body.group !== "B" && body.group !== "") return jsonC({ error: "invalid_group" }, 400);
     next.g = body.group;
   }
-  try { await kv.put("prof:" + ss.sid, JSON.stringify(next)); }
+  try { await kv.put("prof:" + ss.sid, JSON.stringify(next), { metadata: { g: next.g || "", n: next.n || "" } }); }
   catch { return jsonC({ error: "kv_error" }, 502); }
   if (body.name !== undefined && next.n) {
     // إن كان مشرفاً فاسمه الظاهر على تعليقاته وموارده يتبع اسمه الجديد
@@ -2090,7 +2102,14 @@ async function handleAuth(request, env, url, ctx) {
     if (out.admin) {
       out.role = (await readRole(request, env)) || "teacher";
       try { const c0 = mergeBadgeCfg(await readBadgeRaw(env))[out.role]; out.name = c0.name || c0.label; out.label = c0.label; } catch {}
-      try { const r0 = (await readBadgeRaw(env))[out.role] || {}; out.subject = String(r0.subject || ""); out.group = r0.group === "A" || r0.group === "B" ? r0.group : ""; } catch {}
+      try {
+        out.subject = ""; out.group = "";
+        if (out.role === "teacher") {
+          const tid = await staffIdentity(request, env, ss);
+          const tp = tid ? ((await kvOf(env).get("tprof:" + tid.key, { type: "json" })) || {}) : {};
+          out.subject = String(tp.subject || ""); out.group = tp.group === "A" || tp.group === "B" ? tp.group : "";
+        }
+      } catch {}
       if (out.role === "owner") out.perms = SUP_PERMS.slice();
     }
     if (ss.ok) {
@@ -2454,7 +2473,7 @@ function renderUsers(){
   var b=el('div',null,'body'),nm=el('div',null,'name');
   nm.appendChild(el('span',u.n||''));
   if(u.banned)nm.appendChild(el('span','محظور','tag bad'));
-  if(u.g)nm.appendChild(el('span','فوج '+u.g,'tag'));
+  if(u.pg||u.g)nm.appendChild(el('span','المجموعة '+(u.pg||u.g),'tag'));
   b.appendChild(nm);
   var m=el('div',null,'meta');m.appendChild(el('span',ago(u.ls),'seen'+(on?' on':'')));
   m.appendChild(document.createTextNode(' · أجهزة: '+(u.c||1)+' · انضم '+when(u.ts)));b.appendChild(m);
@@ -2484,12 +2503,12 @@ function renderStaff(){
  $('stCount').textContent=(sf.teacherCount||0)+' أستاذ · نشط: '+(sf.teacherActive||0);
  var h1=el('h3','الأساتذة ('+(sf.teacherCount||0)+') · نشطون: '+(sf.teacherActive||0));h1.style.cssText='margin:6px 0 10px;font-size:14px';S.appendChild(h1);
  if(!T.length)S.appendChild(el('div','لم يُضبط أي رمز أستاذ.','empty'));
- T.forEach(function(t){S.appendChild(staffItem((t.name||'الأستاذ')+' · فوج '+t.group,t.on?'نشط':'غير نشط',t.on?'ok':'',t.ls,t.on,i++))});
+ T.forEach(function(t){S.appendChild(staffItem((t.name||'الأستاذ')+(t.subject?' · أستاذ '+t.subject:'')+' · المجموعة '+(t.pg||t.group),t.on?'نشط':'غير نشط',t.on?'ok':'',t.ls,t.on,i++))});
  if(sf.owner){var h0=el('h3','المالك');h0.style.cssText='margin:14px 0 10px;font-size:14px';S.appendChild(h0);
   S.appendChild(staffItem(sf.owner.name||'المالك',sf.owner.on?'نشط':'غير نشط',sf.owner.on?'ok':'',sf.owner.ls,sf.owner.on,i++))}
  var h2=el('h3','المشرفون ('+(sf.supCount||0)+') · نشطون: '+(sf.supActive||0));h2.style.cssText='margin:14px 0 10px;font-size:14px';S.appendChild(h2);
  if(!P.length)S.appendChild(el('div','لا يوجد مشرفون معيَّنون.','empty'));
- P.forEach(function(x){S.appendChild(staffItem(x.name||'',x.on?'نشط':'غير نشط',x.on?'ok':'',x.ls,x.on,i++))});
+ P.forEach(function(x){S.appendChild(staffItem((x.name||'')+(x.pg?' · المجموعة '+x.pg:''),x.on?'نشط':'غير نشط',x.on?'ok':'',x.ls,x.on,i++))});
 }
 function render(){renderStats();renderPending();renderUsers();renderStaff()}
 function setTab(t){
