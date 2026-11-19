@@ -28,6 +28,11 @@
  };
 })();
 </script>
+<script id="ensd-version-config">
+/* رابط ملف الإصدار على الموقع الثابت المجاني (Cloudflare Pages)، مثال: "https://اسم-مشروعك.pages.dev/data/version.json"
+   اتركه فارغاً "" فتعمل المنصة بالطريقة القديمة (استطلاع كامل كل 30 ثانية). */
+window.ENSD_VERSION_URL="";
+</script>
 <script id="lite-motion-detect-20261114">
 /* Auto-disable the decorative entrance/hover animations on weak devices.
    Weak = <=2GB RAM, <=4 CPU cores, or Data Saver on.  Override with ?motion=lite or ?motion=full */
@@ -1748,6 +1753,7 @@ function lessonMergeUploaded(list){
  (list||[]).forEach(e=>{if(!e||!e.key)return;const arr=PUBLISHED_LESSONS[e.lessonKey]||(PUBLISHED_LESSONS[e.lessonKey]=[]);if(!arr.some(x=>x.key===e.key))arr.push(e);});
 }
 function openLessonSubjectDialog(card){
+ try{if(window.__rxRefresh)window.__rxRefresh()}catch(e){}
  const title=card.querySelector(".lesson-card-title")?.textContent?.trim()||card.dataset.search||"المقياس";
  if(lessonSubjectDialog){
   const old=lessonSubjectDialog;window.clearTimeout(lessonDialogCloseTimer);old.remove();lessonSubjectDialog=null;
@@ -1972,7 +1978,8 @@ function resourceMarkNotificationsSeen(){RESOURCE_SEEN_IDS=new Set(RESOURCE_KNOW
 function resourceTrackApprovedResources(items){const ids=items.map(item=>String(item.id)).filter(Boolean);if(!RESOURCE_TRACKING_READY){if(!RESOURCE_KNOWN_IDS.size){RESOURCE_KNOWN_IDS=new Set(ids);RESOURCE_SEEN_IDS=new Set(ids);}else ids.forEach(id=>RESOURCE_KNOWN_IDS.add(id));RESOURCE_TRACKING_READY=true;}else ids.forEach(id=>RESOURCE_KNOWN_IDS.add(id));resourceSaveNotificationState();resourcePaintNotification();}
 function resourceCheckForNewApproved(){fetch("/api/resources",{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error("resources unavailable");return r.json();}).then(items=>{if(Array.isArray(items))resourceTrackApprovedResources(items);}).catch(()=>{});}
 let _resSlow=0;
-setInterval(()=>{if(document.hidden)return;let fast=false;try{fast=resourceMyPending().some(m=>Date.now()-m.ts<7200000)}catch(e){}_resSlow+=30;if(fast||_resSlow>=60){_resSlow=0;resourceCheckForNewApproved()}},30000);
+setInterval(()=>{if(document.hidden)return;let fast=false;try{fast=resourceMyPending().some(m=>Date.now()-m.ts<7200000)}catch(e){}_resSlow+=30;if(fast||(!window.ENSD_VERSION_URL&&_resSlow>=60)){_resSlow=0;resourceCheckForNewApproved()}},30000);
+window.addEventListener("ensd-version-changed",()=>{try{resourceCheckForNewApproved()}catch(e){}});
 /* ===== تجميع أجزاء الملف الكبير في بطاقة واحدة (ملف واحد داخله الأجزاء) ===== */
 const RES_PART_RE=/^(.*?)[\s_]*\(\s*جزء\s*(\d+)\s*من\s*(\d+)\s*\)[\s_]*(?:\.pdf)?\s*$/i;
 function resourcePartInfo(item){
@@ -2349,7 +2356,7 @@ document.getElementById("resourceUploadForm").addEventListener("submit",async ev
   const pw=async()=>{while(pq.length){const m=pq.shift();if(m.published)continue;const ok=await resourceAutoPublish(m);if(!ok){resourceRememberPending(m);published=false;}}};
   await Promise.all(Array.from({length:Math.min(4,Math.max(1,pq.length))},()=>pw()));
   /* عدة أجزاء نُشرت مباشرة بالتوازي: نُعيد بناء فهرس المنشور مرة واحدة حتى لا يضيع جزء بسبب كتابة متزامنة */
-  if(okMetas.length>1&&okMetas.some(m=>m.published)){try{await fetch("/api/resource?action=reindex",{method:"POST",headers:resourceUploadHeaders("application/json"),cache:"no-store"})}catch(e){}}
+  if(okMetas.length>1&&okMetas.some(m=>m.published)){try{for(let k=0;k<20;k++){const rr=await fetch("/api/resource?action=reindex",{method:"POST",headers:resourceUploadHeaders("application/json"),cache:"no-store"});const rj=await rr.json().catch(()=>({}));if(!rr.ok||!(rj.remaining>0))break}}catch(e){}}
   resourceCloseModal(document.getElementById("resourceUploadModal"));
   loadResources();
   if(resourceAdminCodeNow())loadPendingResources();
@@ -4371,6 +4378,7 @@ function outsideNotify(e){if(!e.target.closest("#notifyPop,#noticeBtn"))closeNot
 window.__ensdNotif={ann:()=>ANN,annSeen:()=>annSeen,store,fmtDate,esc,goPage,toast,counts,closeNotify};
 $("#noticeBtn")?.addEventListener("click",()=>{
  if(window.__bellLongPressed){window.__bellLongPressed=false;return}
+ try{rxLoad()}catch(e){}
  if($("#notifyPop")){closeNotify();return}
  const c=counts();
  if(!(c.ann+c.les+c.res+c.rx)){toast("لا توجد إشعارات جديدة حالياً.");return}
@@ -4385,10 +4393,7 @@ setInterval(paintBell,5000);
 
 /* ---------- إشعارات تفاعل الآخرين مع ملفاتي ---------- */
 window.__rxNotifs=[];
-async function loadRxNotifs(){
- try{const r=await fetch("/api/notifications",{cache:"no-store"});if(!r.ok)return;const j=await r.json();
-  window.__rxNotifs=Array.isArray(j.list)?j.list:[];paintBell()}catch(e){}
-}
+function loadRxNotifs(){return rxLoad()}
 function rxAgo(t){const d=Math.max(0,Date.now()-t),m=Math.floor(d/60000);if(m<1)return"الآن";if(m<60)return"منذ "+m+" د";const h=Math.floor(m/60);if(h<24)return"منذ "+h+" س";return"منذ "+Math.floor(h/24)+" يوم"}
 function showRxNotifs(){
  const list=window.__rxNotifs||[];if(!list.length)return;
@@ -4402,9 +4407,6 @@ function showRxNotifs(){
  box.querySelector("button").addEventListener("click",done);
  ov.addEventListener("click",e=>{if(e.target===ov)ov.remove()});
 }
-loadRxNotifs();
-setInterval(()=>{if(!document.hidden)loadRxNotifs()},60000);
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadRxNotifs()});
 
 /* ---------- global search ---------- */
 const gs=$("#gs"),gsInput=$("#gsInput"),gsRes=$("#gsResults");
@@ -4498,14 +4500,19 @@ async function rxPush(id){
   if(r.status===401){RX.dead=true;delete RX.hold[id];rxBump(id,on?-1:1);delete RX.hold[id];rxPaint();return}
   if(!r.ok)throw new Error("rx "+r.status);
   const j=await r.json();
-  if(j&&typeof j.n==="number"&&RX.want[id]===on){RX.counts[id]=j.n;RX.hold[id]={n:j.n,dir:on?1:-1,until:Date.now()+20000};rxPaint(id)}
- }catch(e){delete RX.hold[id];setTimeout(()=>rxLoad(),800)}
+  if(j&&typeof j.n==="number"&&RX.want[id]===on){RX.counts[id]=j.n;RX.hold[id]={n:j.n,dir:on?1:-1,until:Date.now()+90000};rxPaint(id)}
+ }catch(e){delete RX.hold[id];setTimeout(()=>rxLoad(true),800)}
 }
-async function rxLoad(){
- if(RX.busy||RX.dead)return;RX.busy=true;
+let rxLast=0;
+/* طلب واحد يجلب القلوب + تفاعلاتي + إشعاراتي (/api/sync). حدّ أدنى 30 ثانية بين طلبين إلا عند force */
+async function rxLoad(force){
+ if(RX.busy||RX.dead)return;
+ if(!force&&Date.now()-rxLast<120000)return;
+ RX.busy=true;rxLast=Date.now();
  try{
-  const r=await fetch("/api/reactions"+(RX.haveMine?"?mine=0":""),{cache:"no-store"});
+  const r=await fetch("/api/sync"+(RX.haveMine?"?mine=0":""),{cache:"no-store"});
   if(!r.ok)return;const j=await r.json();if(!j||typeof j.counts!=="object"||!j.counts)return;
+  if(Array.isArray(j.list)){window.__rxNotifs=j.list;paintBell()}
   const now=Date.now(),next={};
   for(const id in j.counts)next[id]=j.counts[id];
   for(const id in RX.hold){const h=RX.hold[id];if(h.until>now){const sv=next[id]||0;next[id]=h.dir>0?Math.max(sv,h.n):Math.min(sv,h.n)}else delete RX.hold[id]}
@@ -4636,13 +4643,15 @@ function ensureFavFilter(){
 let raf=0;
 new MutationObserver(()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;decorate();ensureFavFilter()})}).observe(document.body,{childList:true,subtree:true});
 decorate();ensureFavFilter();paintFavs();
-rxLoad();
-setInterval(()=>{if(!document.hidden)rxLoad()},60000);
+rxLoad(true);
+setInterval(()=>{if(!document.hidden)rxLoad()},300000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)rxLoad()});
+window.__rxRefresh=()=>rxLoad();
 
 /* ---------- page events + hash routing ---------- */
 document.addEventListener("ensd:page",e=>{
  const p=e.detail;closeNotify();
+ if(p==="resources"||p==="lessons"||p==="announcements")rxLoad();
  if(p==="announcements")markAnnouncementsSeen();
  if(p==="lessons")markLessonsSeen();
  paintBell();
@@ -4671,7 +4680,29 @@ window.addEventListener("online",()=>{toast("عاد الاتصال بالإنت�
 
 /* ---------- boot ---------- */
 loadAnnouncements();pollLessons();
-let _lastPoll=Date.now();const _poll=()=>{_lastPoll=Date.now();pollLessons();loadAnnouncements(true)};
+let _lastPoll=Date.now(),_verSeen=null,_verBusy=false,_verFail=0;
+/* فحص خفيف: يقرأ رقم الإصدار من الموقع الثابت (لا يحسب على الـ Worker)، ولا يجلب القوائم الكاملة إلا إذا تغيّر الرقم */
+const _poll=async()=>{
+ _lastPoll=Date.now();
+ const vu=window.ENSD_VERSION_URL;
+ if(!vu){pollLessons();loadAnnouncements(true);return}
+ if(_verBusy)return;_verBusy=true;
+ try{
+  const r=await fetch(vu,{cache:"no-store"});if(!r.ok)throw new Error("ver");
+  const j=await r.json(),v=String(j&&j.v||"");if(!v)throw new Error("ver");
+  _verFail=0;
+  let prev=_verSeen;if(prev===null){try{prev=localStorage.getItem("ensd_ver_seen")||""}catch(e){prev=""}}
+  if(v!==prev){
+   try{localStorage.setItem("ensd_fresh_until",String(Date.now()+60000))}catch(e){}
+   await Promise.all([pollLessons(),loadAnnouncements(true)]);
+   try{window.dispatchEvent(new Event("ensd-version-changed"))}catch(e){}
+   try{localStorage.setItem("ensd_ver_seen",v)}catch(e){}
+  }
+  _verSeen=v;
+ }catch(e){
+  _verFail++;if(_verFail%10===1){pollLessons();loadAnnouncements(true)}
+ }finally{_verBusy=false}
+};
 setInterval(()=>{if(!document.hidden)_poll()},30000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&Date.now()-_lastPoll>20000)_poll()});
 })();
