@@ -11,6 +11,13 @@
   "kv_namespaces": [
     { "binding": "HISTORY_KV" }
   ],
+  "d1_databases": [
+  {
+    "binding": "DB",
+    "database_name": "ensd-arabic-db",
+    "database_id": "65477e7f-d415-4cda-afc3-5ba224d7393f"
+  }
+  ],
   "ai": {
     "binding": "AI"
   }
