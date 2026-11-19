@@ -237,11 +237,11 @@ async function edgeJson(key, ttl, produce) {
   try { const old = await cache.match(stale); if (old) return out(old, "stale"); } catch {}
   return res || json({ error: "storage_error" }, 502);
 }
-async function edgeFile(request, ttl, produce) {
+async function edgeFile(request, ttl, produce, cc) {
   const fail = () => json({ error: "storage_error" }, 502);
   if (!hasEdge() || request.method !== "GET") { try { return await produce(); } catch { return fail(); } }
   const cache = caches.default, ck = new Request(request.url), sk = new Request(EDGE + "stale-file:" + request.url);
-  const client = (res, tag, age) => { const h = new Headers(res.headers); h.set("cache-control", "private, max-age=" + age); h.set("x-edge", tag); return new Response(res.body, { status: 200, headers: h }); };
+  const client = (res, tag, age) => { const h = new Headers(res.headers); h.set("cache-control", cc && tag !== "stale" ? cc : "private, max-age=" + age); h.set("x-edge", tag); return new Response(res.body, { status: 200, headers: h }); };
   try { const hit = await cache.match(ck); if (hit) return client(hit, "hit", 600); } catch {}
   let res = null;
   try { res = await produce(); } catch { res = null; }
@@ -260,15 +260,37 @@ async function edgeFile(request, ttl, produce) {
   try { const old = await cache.match(sk); if (old) return client(old, "stale", 60); } catch {}
   return res || fail();
 }
-const APPROVED_INDEX_KEY = "resources/index-approved.json";
-async function rebuildApprovedIndex(env) {
-  const objects = (await listObjectsByPrefix(env, "resources/approved/")).filter((o) => o.key.endsWith(".json")), items = [];
-  const metas = await mapLimit(objects, 10, (o) => readResourceMeta(env, o.key).catch(() => null));
-  for (const m of metas) { if (m?.id && m.fileKey) items.push({ ...publicResource(m), status: "approved" }); }
-  items.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-  try { await signedB2Request(env, "PUT", APPROVED_INDEX_KEY, encoder.encode(JSON.stringify(items)), {}, "application/json"); } catch {}
-  return items;
+/* تخزين الملفات في متصفح الطالب: مفاتيح الدروس الجديدة فيها طابع زمني (13 رقماً) فهي لا تتغير → 30 يوماً.
+   الموارد قد تُستبدل بالاسم نفسه (owner_replace) فنكتفي بيوم واحد. المفاتيح القديمة بلا طابع → 10 دقائق. */
+function fileCacheControl(key) {
+  if (String(key).startsWith("resources/")) return "private, max-age=86400";
+  const info = fileInfo(key);
+  return info && info.ts ? "private, max-age=2592000, immutable" : "private, max-age=600";
 }
+const APPROVED_INDEX_KEY = "resources/index-approved.json";
+/* مصالحة فهرس الموارد: تقارن قائمة الملفات في B2 بالفهرس وتقرأ الناقص فقط (حتى 38 مورداً في المرة)
+   حتى لا تتجاوز حدّ 50 طلباً فرعياً في الخطة المجانية. remaining > 0 يعني: استدعِها مرة أخرى. */
+const RECONCILE_MAX = 38;
+async function reconcileApprovedIndex(env) {
+  const prefix = "resources/approved/";
+  const objects = (await listObjectsByPrefix(env, prefix)).filter((o) => o.key.endsWith(".json"));
+  const onDisk = new Map(objects.map((o) => [o.key.slice(prefix.length, -5), o.key]));
+  let items = [];
+  try {
+    const r = await signedB2Request(env, "GET", APPROVED_INDEX_KEY);
+    if (r.ok) { const a = await r.json(); if (Array.isArray(a)) items = a; }
+  } catch {}
+  const have = new Set(items.map((x) => x && x.id));
+  items = items.filter((x) => x && onDisk.has(x.id)); // نسقط ما حُذف ملفه
+  const missing = [...onDisk.keys()].filter((id) => !have.has(id));
+  const batch = missing.slice(0, RECONCILE_MAX);
+  const metas = await mapLimit(batch, 10, (id) => readResourceMeta(env, onDisk.get(id)).catch(() => null));
+  for (const m of metas) { if (m && m.id && m.fileKey) items.push({ ...publicResource(m), status: "approved" }); }
+  items.sort((x, y) => String(y.createdAt || "").localeCompare(String(x.createdAt || "")));
+  await signedB2Request(env, "PUT", APPROVED_INDEX_KEY, encoder.encode(JSON.stringify(items)), {}, "application/json");
+  return { items, remaining: missing.length - batch.length };
+}
+async function rebuildApprovedIndex(env) { return (await reconcileApprovedIndex(env)).items; }
 async function approvedIndex(env) {
   const r = await signedB2Request(env, "GET", APPROVED_INDEX_KEY);
   if (r.ok) { try { const a = await r.json(); if (Array.isArray(a)) return a; } catch {} }
@@ -593,7 +615,7 @@ async function handleResourceFile(request,env,ctx){
   const rk="reidx:"+(who.uid||who.role);
   if(rlCount(rk,600000)>=6)return json({error:"rate_limited"},429);
   rlAdd(rk,600000);
-  try{await edgeDrop("res-approved");await rebuildApprovedIndex(env);schedulePublish(ctx,env);return json({ok:true})}
+  try{await edgeDrop("res-approved");const rc=await reconcileApprovedIndex(env);schedulePublish(ctx,env);return json({ok:true,remaining:rc.remaining})}
   catch(e){return json({error:"storage_error"},502)}
  }
  if(request.method==="POST"){
@@ -623,9 +645,9 @@ async function handleResourceFile(request,env,ctx){
   const serve=async()=>{
   const r=await signedB2Request(env,"GET",key);if(r.status===404)return json({error:"not_found"},404);if(!r.ok)return json({error:"storage_error"},502);
   const name=safeFileName(key.split("__").slice(1).join("__")||"resource.pdf"),type=contentTypeForName(name);
-  return new Response(r.body,{headers:{"content-type":type,"content-disposition":((type==="application/pdf"||type.startsWith("image/"))&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\x20-\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":"private, max-age=0, must-revalidate","x-content-type-options":"nosniff"}});
+  return new Response(r.body,{headers:{"content-type":type,"content-disposition":((type==="application/pdf"||type.startsWith("image/"))&&u.searchParams.get("download")!=="1"?"inline":"attachment")+'; filename="'+name.replace(/[^\x20-\x7E]/g,"_").replace(/["\\\\]/g,"_")+'"; filename*=UTF-8\'\''+encodeRFC3986(name),"cache-control":fileCacheControl(key),"x-content-type-options":"nosniff"}});
   };
-  return approved?edgeFile(request,21600,serve):serve();
+  return approved?edgeFile(request,21600,serve,fileCacheControl(key)):serve();
  }
  return json({error:"method_not_allowed"},405);
 }
@@ -940,46 +962,75 @@ async function handleAnnouncements(request, env) {
   }
 }
 
+/* ===== D1 (قاعدة Cloudflare المجانية): التفاعلات والإشعارات وآخر ظهور =====
+   لماذا D1؟ حدّ KV المجاني 1,000 كتابة يومياً فقط، أما D1 فيسمح بـ 100 ألف كتابة و5 ملايين قراءة يومياً.
+   الجداول تُنشأ تلقائياً عند أول استعمال (CREATE TABLE IF NOT EXISTS) ولا تحتاج أي أمر يدوي.
+   rx(id,me,t)  : من تفاعل (me) مع أي عنصر (id)         rxc(id,n) : عدّاد جاهز لكل عنصر (يُقرأ بدل العدّ كل مرة)
+   nt(uid,...)  : إشعارات صاحب الملف                      seen(sid,t): آخر ظهور للطالب (لعدّاد النشطين) */
+let dbReady = null;
+async function dbInit(env) {
+  const db = env && env.DB && typeof env.DB.prepare === "function" ? env.DB : null;
+  if (!db) throw new Error("d1_not_configured");
+  if (!dbReady) {
+    dbReady = db.batch([
+      db.prepare("CREATE TABLE IF NOT EXISTS rx (id TEXT NOT NULL, me TEXT NOT NULL, t INTEGER NOT NULL, PRIMARY KEY (id, me))"),
+      db.prepare("CREATE INDEX IF NOT EXISTS rx_me ON rx (me, t)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS rxc (id TEXT PRIMARY KEY, n INTEGER NOT NULL)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS nt (uid TEXT NOT NULL, i TEXT NOT NULL, r TEXT, x TEXT, t INTEGER NOT NULL, n TEXT, o TEXT, u TEXT, PRIMARY KEY (uid, i))"),
+      db.prepare("CREATE TABLE IF NOT EXISTS seen (sid TEXT PRIMARY KEY, t INTEGER NOT NULL)")
+    ]).then(() => db, (e) => { dbReady = null; throw e; });
+  }
+  return dbReady;
+}
+const dbErr = (e) => (e && e.message === "d1_not_configured" ? json({ error: "d1_not_configured" }, 503) : json({ error: "storage_error" }, 503));
+
 /* ===== التفاعلات (قلب مشترك على الملفات والموارد والإعلانات) =====
-   rx:<hash> : مصفوفة معرّفات الطلبة المتفاعلين مع العنصر، وعدّها في metadata ليُقرأ الكل بعملية list واحدة
-   ru:<sid>  : معرّفات العناصر التي تفاعل معها الطالب (لتظهر حالته على كل أجهزته)
    المعرّف: res:<مفتاح المورد> | lesson:<مفتاح ملف الدرس> | ann:<معرّف الإعلان> */
 const RX_ID = /^(?:res|lesson|ann):[^\u0000-\u001f\u007f]{1,260}$/u;
-const RX_MINE_MAX = 400, RX_ITEM_MAX = 3000, RX_SYNC_CHUNK = 15;
-async function rxKey(id) { return "rx:" + (await sha256Hex(id)).slice(0, 40); }
-async function rxMine(kv, sid) {
-  const v = await kv.get("ru:" + sid, { type: "json" }); // أي خطأ قراءة يُرمى: لا نكتب فوق قائمة موجودة
-  return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+const RX_MINE_MAX = 400, RX_ITEM_MAX = 3000, RX_SYNC_CHUNK = 15, RX_TTL = 60000;
+/* إضافة/إزالة تفاعل: عملية واحدة ذرّية (الصف + العدّاد + القراءة) */
+async function rxApply(db, id, me, on) {
+  const r = await db.batch([
+    on
+      ? db.prepare("INSERT OR IGNORE INTO rx (id, me, t) SELECT ?1, ?2, ?3 WHERE (SELECT COUNT(*) FROM rx WHERE id = ?1) < ?4").bind(id, me, Date.now(), RX_ITEM_MAX)
+      : db.prepare("DELETE FROM rx WHERE id = ?1 AND me = ?2").bind(id, me),
+    db.prepare("INSERT INTO rxc (id, n) SELECT ?1, COUNT(*) FROM rx WHERE id = ?1 ON CONFLICT(id) DO UPDATE SET n = excluded.n").bind(id),
+    db.prepare("SELECT n FROM rxc WHERE id = ?1").bind(id)
+  ]);
+  const changed = Number(r[0] && r[0].meta && r[0].meta.changes) > 0;
+  const row = r[2] && r[2].results && r[2].results[0];
+  return { n: row ? Number(row.n) || 0 : 0, changed };
 }
-async function rxApply(kv, id, me, on) {
-  const k = await rxKey(id);
-  let list = [];
-  const v = await kv.get(k, { type: "json" }); // أي خطأ قراءة يُرمى: لا نكتب فوق قائمة موجودة
-  if (Array.isArray(v)) list = v;
-  const has = list.includes(me);
-  if (on === has) return { n: list.length, changed: false };
-  if (on) { if (list.length >= RX_ITEM_MAX) return { n: list.length, changed: false }; list.push(me); }
-  else list = list.filter((x) => x !== me);
-  if (list.length) await kv.put(k, JSON.stringify(list), { metadata: { n: list.length, id } });
-  else await kv.delete(k);
-  return { n: list.length, changed: true };
+async function rxMine(db, me) {
+  const r = await db.prepare("SELECT id FROM rx WHERE me = ?1 ORDER BY t DESC LIMIT ?2").bind(me, RX_MINE_MAX).all();
+  return (r.results || []).map((x) => x.id);
 }
 async function rxPurge(env, id) {
-  const kv = kvOf(env); if (!kv) return;
-  try { await kv.delete(await rxKey(id)); await edgeDrop("rx"); } catch {}
+  try {
+    const db = await dbInit(env);
+    await db.batch([db.prepare("DELETE FROM rx WHERE id = ?1").bind(id), db.prepare("DELETE FROM rxc WHERE id = ?1").bind(id)]);
+    rxDrop();
+  } catch {}
 }
+/* أعداد القلوب: تُحفظ 60 ثانية في ذاكرة الـ isolate (لا Cache API ولا list). الاستعلام يقرأ جدول العدّادات الصغير فقط */
+let rxMemo = { t: 0, counts: null, p: null };
+function rxDrop() { rxMemo.t = 0; }
 async function rxCounts(env) {
-  return edgeJson("rx", 20, async () => {
-    const kv = kvOf(env), counts = {};
-    let cursor;
-    for (let i = 0; i < 5; i++) {
-      const r = await kv.list({ prefix: "rx:", limit: 1000, ...(cursor ? { cursor } : {}) });
-      for (const k of r.keys) { const m = k.metadata; if (m && typeof m.id === "string" && m.n > 0) counts[m.id] = m.n; }
-      if (r.list_complete) break;
-      cursor = r.cursor;
+  if (rxMemo.counts && Date.now() - rxMemo.t < RX_TTL) return rxMemo.counts;
+  if (rxMemo.p) return rxMemo.p;
+  rxMemo.p = (async () => {
+    try {
+      const db = await dbInit(env), r = await db.prepare("SELECT id, n FROM rxc WHERE n > 0").all(), counts = {};
+      for (const x of r.results || []) counts[x.id] = Number(x.n) || 0;
+      rxMemo = { t: Date.now(), counts, p: null };
+      return counts;
+    } catch (e) {
+      rxMemo.p = null;
+      if (rxMemo.counts) return rxMemo.counts; // عند الفشل نخدم آخر نسخة ناجحة
+      throw e;
     }
-    return json({ ok: true, counts });
-  });
+  })();
+  return rxMemo.p;
 }
 /* هوية المتفاعل: الطالب = معرّف جلسته، المالك/الأستاذ = معرّف ثابت بحسب دوره (حتى تُحسب تفاعلاتهم) */
 async function rxIdentity(request, env, ss) {
@@ -1015,109 +1066,129 @@ async function rxPersonCtx(env, needRoster) {
   if (needRoster) { try { roster = (await kv.get("roster", { type: "json", cacheTtl: 60 })) || {}; } catch { roster = {}; } }
   return { cfg: mergeBadgeCfg(await readBadgeRaw(env)), sups: await readSupervisors(env), roster };
 }
-/* ===== إشعارات صاحب الملف: nt:<uid> = [{i,r,x,t,n,o}]  (n = اسم المتفاعل، o = دوره) ===== */
-const NT_MAX = 60;
+/* ===== إشعارات صاحب الملف (جدول nt في D1؛ n = اسم المتفاعل، o = دوره) ===== */
+const NT_MAX = 60, NT_DAYS = 60;
+let idxMemo = { t: 0, items: null };
+async function approvedIndexMemo(env) {
+  if (idxMemo.items && Date.now() - idxMemo.t < 60000) return idxMemo.items;
+  const items = await approvedIndex(env);
+  idxMemo = { t: Date.now(), items };
+  return items;
+}
 async function notifyOwnerOfReaction(env, id, reactor) {
   if (!id.startsWith("res:")) return;
-  const key = id.slice(4), kv = kvOf(env);
+  const key = id.slice(4);
   let meta = null;
-  try { meta = (await approvedIndex(env)).find((x) => x && x.fileKey === key) || null; } catch { return; }
+  try { meta = (await approvedIndexMemo(env)).find((x) => x && x.fileKey === key) || null; } catch { return; }
   if (!meta || !meta.uploaderId || meta.uploaderId === reactor.uid) return;
   const title = String(meta.title || meta.fileName || "ملف").replace(/[\s_]*\(\s*جزء\s*\d+\s*من\s*\d+\s*\)[\s_]*(?:\.pdf)?\s*$/i, "").slice(0, 120);
-  const nk = "nt:" + meta.uploaderId;
-  let list = (await kv.get(nk, { type: "json" })) || [];
-  if (!Array.isArray(list)) list = [];
+  const db = await dbInit(env), uid = String(meta.uploaderId);
   const nid = (await sha256Hex(reactor.me + "|" + id)).slice(0, 10);
-  if (list.some((x) => x.i === nid)) return; // نفس الشخص لا يكرّر الإشعار
+  const dup = await db.prepare("SELECT 1 AS x FROM nt WHERE uid = ?1 AND i = ?2").bind(uid, nid).first();
+  if (dup) return; // نفس الشخص لا يكرّر الإشعار
   let person = { name: "", role: "" };
   try { person = await rxPerson(env, reactor.me, await rxPersonCtx(env, true)); } catch {}
-  list.push({ i: nid, r: id, x: title, t: Date.now(), n: person.name, o: person.role, u: person.role === "supervisor" ? String(person.u || "") : "" });
-  if (list.length > NT_MAX) list = list.slice(-NT_MAX);
-  await kv.put(nk, JSON.stringify(list), { expirationTtl: 60 * 86400 });
+  const now = Date.now();
+  await db.batch([
+    db.prepare("INSERT OR IGNORE INTO nt (uid, i, r, x, t, n, o, u) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+      .bind(uid, nid, id, title, now, String(person.name || ""), String(person.role || ""), person.role === "supervisor" ? String(person.u || "") : ""),
+    db.prepare("DELETE FROM nt WHERE uid = ?1 AND (t < ?2 OR i NOT IN (SELECT i FROM nt WHERE uid = ?1 ORDER BY t DESC LIMIT ?3))")
+      .bind(uid, now - NT_DAYS * 86400000, NT_MAX)
+  ]);
 }
+const NT_SQL = "SELECT i, r, x, t, n, o, u FROM nt WHERE uid = ?1 ORDER BY t DESC LIMIT ?2";
+const ntShape = (rows) => (rows || []).map((x) => ({ i: x.i, r: x.r, x: x.x, t: Number(x.t), n: x.n || "", o: x.o || "", u: x.u || "" }));
 async function handleNotifications(request, env) {
-  const kv = kvOf(env);
-  if (!kv) return json({ error: "kv_not_configured" }, 503);
   const ss = await readSession(request, env);
   if (!ss.ok) return json({ error: "login_required" }, 401);
-  const who = await rxIdentity(request, env, ss), nk = "nt:" + who.uid;
   try {
+    const db = await dbInit(env), who = await rxIdentity(request, env, ss);
     if (request.method === "GET") {
-      let list = (await kv.get(nk, { type: "json" })) || [];
-      if (!Array.isArray(list)) list = [];
-      return json({ ok: true, list: list.slice().reverse().map((x) => ({ i: x.i, r: x.r, x: x.x, t: x.t, n: x.n || "", o: x.o || "", u: x.u || "" })), n: list.length });
+      const list = ntShape((await db.prepare(NT_SQL).bind(who.uid, NT_MAX).all()).results);
+      return json({ ok: true, list, n: list.length });
     }
     if (request.method === "POST") {
-      await kv.delete(nk);
+      await db.prepare("DELETE FROM nt WHERE uid = ?1").bind(who.uid).run();
       return json({ ok: true });
     }
     return json({ error: "method_not_allowed" }, 405);
-  } catch { return json({ error: "storage_error" }, 503); }
+  } catch (e) { return dbErr(e); }
+}
+/* مزامنة واحدة بدل طلبين: أعداد القلوب + تفاعلاتي + إشعاراتي (GET /api/sync) */
+async function handleSync(request, env) {
+  if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+  const ss = await readSession(request, env);
+  if (!ss.ok) return json({ error: "login_required" }, 401);
+  const u = new URL(request.url), wantMine = u.searchParams.get("mine") !== "0";
+  try {
+    const db = await dbInit(env), who = await rxIdentity(request, env, ss);
+    const [counts, rs] = await Promise.all([
+      rxCounts(env),
+      db.batch([
+        ...(wantMine ? [db.prepare("SELECT id FROM rx WHERE me = ?1 ORDER BY t DESC LIMIT ?2").bind(who.me, RX_MINE_MAX)] : []),
+        db.prepare(NT_SQL).bind(who.uid, NT_MAX)
+      ])
+    ]);
+    const out = { ok: true, counts };
+    if (wantMine) out.mine = (rs[0].results || []).map((x) => x.id);
+    out.list = ntShape((rs[wantMine ? 1 : 0] || {}).results);
+    out.n = out.list.length;
+    return json(out);
+  } catch (e) { return dbErr(e); }
 }
 async function handleReactions(request, env, ctx) {
   const u = new URL(request.url), action = u.searchParams.get("action") || "react";
-  const kv = kvOf(env);
-  if (!kv) return json({ error: "kv_not_configured" }, 503);
   const ss = await readSession(request, env);
-  if (request.method === "GET" && action === "who") {
-    // من تفاعل مع العنصر (للضغط المطوّل على القلب): يتطلب تسجيل الدخول
-    if (!ss.ok) return json({ error: "login_required" }, 401);
-    const id = String(u.searchParams.get("id") || "");
-    if (!RX_ID.test(id)) return json({ error: "invalid_input" }, 400);
-    try {
-      const v = await kv.get(await rxKey(id), { type: "json" });
-      const all = Array.isArray(v) ? v : [];
-      const shown = all.slice(-30).reverse();
-      const ctxData = await rxPersonCtx(env, true);
-      const list = [];
-      for (const me of shown) list.push(await rxPerson(env, me, ctxData));
-      return json({ ok: true, total: all.length, list });
-    } catch { return json({ error: "storage_error" }, 503); }
-  }
-  if (request.method === "GET") {
-    let counts = {};
-    try { const d = await (await rxCounts(env)).json(); if (d && d.counts) counts = d.counts; } catch {}
-    const out = { ok: true, counts };
-    if (u.searchParams.get("mine") !== "0") {
-      if (ss.ok) { try { out.mine = await rxMine(kv, (await rxIdentity(request, env, ss)).me); } catch {} } else out.mine = [];
-    }
-    return json(out);
-  }
-  if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  if (!ss.ok) return json({ error: "login_required" }, 401);
-  const who = await rxIdentity(request, env, ss);
-  if (rlCount("rx:" + who.me, 60000) >= 40) return json({ error: "rate_limited" }, 429);
-  rlAdd("rx:" + who.me, 60000);
   try {
+    if (request.method === "GET" && action === "who") {
+      // من تفاعل مع العنصر (للضغط المطوّل على القلب): يتطلب تسجيل الدخول
+      if (!ss.ok) return json({ error: "login_required" }, 401);
+      const id = String(u.searchParams.get("id") || "");
+      if (!RX_ID.test(id)) return json({ error: "invalid_input" }, 400);
+      const db = await dbInit(env);
+      const [tot, rows] = await db.batch([
+        db.prepare("SELECT n FROM rxc WHERE id = ?1").bind(id),
+        db.prepare("SELECT me FROM rx WHERE id = ?1 ORDER BY t DESC LIMIT 20").bind(id)
+      ]);
+      const total = tot.results && tot.results[0] ? Number(tot.results[0].n) || 0 : 0;
+      const ctxData = await rxPersonCtx(env, true), list = [];
+      for (const r of rows.results || []) list.push(await rxPerson(env, r.me, ctxData));
+      return json({ ok: true, total, list });
+    }
+    if (request.method === "GET") {
+      const out = { ok: true, counts: await rxCounts(env) };
+      if (u.searchParams.get("mine") !== "0") {
+        if (ss.ok) { try { out.mine = await rxMine(await dbInit(env), (await rxIdentity(request, env, ss)).me); } catch {} } else out.mine = [];
+      }
+      return json(out);
+    }
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+    if (!ss.ok) return json({ error: "login_required" }, 401);
+    const who = await rxIdentity(request, env, ss);
+    if (rlCount("rx:" + who.me, 60000) >= 40) return json({ error: "rate_limited" }, 429);
+    rlAdd("rx:" + who.me, 60000);
+    const db = await dbInit(env);
     let b = {}; try { b = await request.json(); } catch {}
     const me = who.me;
     if (action === "sync") {
       const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(String).filter((x) => RX_ID.test(x)))].slice(0, RX_SYNC_CHUNK);
       if (!ids.length) return json({ error: "invalid_input" }, 400);
-      const counts = {}, mine = await rxMine(kv, me);
-      for (const id of ids) { counts[id] = (await rxApply(kv, id, me, true)).n; if (!mine.includes(id)) mine.push(id); }
-      if (mine.length > RX_MINE_MAX) mine.splice(0, mine.length - RX_MINE_MAX);
-      await kv.put("ru:" + me, JSON.stringify(mine));
-      await edgeDrop("rx");
-      return json({ ok: true, counts, mine });
+      const counts = {};
+      for (const id of ids) counts[id] = (await rxApply(db, id, me, true)).n;
+      rxDrop();
+      return json({ ok: true, counts, mine: await rxMine(db, me) });
     }
     if (action !== "react") return json({ error: "unknown_action" }, 400);
     const id = String(b.id || ""), on = b.on === true;
     if (!RX_ID.test(id)) return json({ error: "invalid_input" }, 400);
-    const r = await rxApply(kv, id, me, on);
-    const mine = await rxMine(kv, me), at = mine.indexOf(id);
-    if (on && at < 0) mine.push(id); else if (!on && at > -1) mine.splice(at, 1);
-    if (mine.length > RX_MINE_MAX) mine.splice(0, mine.length - RX_MINE_MAX);
-    if (r.changed || (on !== (at > -1))) await kv.put("ru:" + me, JSON.stringify(mine));
-    if (r.changed) await edgeDrop("rx");
+    const r = await rxApply(db, id, me, on);
+    if (r.changed) rxDrop();
     if (r.changed && on) {
       const job = notifyOwnerOfReaction(env, id, who).catch(() => {});
       if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
     }
     return json({ ok: true, id, on, n: r.n });
-  } catch (e) {
-    return json({ error: "storage_error" }, 503);
-  }
+  } catch (e) { return dbErr(e); }
 }
 
 /* ===== التصويت والتعليقات على الإعلانات =====
@@ -1276,6 +1347,7 @@ async function handleApi(request, env, ctx) {
   if (url.pathname === "/api/badges") return handleBadges(request, env);
   if (url.pathname === "/api/reactions") return handleReactions(request, env, ctx);
   if (url.pathname === "/api/notifications") return handleNotifications(request, env);
+  if (url.pathname === "/api/sync") return handleSync(request, env);
   if (url.pathname === "/api/polls") return handlePolls(request, env);
   if (url.pathname === "/api/comments") return handleComments(request, env);
 
@@ -1332,13 +1404,13 @@ async function handleApi(request, env, ctx) {
       const headers = new Headers({
         "content-type": type,
         "content-disposition": disposition + '; filename="' + fallback + '"; filename*=UTF-8\'\'' + encodeRFC3986(name),
-        "cache-control": "private, max-age=0, must-revalidate",
+        "cache-control": fileCacheControl(key),
         "x-content-type-options": "nosniff",
       });
       const length = response.headers.get("content-length");
       if (length) headers.set("content-length", length);
       return new Response(response.body, { headers });
-    });
+    }, fileCacheControl(key));
 
     if (request.method === "POST") {
       const name = safeFileName(url.searchParams.get("name"));
@@ -1403,6 +1475,11 @@ async function staticSnapshot(env) {
     if (result.status === "fulfilled") files[paths[i]] = result.value;
     else errors.push(paths[i] + ": " + String(result.reason && result.reason.message || result.reason).slice(0, 120));
   });
+  // رقم إصدار صغير يتغير فقط عند تغير أي قائمة: تقرؤه الصفحات من الموقع الثابت بدل جلب القوائم كل 30 ثانية
+  if (!errors.length) {
+    const sorted = Object.keys(files).sort();
+    files["data/version.json"] = JSON.stringify({ v: (await gitBlobSha(sorted.map((k) => k + "\n" + files[k]).join("\n"))).slice(0, 12) });
+  }
   return { files, errors };
 }
 
@@ -1702,18 +1779,24 @@ async function trackStaff(request, env, ss) {
   } catch {}
 }
 
-/* ----- آخر نشاط للطلبة (لعدّاد النشطين): كتابة محدودة كل 4 دقائق لكل طالب ----- */
+/* ----- آخر نشاط للطلبة (لعدّاد النشطين): كتابة في D1 (لا KV) على الأكثر كل 5 دقائق لكل طالب ----- */
 const seenMap = new Map();
 function touchSeen(env, sid, ctx) {
   if (!sid || sid === "admin") return;
   const now = Date.now();
-  if (now - (seenMap.get(sid) || 0) < 240000) return;
+  if (now - (seenMap.get(sid) || 0) < 3600000) return;
   if (seenMap.size > 5000) seenMap.clear();
   seenMap.set(sid, now);
-  const kv = kvOf(env);
-  if (!kv) return;
-  const p = kv.put("seen:" + sid, "1", { expirationTtl: 7 * 86400, metadata: { t: now } }).catch(() => {});
+  const p = dbInit(env)
+    .then((db) => db.prepare("INSERT INTO seen (sid, t) VALUES (?1, ?2) ON CONFLICT(sid) DO UPDATE SET t = excluded.t").bind(sid, now).run())
+    .catch(() => {});
   if (ctx && ctx.waitUntil) ctx.waitUntil(p);
+}
+async function seenAll(env) {
+  try {
+    const r = await (await dbInit(env)).prepare("SELECT sid, t FROM seen WHERE t > ?1").bind(Date.now() - 7 * 86400000).all();
+    return new Map((r.results || []).map((x) => [x.sid, Number(x.t) || 0]));
+  } catch { return new Map(); }
 }
 
 /* ----- قائمة الحظر (مخزّنة مؤقتاً 30 ثانية داخل الـ isolate) ----- */
@@ -1957,7 +2040,7 @@ async function authAdmin(request, env, url) {
       const pend = (await listAll(kv, "pend:")).map((k) => ({ id: k.name.slice(5), ...(k.metadata || {}) }));
       const users = (await listAll(kv, "dev:")).map((k) => ({ sid: k.name.slice(4), banned: bans.includes(k.name.slice(4)), ...(k.metadata || {}) }));
       const roster = (await kv.get("roster", { type: "json" })) || {};
-      const seen = new Map((await listAll(kv, "seen:")).map((k) => [k.name.slice(5), Number(k.metadata && k.metadata.t) || 0]));
+      const seen = await seenAll(env);
       const nowMs = Date.now();
       users.forEach((u) => { u.ls = seen.get(u.sid) || 0; });
       const cnt = (ms) => users.filter((u) => u.ls && nowMs - u.ls < ms).length;
@@ -1983,6 +2066,33 @@ async function authAdmin(request, env, url) {
       return jsonC({ pending: pend, users, rosterCount: Object.keys(roster).length, bans: bans.length, active, staff });
     }
     if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
+
+    if (action === "migrate") {
+      // نقل مرة واحدة لتفاعلات وإشعارات KV القديمة إلى D1 (على دفعات صغيرة لتفادي حدّ الطلبات الفرعية)
+      const kind = url.searchParams.get("kind") === "nt" ? "nt" : "rx", cursor = url.searchParams.get("cursor") || "";
+      const db = await dbInit(env);
+      const r = await kv.list({ prefix: kind + ":", limit: 8, ...(cursor ? { cursor } : {}) });
+      const stmts = [], touched = new Set(), now = Date.now(); let moved = 0;
+      const ins = (table, cols, rows) => { for (let i = 0; i < rows.length; i += 30) { const part = rows.slice(i, i + 30), ph = part.map(() => "(" + cols.map(() => "?").join(",") + ")").join(","); stmts.push(db.prepare("INSERT OR IGNORE INTO " + table + " (" + cols.join(",") + ") VALUES " + ph).bind(...part.flat())); } };
+      for (const k of r.keys) {
+        let v = null; try { v = await kv.get(k.name, { type: "json" }); } catch { continue; }
+        if (!Array.isArray(v)) continue;
+        if (kind === "rx") {
+          const rid = k.metadata && k.metadata.id;
+          if (typeof rid !== "string" || !RX_ID.test(rid)) continue;
+          ins("rx", ["id", "me", "t"], v.map((me) => [rid, String(me), now]));
+          touched.add(rid);
+        } else {
+          const uid = k.name.slice(3);
+          ins("nt", ["uid", "i", "r", "x", "t", "n", "o", "u"], v.filter((x) => x && x.i).map((x) => [uid, String(x.i), String(x.r || ""), String(x.x || ""), Number(x.t) || now, String(x.n || ""), String(x.o || ""), String(x.u || "")]));
+        }
+        moved++;
+      }
+      for (const rid of touched) stmts.push(db.prepare("INSERT INTO rxc (id, n) SELECT ?1, COUNT(*) FROM rx WHERE id = ?1 ON CONFLICT(id) DO UPDATE SET n = excluded.n").bind(rid));
+      for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80));
+      rxDrop();
+      return jsonC({ ok: true, kind, moved, done: !!r.list_complete, cursor: r.cursor || "" });
+    }
 
     if (action === "import") {
       if (!secretOf(env)) return jsonC({ error: "auth_not_configured" }, 503);
@@ -2462,6 +2572,9 @@ button{cursor:pointer}
   <label class="drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/></svg><b>اختر ملف CSV</b><small>group,seq,reg_no,name</small><input id="csv" type="file" accept=".csv,text/csv,text/plain"></label>
   <div class="note">الاستيراد يستبدل القائمة الحالية بالكامل.</div>
   <div id="im"></div>
+ <div class="note" style="margin-top:18px">بعد التحديث إلى D1: انقل مرة واحدة التفاعلات والإشعارات القديمة المحفوظة في KV.</div>
+ <button class="btn" id="mig" type="button" style="margin-top:10px;width:100%">نقل التفاعلات والإشعارات إلى D1</button>
+ <div id="migOut"></div>
  </section>
 </div>
 
@@ -2592,7 +2705,7 @@ function load(silent){
   if(j.http===401){sessionStorage.removeItem('ac');code='';$('lg').hidden=false;$('app').hidden=true;$('m').textContent='رمز غير صحيح';return}
   if(j.error){$('m').textContent='خطأ: '+j.error;return}
   data=j;$('lg').hidden=true;$('app').hidden=false;render();
-  if(!timer)timer=setInterval(function(){if(!document.hidden&&code)load(true)},30000);
+  if(!timer)timer=setInterval(function(){if(!document.hidden&&code)load(true)},300000);
  }).catch(function(){rf.classList.remove('spin');if(!silent)toast('تعذّر الاتصال')});
 }
 function login(){code=$('code').value.trim();if(!code)return;sessionStorage.setItem('ac',code);$('m').textContent='';load()}
@@ -2614,6 +2727,19 @@ $('csv').onchange=function(){
  });
  inp.value='';
 };
+$('mig').onclick=function(){
+ var b=this,out=$('migOut'),total=0;b.disabled=true;
+ function show(t,bad){var r=el('div',null,'res'+(bad?' bad':''));r.textContent=t;out.textContent='';out.appendChild(r)}
+ function step(kind,cur){
+  return api('migrate',{kind:kind,cursor:cur||''},'').then(function(j){
+   if(!j.ok)throw new Error(j.error||('HTTP '+j.http));
+   total+=j.moved||0;show('جارٍ النقل ('+(kind==='rx'?'التفاعلات':'الإشعارات')+')... '+total);
+   if(!j.done&&j.cursor)return step(kind,j.cursor);
+  });
+ }
+ step('rx','').then(function(){return step('nt','')}).then(function(){show('اكتمل النقل: '+total+' عنصراً.');b.disabled=false})
+ .catch(function(e){show('تعذر النقل: '+e.message,true);b.disabled=false});
+};
 if(code)load();
 </script></body></html>
 `;
@@ -2626,7 +2752,7 @@ export default {
     if (gate) return gate;
     if (url.pathname === "/api/publish") return handlePublish(request, env);
     if (url.pathname === "/api/history") return handleHistory(request, env);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/notifications" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/notifications" || url.pathname === "/api/sync" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
       const response = await handleApi(request, env, ctx);
       if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
       return response;
