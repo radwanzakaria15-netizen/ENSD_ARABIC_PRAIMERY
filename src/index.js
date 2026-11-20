@@ -1,4 +1,4 @@
-const KEY_PATTERN = /^(?:[AB]|Y[1-6]S[1-4][AB])-\d{2}-\d{2}-\d{2}$/;
+const KEY_PATTERN = /^(?:[A-Z]|Y\d{1,3}S[1-4][A-Z])-\d{2}-\d{2}-\d{2}$/;
 const MAX_FILE_SIZE = 4_200_000;
 const encoder = new TextEncoder();
 
@@ -12,16 +12,23 @@ function isAdmin(request, env) {
 }
 
 function lessonGroupFromKey(key) {
-  const match = /^(?:([AB])|Y[1-6]S[1-4]([AB]))-/.exec(String(key || ""));
+  const match = /^(?:([A-Z])|Y\d{1,3}S[1-4]([A-Z]))-/.exec(String(key || ""));
   return match ? (match[1] || match[2]) : null;
 }
 
+/* رموز إدارة الدروس: المجموعتان A وB لهما رمزاهما، وأي مجموعة مضافة لاحقاً من قسم التوقيت (C, D, ...)
+   تقبل رمزها الخاص ADMIN_CODE_<الحرف> إن وُجد، وإلا رمز المالك ADMIN_CODE_MOD. */
+function lessonAdminCodes(env, group) {
+  if (!/^[A-Z]$/.test(String(group || ""))) return [];
+  if (group === "A" || group === "B") return [String(env["ADMIN_CODE_" + group] || "").trim()].filter(Boolean);
+  return [String(env["ADMIN_CODE_" + group] || "").trim(), String(env.ADMIN_CODE_MOD || "").trim()].filter(Boolean);
+}
+
 function isLessonAdmin(request, env, group) {
-  if (group !== "A" && group !== "B") return false;
-  const expected = String(env[group === "A" ? "ADMIN_CODE_A" : "ADMIN_CODE_B"] || "").trim();
+  const expected = lessonAdminCodes(env, group);
   const supplied = String(request.headers.get("x-admin-code") || "").trim();
   const suppliedGroup = String(request.headers.get("x-admin-group") || "").trim().toUpperCase();
-  return Boolean(expected) && supplied === expected && suppliedGroup === group;
+  return expected.length > 0 && suppliedGroup === group && expected.includes(supplied);
 }
 
 function hex(bytes) {
@@ -1334,9 +1341,8 @@ async function handleApi(request, env, ctx) {
   const key = url.searchParams.get("key") || "";
   if (url.pathname === "/api/lessons" && request.method === "POST") {
     const group = String(request.headers.get("x-admin-group") || "").trim().toUpperCase();
-    if (group !== "A" && group !== "B") return json({ error: "invalid_lesson_group" }, 400);
-    const secretName = group === "A" ? "ADMIN_CODE_A" : "ADMIN_CODE_B";
-    if (!String(env[secretName] || "").trim()) {
+    if (!/^[A-Z]$/.test(group)) return json({ error: "invalid_lesson_group" }, 400);
+    if (!lessonAdminCodes(env, group).length) {
       return json({ error: "admin_code_not_configured", group }, 503);
     }
     return isLessonAdmin(request, env, group)
@@ -1385,8 +1391,7 @@ async function handleApi(request, env, ctx) {
 
   const lessonGroup = lessonGroupFromKey(key);
   if (request.method !== "GET" && !isLessonAdmin(request, env, lessonGroup)) {
-    const secretName = lessonGroup === "A" ? "ADMIN_CODE_A" : lessonGroup === "B" ? "ADMIN_CODE_B" : "";
-    if (!secretName || !String(env[secretName] || "").trim()) return json({ error: "admin_code_not_configured" }, 503);
+    if (!lessonGroup || !lessonAdminCodes(env, lessonGroup).length) return json({ error: "admin_code_not_configured" }, 503);
     return json({ error: "unauthorized" }, 401);
   }
 
