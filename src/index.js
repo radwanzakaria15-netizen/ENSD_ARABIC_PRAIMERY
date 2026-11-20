@@ -1643,6 +1643,11 @@ const SESSION_DAYS = 30;
 const MAX_DEVICES = 4;
 const MAX_PENDING = 300;
 const PEND_TTL = 14 * 86400;
+/* «هذا حسابي»: مهلة التنفيذ تُحسب من وقت الطلب. غيّر القيمتين هنا إن أردت. */
+const CLAIM_DELAY_MS = 24 * 3600000;        // جهاز غير معروف
+const CLAIM_DELAY_TRUSTED_MS = 3600000;     // جهاز معروف لهذا الحساب (ضع 0 لإلغاء المهلة)
+const CLAIM_LOG_MAX = 300;
+const CLAIM_IMG_MAX = 900 * 1024;           // أقصى حجم لصورة البطاقة بعد التصغير
 
 const isKv = (v) => v && typeof v === "object" && typeof v.get === "function" && typeof v.put === "function";
 const kvOf = (env) => [env.STUDENTS_KV, env.AUTH_KV, env.HISTORY_KV].find(isKv) || null;
@@ -1687,7 +1692,10 @@ function jsonC(value, status = 200, cookies = []) {
 }
 
 async function sessionCookie(env, sid) {
-  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  // أي جلسة جديدة تُصدَر بعد لحظة آخر إبطال لهذا الحساب (وإلا عُدّت ملغاة)
+  let at = Date.now();
+  if (sid !== "admin") { try { const rv = Number((await getRevoked(env))[sid]) || 0; if (rv) at = Math.max(at, rv + 1000); } catch {} }
+  const exp = Math.floor(at / 1000) + SESSION_DAYS * 86400;
   const sig = (await mac(env, "s|" + sid + "|" + exp)).slice(0, 40);
   return setCookie("ensd_s", sid + "." + exp + "." + sig, SESSION_DAYS * 86400);
 }
@@ -1817,6 +1825,11 @@ async function readSession(request, env) {
   if (!sid || !exp || !sig || Number(exp) < Date.now() / 1000) return { ok: false };
   if (!safeEq(sig, (await mac(env, "s|" + sid + "|" + exp)).slice(0, 40))) return { ok: false };
   if (sid !== "admin" && (await getBans(env)).has(sid)) return { ok: false, banned: true };
+  if (sid !== "admin") {
+    // جلسة صدرت قبل آخر «استعادة حساب» منفَّذة تُعدّ ملغاة
+    const rv = Number((await getRevoked(env))[sid]) || 0;
+    if (rv && (Number(exp) - SESSION_DAYS * 86400) <= Math.floor(rv / 1000)) return { ok: false, revoked: true };
+  }
   return { ok: true, sid };
 }
 
@@ -1927,6 +1940,162 @@ async function checkPw(password, pw) {
   return safeEq(await pbkdf2Hex(password, pw.s, pw.i || PW_ITER), pw.h);
 }
 
+
+/* ===== أجهزة الحساب + استعادة الحساب («هذا حسابي») ===== */
+function deviceLabel(request) {
+  const ua = String(request.headers.get("user-agent") || "");
+  const type = /iPad|Tablet|Android(?!.*Mobile)/i.test(ua) ? "لوحي" : /Mobi|iPhone|iPod|Android/i.test(ua) ? "هاتف" : "حاسوب";
+  const os = /iPhone|iPad|iPod/i.test(ua) ? "iOS" : /Android/i.test(ua) ? "Android" : /Windows/i.test(ua) ? "Windows"
+    : /CrOS/i.test(ua) ? "ChromeOS" : /Mac OS X|Macintosh/i.test(ua) ? "macOS" : /Linux/i.test(ua) ? "Linux" : "";
+  const br = /Edg(e|A|iOS)?\//i.test(ua) ? "Edge" : /OPR\/|Opera/i.test(ua) ? "Opera" : /SamsungBrowser/i.test(ua) ? "Samsung Internet"
+    : /Firefox|FxiOS/i.test(ua) ? "Firefox" : /Chrome|CriOS/i.test(ua) ? "Chrome" : /Safari/i.test(ua) ? "Safari" : "";
+  return [type, os, br].filter(Boolean).join(" · ").slice(0, 48);
+}
+/* يسجّل الجهاز في قائمة أجهزة الحساب (rec.dv) ويحدّث آخر استعمال كل 6 ساعات على الأكثر؛ يعيد true إن تغيّر السجل */
+function touchDevice(rec, dh, label, now) {
+  if (!rec.dv || typeof rec.dv !== "object") rec.dv = {};
+  const e = rec.dv[dh];
+  if (!e) { rec.dv[dh] = { l: label, t: now, s: now }; return true; }
+  if (now - (e.s || 0) > 6 * 3600000 || (label && e.l !== label)) { e.s = now; if (label) e.l = label; return true; }
+  return false;
+}
+function pruneDv(rec) {
+  if (!rec.dv) return;
+  for (const k of Object.keys(rec.dv)) if (!rec.d.includes(k)) delete rec.dv[k];
+}
+
+let revCache = { t: 0, map: {} };
+async function getRevoked(env) {
+  if (Date.now() - revCache.t < 30000) return revCache.map;
+  try {
+    const a = await kvOf(env).get("revoked", { type: "json", cacheTtl: 60 });
+    revCache = { t: Date.now(), map: a && typeof a === "object" && !Array.isArray(a) ? a : {} };
+  } catch { revCache.t = Date.now(); }
+  return revCache.map;
+}
+async function revokeSessions(env, sid) {
+  const kv = kvOf(env), now = Date.now(), cut = now - (SESSION_DAYS + 1) * 86400000;
+  const cur = (await kv.get("revoked", { type: "json" })) || {};
+  const next = {};
+  for (const [k, v] of Object.entries(cur)) if (Number(v) > cut) next[k] = v;
+  next[sid] = now;
+  await kv.put("revoked", JSON.stringify(next));
+  revCache = { t: now, map: next };
+}
+
+/* كوكي قصير العمر يثبت أن هذا المتصفح أخطأ للتو في كلمة مرور هذا الحساب (شرط ظهور «هذا حسابي») */
+async function wrongCookie(env, sid) {
+  const exp = Math.floor(Date.now() / 1000) + 1800;
+  const sig = (await mac(env, "w|" + sid + "|" + exp)).slice(0, 40);
+  return setCookie("ensd_w", sid + "." + exp + "." + sig, 1800);
+}
+async function hasWrongCookie(request, env, sid) {
+  const v = String(readCookies(request).ensd_w || "").split(".");
+  if (v.length !== 3 || v[0] !== sid || !(Number(v[1]) > Date.now() / 1000)) return false;
+  return safeEq(v[2], (await mac(env, "w|" + sid + "|" + v[1])).slice(0, 40));
+}
+
+/* فهرس طلبات الاستعادة لكل حساب: [{dh, ts, kd, dl, st: "p" معلّق | "s" مجدول, at}] */
+async function claimsGet(env, sid) {
+  const a = await kvOf(env).get("claims:" + sid, { type: "json" });
+  return Array.isArray(a) ? a : [];
+}
+async function claimsPut(env, sid, list) {
+  const kv = kvOf(env);
+  if (!list.length) await kv.delete("claims:" + sid);
+  else await kv.put("claims:" + sid, JSON.stringify(list.slice(-5)), { expirationTtl: 30 * 86400 });
+}
+/* سجل كل طلبات الاستعادة: الوقت والجهاز والقرار */
+async function claimLog(env, ev) {
+  try {
+    const kv = kvOf(env);
+    const cur = (await kv.get("claimlog", { type: "json" })) || [];
+    cur.push({ ts: Date.now(), ...ev });
+    await kv.put("claimlog", JSON.stringify(cur.slice(-CLAIM_LOG_MAX)));
+  } catch {}
+}
+function parseDob(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ""));
+  if (!m) return "";
+  const y = +m[1], mo = +m[2], d = +m[3], dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return "";
+  const age = (Date.now() - dt.getTime()) / 31557600000;
+  return age >= 14 && age <= 90 ? m[0] : "";
+}
+function parseIdImage(v) {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+\/=]+)$/.exec(String(v || ""));
+  if (!m || m[1].length > Math.ceil(CLAIM_IMG_MAX * 4 / 3) + 8) return null;
+  let bytes;
+  try { bytes = b64ToBytes(m[1]); } catch { return null; }
+  if (bytes.length > CLAIM_IMG_MAX || bytes.length < 2000 || bytes[0] !== 0xFF || bytes[1] !== 0xD8 || bytes[2] !== 0xFF) return null;
+  return { bytes, dataUrl: m[0] };
+}
+/* فحص استشاري بالذكاء الاصطناعي: هل يظهر وجه في صورة البطاقة؟ (face | ok | na). لا يرفض الطلب، بل يُخفي الصورة عند الإدارة */
+async function faceCheck(env, bytes) {
+  if (!env.AI || typeof env.AI.run !== "function") return "na";
+  try {
+    const r = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
+      image: Array.from(bytes),
+      prompt: "Is a clear photograph of a person's face visible in this image? Answer with only YES or NO.",
+      max_tokens: 8,
+    });
+    const t = String((r && (r.description || r.response)) || "").trim().toUpperCase().replace(/^[^A-Z]+/, "");
+    if (/^YES\b/.test(t)) return "face";
+    if (/^NO\b/.test(t)) return "ok";
+    return "na";
+  } catch { return "na"; }
+}
+async function dropClaimData(env, dh) {
+  const kv = kvOf(env);
+  await kv.delete("pend:" + dh); await kv.delete("pimg:" + dh); await kv.delete("sched:" + dh);
+}
+/* تنفيذ الاستعادة فعلياً: كلمة المرور الجديدة + إلغاء كل الجلسات القديمة + ربط جهاز الطالب وحده */
+async function execClaim(env, sc, by) {
+  const kv = kvOf(env), now = Date.now();
+  if (!(await kv.get("sched:" + sc.dh))) return false;   // نُفِّذ أو أُلغي قبل لحظات
+  await kv.delete("sched:" + sc.dh);
+  const known = await lookupStudent(env, sc.sid);
+  const rec = (await kv.get("dev:" + sc.sid, { type: "json" })) ||
+    { d: [], n: known ? known[0] : sc.n, g: known ? known[1] : "", ts: now };
+  rec.d = [sc.dh];
+  rec.dv = { [sc.dh]: { l: sc.dl || "", t: now, s: now } };
+  rec.pw = sc.pw;
+  await putDev(env, sc.sid, rec);
+  await revokeSessions(env, sc.sid);
+  await kv.put("res:" + sc.dh, JSON.stringify({ ok: true, sid: sc.sid }), { expirationTtl: 3600 });
+  // أي طلبات أخرى لنفس الحساب تصبح بلا معنى بعد تغيّر كلمة المرور
+  for (const c of await claimsGet(env, sc.sid)) {
+    if (c.dh === sc.dh) continue;
+    await dropClaimData(env, c.dh);
+    await kv.put("res:" + c.dh, JSON.stringify({ ok: false }), { expirationTtl: 3600 });
+    await claimLog(env, { k: "auto_cancel", n: rec.n, dl: c.dl, kd: !!c.kd, by: "system" });
+  }
+  await claimsPut(env, sc.sid, []);
+  await claimLog(env, { k: "exec", n: rec.n, dl: sc.dl, kd: !!sc.kd, by: by || "system", rq: sc.ts });
+  return true;
+}
+/* تنفيذ كسول: أي تعامل مع الحساب بعد انتهاء المهلة ينفّذ المستحق أولاً (إضافة إلى الـ Cron) */
+async function execDueForSid(env, sid) {
+  const kv = kvOf(env), now = Date.now();
+  let hit = false;
+  for (const c of await claimsGet(env, sid)) {
+    if (c.st !== "s" || !(Number(c.at) <= now)) continue;
+    const sc = await kv.get("sched:" + c.dh, { type: "json" });
+    if (sc && (await execClaim(env, sc, "system"))) hit = true;
+  }
+  return hit;
+}
+async function execDueAll(env) {
+  const kv = kvOf(env);
+  if (!kv || !secretOf(env)) return;
+  const now = Date.now();
+  for (const k of await listAll(kv, "sched:")) {
+    if (!(Number(k.metadata && k.metadata.at) <= now)) continue;
+    const sc = await kv.get(k.name, { type: "json" });
+    if (sc) await execClaim(env, sc, "system");
+  }
+}
+
 /* ----- تسجيل الدخول ----- */
 async function putDev(env, sid, rec) {
   await kvOf(env).put("dev:" + sid, JSON.stringify(rec), { metadata: { n: rec.n, g: rec.g, ts: rec.ts, c: rec.d.length } });
@@ -1943,7 +2112,7 @@ async function deviceOf(request, env) {
 }
 const devCookie = (token) => setCookie("ensd_dev", token, 365 * 86400);
 
-async function createPending(env, dev, type, sid, typedName, rec, ip, pw) {
+async function createPending(env, dev, type, sid, typedName, rec, ip, pw, extra) {
   const kv = kvOf(env);
   const exists = await kv.get("pend:" + dev.dh);
   if (!exists) {
@@ -1953,7 +2122,7 @@ async function createPending(env, dev, type, sid, typedName, rec, ip, pw) {
     const list = await kv.list({ prefix: "pend:", limit: MAX_PENDING + 1 });
     if (list.keys.length > MAX_PENDING) return false;
   }
-  const v = { t: type, sid, name: typedName, rn: rec ? rec[0] : "", g: rec ? rec[1] : "", ts: Date.now() };
+  const v = { t: type, sid, name: typedName, rn: rec ? rec[0] : "", g: rec ? rec[1] : "", ts: Date.now(), ...(extra || {}) };
   await kv.put("pend:" + dev.dh, JSON.stringify(pw ? { ...v, pw } : v), { expirationTtl: PEND_TTL, metadata: v });
   return true;
 }
@@ -1991,6 +2160,7 @@ async function authLogin(request, env, kind) {
   const sid = (await mac(env, "r|" + regno)).slice(0, 24);
   const rec = await lookupStudent(env, sid);
   if (rec && (await getBans(env)).has(sid)) return jsonC({ status: "banned" }, 403);
+  if (rec && step !== "join") { try { await execDueForSid(env, sid); } catch {} }
   const cur = rec ? await kv.get("dev:" + sid, { type: "json" }) : null;
   const mode = !cur ? "setup" : (cur.pw ? "login" : "legacy");
   const hasName = normName(name).split(" ").filter(Boolean).length >= 2;
@@ -2014,6 +2184,7 @@ async function authLogin(request, env, kind) {
   if (!rec) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "unknown" }, 404); }
   const dev = await deviceOf(request, env);
   const devCk = dev.fresh ? [devCookie(dev.token)] : [];
+  const dl = deviceLabel(request);
 
   if (step === "setup") {
     if (mode === "login") return jsonC({ status: "has_password" }, 409);
@@ -2021,36 +2192,56 @@ async function authLogin(request, env, kind) {
     const pw = await hashPw(password);
     if (mode === "setup") {
       // أول مرة: يُنشأ الحساب ويُربط بهذا الجهاز مباشرة
-      await putDev(env, sid, { d: [dev.dh], n: rec[0], g: rec[1], ts: Date.now(), pw });
+      const now0 = Date.now();
+      await putDev(env, sid, { d: [dev.dh], dv: { [dev.dh]: { l: dl, t: now0, s: now0 } }, n: rec[0], g: rec[1], ts: now0, pw });
       return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
     }
     // حساب قديم بلا كلمة مرور: من جهاز مسجَّل عنده فقط، وإلا فبموافقة المالك
     if (cur.d.includes(dev.dh)) {
-      cur.pw = pw; await putDev(env, sid, cur);
+      cur.pw = pw; touchDevice(cur, dev.dh, dl, Date.now()); await putDev(env, sid, cur);
       return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
     }
-    if (!(await createPending(env, dev, "device", sid, rec[0], rec, ip, pw))) return jsonC({ error: "rate_limited" }, 429);
+    if (!(await createPending(env, dev, "device", sid, rec[0], rec, ip, pw, { dl }))) return jsonC({ error: "rate_limited" }, 429);
     return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
   }
 
   if (step === "login") {
     if (mode !== "login") return jsonC({ status: "needs_setup" }, 409);
-    if (!(await checkPw(password, cur.pw))) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "wrongpw" }, 401); }
-    if (cur.d.includes(dev.dh)) return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
-    if (cur.d.length < MAX_DEVICES) {
-      cur.d.push(dev.dh); await putDev(env, sid, cur);
+    if (!(await checkPw(password, cur.pw))) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "wrongpw" }, 401, [...devCk, await wrongCookie(env, sid)]); }
+    if (cur.d.includes(dev.dh)) {
+      if (touchDevice(cur, dev.dh, dl, Date.now())) { try { await putDev(env, sid, cur); } catch {} }
       return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
     }
-    if (!(await createPending(env, dev, "device", sid, rec[0], rec, ip))) return jsonC({ error: "rate_limited" }, 429);
+    if (cur.d.length < MAX_DEVICES) {
+      cur.d.push(dev.dh); touchDevice(cur, dev.dh, dl, Date.now()); await putDev(env, sid, cur);
+      return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
+    }
+    if (!(await createPending(env, dev, "device", sid, rec[0], rec, ip, null, { dl }))) return jsonC({ error: "rate_limited" }, 429);
     return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
   }
 
   if (step === "claim") {
-    // «هذا حسابي»: لمن سبقه غيره إلى حسابه. الاسم الذي يكتبه يظهر للمالك مع الطلب.
+    // «هذا حسابي»: لا يظهر إلا بعد خطأ في كلمة المرور، ويتطلب تاريخ الميلاد وصورة البطاقة (بلا وجه).
+    // لا يتغيّر شيء في الحساب قبل موافقة المالك، ثم تأتي مهلة التنفيذ.
+    if (mode !== "login") return jsonC({ status: "needs_setup" }, 409);
+    if (!(await hasWrongCookie(request, env, sid))) return jsonC({ error: "claim_locked" }, 403);
     if (!hasName || !validPw(password)) return jsonC({ error: "invalid_input" }, 400);
+    const dob = parseDob(body.dob);
+    if (!dob) return jsonC({ error: "invalid_dob" }, 400);
+    const img = parseIdImage(body.idimg);
+    if (!img) return jsonC({ error: "invalid_image" }, 400);
     if (rlCount("req:" + ip, 3600000) >= 3) return jsonC({ error: "rate_limited" }, 429);
     rlAdd("req:" + ip, 3600000);
-    if (!(await createPending(env, dev, "claim", sid, name, rec, ip, await hashPw(password)))) return jsonC({ error: "rate_limited" }, 429);
+    const kd = cur.d.includes(dev.dh);
+    const fc = await faceCheck(env, img.bytes);
+    if (!(await createPending(env, dev, "claim", sid, name, rec, ip, await hashPw(password), { dl, kd, dob, im: 1, fc }))) return jsonC({ error: "rate_limited" }, 429);
+    try {
+      await kv.put("pimg:" + dev.dh, img.dataUrl, { expirationTtl: PEND_TTL });
+      const list = (await claimsGet(env, sid)).filter((c) => c.dh !== dev.dh);
+      list.push({ dh: dev.dh, ts: Date.now(), kd, dl, st: "p" });
+      await claimsPut(env, sid, list);
+    } catch { await dropClaimData(env, dev.dh); return jsonC({ error: "kv_error" }, 502); }
+    await claimLog(env, { k: "request", n: rec[0], dl, kd, by: "student" });
     return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
   }
 
@@ -2061,7 +2252,14 @@ async function authStatus(request, env) {
   const kv = kvOf(env), c = readCookies(request).ensd_dev || "";
   if (!/^[a-f0-9]{48}$/.test(c)) return jsonC({ status: "none" });
   const dh = (await mac(env, "d|" + c)).slice(0, 24);
-  const res = await kv.get("res:" + dh, { type: "json" });
+  let res = await kv.get("res:" + dh, { type: "json" });
+  if (!res) {
+    const sc = await kv.get("sched:" + dh, { type: "json" });
+    if (sc) {
+      if (Number(sc.at) <= Date.now()) { await execClaim(env, sc, "system"); res = await kv.get("res:" + dh, { type: "json" }); }
+      else return jsonC({ status: "scheduled", at: sc.at });
+    }
+  }
   if (res) {
     await kv.delete("res:" + dh);
     if (!res.ok) return jsonC({ status: "rejected" });
@@ -2108,6 +2306,10 @@ async function authAdmin(request, env, url) {
       const active = { now: cnt(600000), day: cnt(86400000), week: cnt(7 * 86400000) };
       pend.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       users.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      // طلبات «هذا حسابي»: متى يُنفَّذ الطلب لو قُبل الآن؟ + الطلبات المقبولة المنتظرة للتنفيذ + سجل الاستعادة
+      pend.forEach((p) => { if (p.t === "claim") p.at = Math.max(nowMs, (p.ts || nowMs) + (p.kd ? CLAIM_DELAY_TRUSTED_MS : CLAIM_DELAY_MS)); });
+      const sched = (await listAll(kv, "sched:")).map((k) => ({ id: k.name.slice(6), ...(k.metadata || {}) })).sort((a, b) => (a.at || 0) - (b.at || 0));
+      const claimlog = ((await kv.get("claimlog", { type: "json" })) || []).slice(-150).reverse();
       // الأساتذة (رمزا الفوجين A/B) والمالك والمشرفون: العدد وهل هم نشطون
       const stf = new Map((await listAll(kv, "staff:")).map((k) => [k.name.slice(6), Number(k.metadata && k.metadata.t) || 0]));
       const bcfg = mergeBadgeCfg(await readBadgeRaw(env));
@@ -2124,7 +2326,21 @@ async function authAdmin(request, env, url) {
         owner: { name: bcfg.owner.name || bcfg.owner.label, ...mk(stf.get("owner") || 0) },
         supervisors: supsL, supCount: supsL.length, supActive: supsL.filter((x) => x.on).length
       };
-      return jsonC({ pending: pend, users, rosterCount: Object.keys(roster).length, bans: bans.length, active, staff });
+      return jsonC({ pending: pend, users, rosterCount: Object.keys(roster).length, bans: bans.length, active, staff, sched, claimlog });
+    }
+    if (action === "pimg" && request.method === "GET") {
+      // صورة البطاقة (بلا وجه): تُعرض للمالك فقط أثناء انتظار القرار، وتُحذف تلقائياً بعده
+      const pid = url.searchParams.get("id") || "";
+      if (!/^[a-f0-9]{24}$/.test(pid)) return jsonC({ error: "bad_id" }, 400);
+      const im = await kv.get("pimg:" + pid);
+      return jsonC({ image: im || "" });
+    }
+    if (action === "devices" && request.method === "GET") {
+      const dsid = url.searchParams.get("sid") || "";
+      if (!/^[a-f0-9]{24}$/.test(dsid)) return jsonC({ error: "bad_sid" }, 400);
+      const r = await kv.get("dev:" + dsid, { type: "json" });
+      if (!r) return jsonC({ error: "not_found" }, 404);
+      return jsonC({ devices: (r.d || []).map((h) => { const e = (r.dv || {})[h] || {}; return { l: e.l || "", t: e.t || 0, s: e.s || 0 }; }) });
     }
     if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
 
@@ -2168,6 +2384,29 @@ async function authAdmin(request, env, url) {
       if (!/^[a-f0-9]{24}$/.test(id)) return jsonC({ error: "bad_id" }, 400);
       const p = await kv.get("pend:" + id, { type: "json" });
       if (!p) return jsonC({ error: "not_found" }, 404);
+      if (p.t === "claim") {
+        const nm = String(p.rn || p.name || "").slice(0, 60);
+        if (action === "approve") {
+          // الموافقة تحجز التنفيذ فقط: لا تتغير كلمة المرور ولا الجلسات قبل انتهاء المهلة (أو «ننفّذ الآن»)
+          if (!p.pw) return jsonC({ error: "no_password" }, 400);
+          const now = Date.now(), delay = p.kd ? CLAIM_DELAY_TRUSTED_MS : CLAIM_DELAY_MS;
+          const at = url.searchParams.get("now") === "1" ? now : Math.max(now, (p.ts || now) + delay);
+          const sc = { dh: id, sid: p.sid, pw: p.pw, dl: p.dl || "", kd: !!p.kd, ts: p.ts || now, n: nm, at };
+          await kv.put("sched:" + id, JSON.stringify(sc), { expirationTtl: 30 * 86400, metadata: { sid: p.sid, at, n: nm, dl: sc.dl, kd: sc.kd, ts: sc.ts } });
+          await kv.delete("pend:" + id); await kv.delete("pimg:" + id);   // قرارك اتُّخذ: تُحذف صورة البطاقة
+          const list = (await claimsGet(env, p.sid)).filter((c) => c.dh !== id);
+          list.push({ dh: id, ts: sc.ts, kd: sc.kd, dl: sc.dl, st: "s", at });
+          await claimsPut(env, p.sid, list);
+          await claimLog(env, { k: "approve", n: nm, dl: sc.dl, kd: sc.kd, by: "admin", rq: sc.ts, at });
+          if (at <= now) { await execClaim(env, sc, "admin"); return jsonC({ ok: true, executed: true }); }
+          return jsonC({ ok: true, executed: false, at });
+        }
+        await dropClaimData(env, id);
+        await claimsPut(env, p.sid, (await claimsGet(env, p.sid)).filter((c) => c.dh !== id));
+        await kv.put("res:" + id, JSON.stringify({ ok: false }), { expirationTtl: 3600 });
+        await claimLog(env, { k: "reject", n: nm, dl: p.dl || "", kd: !!p.kd, by: "admin", rq: p.ts });
+        return jsonC({ ok: true });
+      }
       if (action === "approve") {
         const known = await lookupStudent(env, p.sid);
         if (!known) await kv.put("extra:" + p.sid, JSON.stringify([p.name, p.g || ""]));
@@ -2180,13 +2419,27 @@ async function authAdmin(request, env, url) {
           if (!rec.d.includes(id)) rec.d.push(id);
           rec.d = rec.d.slice(-MAX_DEVICES);
           if (p.pw && !rec.pw) rec.pw = p.pw;
+          touchDevice(rec, id, p.dl || "", Date.now());
         }
+        pruneDv(rec);
         await putDev(env, p.sid, rec);
         await kv.put("res:" + id, JSON.stringify({ ok: true, sid: p.sid }), { expirationTtl: 3600 });
       } else {
         await kv.put("res:" + id, JSON.stringify({ ok: false }), { expirationTtl: 3600 });
       }
       await kv.delete("pend:" + id);
+      return jsonC({ ok: true });
+    }
+
+    if (action === "execnow" || action === "cancelsched") {
+      if (!/^[a-f0-9]{24}$/.test(id)) return jsonC({ error: "bad_id" }, 400);
+      const sc = await kv.get("sched:" + id, { type: "json" });
+      if (!sc) return jsonC({ error: "not_found" }, 404);
+      if (action === "execnow") { await execClaim(env, sc, "admin"); return jsonC({ ok: true }); }
+      await dropClaimData(env, id);
+      await claimsPut(env, sc.sid, (await claimsGet(env, sc.sid)).filter((c) => c.dh !== id));
+      await kv.put("res:" + id, JSON.stringify({ ok: false }), { expirationTtl: 3600 });
+      await claimLog(env, { k: "cancel", n: sc.n, dl: sc.dl, kd: !!sc.kd, by: "admin", rq: sc.ts });
       return jsonC({ ok: true });
     }
 
@@ -2342,11 +2595,40 @@ async function authPhoto(request, env) {
   return jsonC({ ok: true });
 }
 
+/* صاحب الحساب (وهو داخل) يضغط «لا، ارفض»: يُلغى كل طلب استعادة معلّق أو مجدول فوراً ويُسجَّل تنبيه للمالك */
+async function authClaimReject(request, env) {
+  const ss = await readSession(request, env);
+  if (!ss.ok || ss.sid === "admin") return jsonC({ error: "login_required" }, 401);
+  if (rlCount("crej:" + ss.sid, 600000) >= 10) return jsonC({ error: "rate_limited" }, 429);
+  rlAdd("crej:" + ss.sid, 600000);
+  const kv = kvOf(env);
+  try {
+    const list = await claimsGet(env, ss.sid);
+    const known = await lookupStudent(env, ss.sid);
+    for (const c of list) {
+      await dropClaimData(env, c.dh);
+      await kv.put("res:" + c.dh, JSON.stringify({ ok: false }), { expirationTtl: 3600 });
+      await claimLog(env, { k: "owner_reject", n: known ? known[0] : "", dl: c.dl || "", kd: !!c.kd, by: "owner", rq: c.ts });
+    }
+    await claimsPut(env, ss.sid, []);
+    return jsonC({ ok: true, n: list.length });
+  } catch { return jsonC({ error: "kv_error" }, 502); }
+}
+
 async function handleAuth(request, env, url, ctx) {
   if (!kvOf(env) || !secretOf(env)) return jsonC({ error: "auth_not_configured" }, 503);
   const a = url.pathname.slice("/api/auth/".length);
   if (a === "admin") return authAdmin(request, env, url);
   if (a === "me" && request.method === "GET") {
+    // إن حلّ موعد تنفيذ استعادة مجدولة لهذا الحساب فنفّذها قبل قراءة الجلسة (فتُلغى الجلسات القديمة فوراً)
+    const rawSid = String(readCookies(request).ensd_s || "").split(".")[0];
+    let cl0 = null;
+    if (/^[a-f0-9]{24}$/.test(rawSid)) {
+      try {
+        cl0 = await claimsGet(env, rawSid);
+        if (cl0.some((c) => c.st === "s" && Number(c.at) <= Date.now())) { await execDueForSid(env, rawSid); cl0 = []; }
+      } catch { cl0 = null; }
+    }
     const ss = await readSession(request, env);
     const out = { in: !!ss.ok, admin: !!ss.ok && ss.sid === "admin" };
     if (out.admin) {
@@ -2379,6 +2661,12 @@ async function handleAuth(request, env, url, ctx) {
           out.group = prof.g === "A" || prof.g === "B" ? prof.g : "";
           out.photo = prof.p === 1;
           out.devices = rec && Array.isArray(rec.d) ? rec.d.length : 1;
+          try {
+            const me0 = await deviceOf(request, env);
+            out.devList = ((rec && rec.d) || []).map((h) => { const e = ((rec && rec.dv) || {})[h] || {}; return { l: e.l || "", t: e.t || 0, s: e.s || 0, cur: h === me0.dh }; });
+            const cl = ss.sid === rawSid && cl0 ? cl0 : await claimsGet(env, ss.sid);
+            out.claims = cl.filter((c) => c.st === "s" || Date.now() - c.ts < PEND_TTL * 1000).map((c) => ({ ts: c.ts, kd: !!c.kd, dl: c.dl || "", at: c.at || 0 }));
+          } catch {}
           out.since = (rec && rec.ts) || 0;
           out.maxDevices = MAX_DEVICES;
           const supHit = (await readSupervisors(env)).find((x) => x.sid === ss.sid);
@@ -2393,6 +2681,7 @@ async function handleAuth(request, env, url, ctx) {
   if (a === "photo") return authPhoto(request, env);
   if (request.method !== "POST") return jsonC({ error: "method_not_allowed" }, 405);
   if (a === "profile") return authProfile(request, env);
+  if (a === "claim-reject") return authClaimReject(request, env);
   if (a === "login") return authLogin(request, env, "login");
   if (a === "request") return authLogin(request, env, "request");
   if (a === "logout") {
@@ -2579,6 +2868,12 @@ button{cursor:pointer}
 .modal .row{display:flex;gap:8px}.modal .row .btn{flex:1;height:46px}
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;z-index:60;background:#1c2d33;color:#fff;padding:11px 18px;border-radius:14px;font-size:14px;font-weight:700;pointer-events:none;transition:.25s;max-width:92vw;text-align:center}
 .toast.on{opacity:1;transform:translate(-50%,0)}
+.tabs{overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tab{flex:1 0 auto;padding:0 12px;white-space:nowrap}
+.idimg{display:block;width:100%;max-height:380px;object-fit:contain;border-radius:12px;border:1px solid var(--bd);margin-top:8px;background:#000}
+.idimg.blur{filter:blur(18px);cursor:pointer}
+.alertbar{margin:0 0 12px;padding:12px 14px;border-radius:14px;background:var(--badbg);color:var(--bad);font-size:13.5px;font-weight:700}
+.alertbar button{margin-top:8px}
+.sub{margin:14px 0 8px;font-size:14px;font-weight:800}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 
@@ -2612,9 +2907,11 @@ button{cursor:pointer}
   <div class="card stat live"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 9l10 5 10-5z"/><path d="M6 11.5V16c0 1.4 2.7 3 6 3s6-1.6 6-3v-4.5"/></svg></span><div><b id="sTeachOn">0</b><small>أساتذة نشطون الآن</small></div></div>
  </section>
 
+ <div class="alertbar" id="clAlert" hidden></div>
  <nav class="tabs" role="tablist">
   <button class="tab" role="tab" data-t="pending" aria-selected="true">الطلبات<i id="tPend" hidden>0</i></button>
   <button class="tab" role="tab" data-t="users" aria-selected="false">المسجّلون</button>
+  <button class="tab" role="tab" data-t="claims" aria-selected="false">الاستعادة<i id="tCl" hidden>0</i></button>
   <button class="tab" role="tab" data-t="staff" aria-selected="false">الأساتذة</button>
   <button class="tab" role="tab" data-t="import" aria-selected="false">الاستيراد</button>
  </nav>
@@ -2634,6 +2931,14 @@ button{cursor:pointer}
    <button class="chip" data-f="ban" aria-pressed="false">المحظورون</button>
   </div>
   <div id="users"></div>
+ </section>
+
+ <section class="card panel" id="p-claims" hidden>
+  <div class="panel-h"><h2>استعادة الحسابات («هذا حسابي»)</h2><span id="clCount"></span></div>
+  <div class="sub">مقبولة وبانتظار التنفيذ</div>
+  <div id="schedBox"></div>
+  <div class="sub">السجل (الوقت · الجهاز · القرار)</div>
+  <div id="clLog"></div>
  </section>
 
  <section class="card panel" id="p-staff" hidden>
@@ -2692,6 +2997,23 @@ function renderStats(){
  var t=$('tPend');t.hidden=!data.pending.length;t.textContent=data.pending.length;
  $('upd').textContent='آخر تحديث: '+new Date().toLocaleTimeString('ar-DZ');
 }
+var KIND_TX={request:'طلب جديد',approve:'قُبل (مجدول)',reject:'رُفض',exec:'نُفِّذ',owner_reject:'رفضه صاحب الحساب',cancel:'أُلغي من الإدارة',auto_cancel:'أُلغي تلقائياً'};
+function remain(ms){
+ if(ms<=0)return 'الآن';
+ var m=Math.ceil(ms/60000),h=Math.floor(m/60);
+ if(h>=24){var d=Math.floor(h/24);return d+' يوم'+(h%24?' و '+(h%24)+' س':'')}
+ return h?h+' س'+(m%60?' و '+(m%60)+' د':''):m+' د';
+}
+function trustTag(kd){return el('span',kd?'✅ جهاز موثوق':'⚠️ جهاز غير معروف','tag '+(kd?'ok':'bad'))}
+function loadCard(p,holder,b){
+ b.disabled=true;b.textContent='جارٍ التحميل…';
+ api('pimg',{id:p.id}).then(function(j){
+  if(!j.image){b.textContent='الصورة غير متوفرة';return}
+  var im=new Image();im.className='idimg'+(p.fc==='face'?' blur':'');im.alt='صورة البطاقة';im.src=j.image;
+  holder.textContent='';holder.appendChild(im);
+  if(p.fc==='face'){holder.appendChild(el('div','قد يظهر وجه في الصورة فأُخفيت مؤقتاً. اضغط عليها لإظهارها.','note'));im.onclick=function(){im.classList.remove('blur')}}
+ }).catch(function(){b.disabled=false;b.textContent='تعذّر التحميل، أعد المحاولة'});
+}
 function renderPending(){
  var P=$('pend');P.textContent='';
  $('pCount').textContent=data.pending.length?data.pending.length+' طلب':'';
@@ -2699,16 +3021,84 @@ function renderPending(){
  data.pending.forEach(function(p,i){
   var it=el('div',null,'item');it.style.animationDelay=(i*40)+'ms';
   it.appendChild(avatar(p.name));
-  var b=el('div',null,'body'),nm=el('div',null,'name');
+  var b=el('div',null,'body'),nm=el('div',null,'name'),claim=p.t==='claim';
   nm.appendChild(el('span',p.name||''));
-  var kind=p.t==='new'?'طلب انضمام (غير مدرج)':p.t==='claim'?'«هذا حسابي» (كلمة مرور جديدة)':p.t==='mismatch'?'اسم غير مطابق':'جهاز جديد';
-  nm.appendChild(el('span',kind,'tag warn'));b.appendChild(nm);
+  var kind=p.t==='new'?'طلب انضمام (غير مدرج)':claim?'«هذا حسابي» (كلمة مرور جديدة)':p.t==='mismatch'?'اسم غير مطابق':'جهاز جديد';
+  nm.appendChild(el('span',kind,'tag warn'));
+  if(claim||p.t==='device')nm.appendChild(trustTag(!!p.kd));
+  b.appendChild(nm);
   b.appendChild(el('div',(p.rn?'في القائمة: '+p.rn+(p.g?' · فوج '+p.g:''):'غير موجود في القائمة'),'meta'));
+  if(p.dl)b.appendChild(el('div','الجهاز: '+p.dl,'meta'));
+  if(claim&&p.dob)b.appendChild(el('div','تاريخ الميلاد المكتوب: '+p.dob,'meta'));
   b.appendChild(el('div',when(p.ts),'meta'));
+  if(claim){
+   b.appendChild(el('div',p.at>Date.now()?'إن قبلتَ الآن يُنفَّذ بعد '+remain(p.at-Date.now())+' (المهلة تُحسب من وقت الطلب)':'انتهت المهلة: يُنفَّذ فور القبول','meta'));
+   var holder=el('div',null,'');b.appendChild(holder);
+   var cb=btn('عرض صورة البطاقة','soft',function(){loadCard(p,holder,cb)});
+   var ca=el('div',null,'acts');ca.appendChild(cb);b.appendChild(ca);
+  }
   var ac=el('div',null,'acts');
-  ac.appendChild(btn('قبول','',function(){act('approve',{id:p.id},'تم قبول الطلب')}));
+  if(claim){
+   ac.appendChild(btn('قبول','',function(){
+    api('approve',{id:p.id},'').then(function(j){
+     if(j.error)toast('خطأ: '+j.error);else toast(j.executed?'تم التنفيذ':'قُبل، يُنفَّذ بعد '+remain((j.at||0)-Date.now()));
+     return load(true)});
+   }));
+   ac.appendChild(btn('قبول وننفّذ الآن','danger',function(){
+    ask('تنفيذ فوري','ستتغير كلمة مرور «'+(p.rn||p.name||'')+'» وتُلغى كل جلساتها القديمة الآن، دون انتظار المهلة.','ننفّذ الآن',function(){act('approve',{id:p.id,now:'1'},'تم التنفيذ')});
+   }));
+  }else ac.appendChild(btn('قبول','',function(){act('approve',{id:p.id},'تم قبول الطلب')}));
   ac.appendChild(btn('رفض','ghost',function(){act('reject',{id:p.id},'تم رفض الطلب')}));
   b.appendChild(ac);it.appendChild(b);P.appendChild(it);
+ });
+}
+function renderClaims(){
+ var S2=$('schedBox'),L=$('clLog');S2.textContent='';L.textContent='';
+ var sc=data.sched||[],lg=data.claimlog||[];
+ $('clCount').textContent=sc.length?sc.length+' مجدول':'';
+ if(!sc.length)S2.appendChild(el('div','لا توجد طلبات مجدولة.','empty'));
+ sc.forEach(function(x,i){
+  var it=el('div',null,'item');it.appendChild(avatar(x.n));
+  var b=el('div',null,'body'),nm=el('div',null,'name');
+  nm.appendChild(el('span',x.n||''));nm.appendChild(trustTag(!!x.kd));b.appendChild(nm);
+  if(x.dl)b.appendChild(el('div','الجهاز: '+x.dl,'meta'));
+  b.appendChild(el('div','طُلب: '+when(x.ts)+' · يُنفَّذ بعد '+remain((x.at||0)-Date.now()),'meta'));
+  var ac=el('div',null,'acts');
+  ac.appendChild(btn('ننفّذ الآن','danger',function(){ask('تنفيذ فوري','ستتغير كلمة المرور وتُلغى الجلسات القديمة الآن.','ننفّذ الآن',function(){act('execnow',{id:x.id},'تم التنفيذ')})}));
+  ac.appendChild(btn('إلغاء الطلب','ghost',function(){ask('إلغاء','سيُلغى هذا الطلب ولن يتغير شيء في الحساب.','إلغاء الطلب',function(){act('cancelsched',{id:x.id},'تم الإلغاء')})}));
+  b.appendChild(ac);it.appendChild(b);S2.appendChild(it);
+ });
+ if(!lg.length)L.appendChild(el('div','السجل فارغ.','empty'));
+ lg.forEach(function(e){
+  var it=el('div',null,'item'),b=el('div',null,'body'),nm=el('div',null,'name');
+  nm.appendChild(el('span',e.n||'—'));
+  nm.appendChild(el('span',KIND_TX[e.k]||e.k,'tag '+(e.k==='owner_reject'?'bad':e.k==='exec'?'ok':'warn')));
+  if(e.k==='request'||e.k==='approve')nm.appendChild(trustTag(!!e.kd));
+  b.appendChild(nm);
+  b.appendChild(el('div',when(e.ts)+(e.dl?' · '+e.dl:''),'meta'));
+  it.appendChild(b);L.appendChild(it);
+ });
+}
+function renderAlert(){
+ var seen=Number(localStorage.getItem('ensd_cl_seen')||0),lg=data.claimlog||[];
+ var n=lg.filter(function(e){return e.k==='owner_reject'&&e.ts>seen}).length;
+ var box=$('clAlert'),t=$('tCl');
+ t.hidden=!n;t.textContent=n;box.hidden=!n;box.textContent='';
+ if(n){
+  box.appendChild(document.createTextNode('تنبيه: رفض صاحب الحساب '+n+' طلب استعادة. راجع تبويب «الاستعادة».'));
+  box.appendChild(document.createElement('br'));
+  box.appendChild(btn('تم الاطلاع','ghost',function(){localStorage.setItem('ensd_cl_seen',String(Date.now()));renderAlert()}));
+ }
+}
+function showDevices(u){
+ api('devices',{sid:u.sid}).then(function(j){
+  var o=el('div',null,'ov'),m=el('div',null,'card modal');
+  m.appendChild(el('h3','أجهزة '+(u.n||'')));
+  var list=j.devices||[];
+  if(!list.length)m.appendChild(el('p','لا توجد أجهزة مسجّلة.'));
+  list.forEach(function(d){m.appendChild(el('p',(d.l||'جهاز (بلا تفاصيل)')+' · أول استعمال '+(d.t?when(d.t):'—')+' · آخر استعمال '+(d.s?when(d.s):'—')))});
+  var c=el('button','إغلاق','btn ghost');c.style.width='100%';c.onclick=function(){o.remove()};
+  o.onclick=function(e){if(e.target===o)o.remove()};m.appendChild(c);o.appendChild(m);document.body.appendChild(o);
  });
 }
 function renderUsers(){
@@ -2738,6 +3128,7 @@ function renderUsers(){
    if(u.banned)act('unban',{sid:u.sid},'تم إلغاء الحظر');
    else ask('حظر الطالب','سيُمنع «'+(u.n||'')+'» من الدخول فوراً.','حظر',function(){act('ban',{sid:u.sid},'تم الحظر')});
   }));
+  ac.appendChild(btn('الأجهزة','soft',function(){showDevices(u)}));
   ac.appendChild(btn('تصفير كلمة المرور','ghost',function(){
    ask('تصفير كلمة المرور','ستُحذف كلمة مرور «'+(u.n||'')+'» وتبقى أجهزته، ليضع كلمة جديدة.','تصفير',function(){act('resetpw',{sid:u.sid},'تم تصفير كلمة المرور')});
   }));
@@ -2769,11 +3160,11 @@ function renderStaff(){
  if(!P.length)S.appendChild(el('div','لا يوجد مشرفون معيَّنون.','empty'));
  P.forEach(function(x){S.appendChild(staffItem((x.name||'')+(x.pg?' · المجموعة '+x.pg:''),x.on?'نشط':'غير نشط',x.on?'ok':'',x.ls,x.on,i++))});
 }
-function render(){renderStats();renderPending();renderUsers();renderStaff()}
+function render(){renderStats();renderPending();renderClaims();renderAlert();renderUsers();renderStaff()}
 function setTab(t){
  tab=t;
  [].forEach.call(document.querySelectorAll('.tab'),function(b){b.setAttribute('aria-selected',String(b.getAttribute('data-t')===t))});
- ['pending','users','staff','import'].forEach(function(k){$('p-'+k).hidden=k!==t});
+ ['pending','users','claims','staff','import'].forEach(function(k){$('p-'+k).hidden=k!==t});
 }
 function load(silent){
  var rf=$('rf');if(!silent)rf.classList.add('spin');
@@ -2823,6 +3214,9 @@ if(code)load();
 
 
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(execDueAll(env).catch(() => {}));
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const gate = await authGate(request, env, url, ctx);
