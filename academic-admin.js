@@ -690,6 +690,20 @@
       status.textContent = error.message === "unauthorized" ? "انتهت صلاحية الدخول؛ سجّل الدخول مجددًا." : "تعذر الحفظ. تحقق من إعداد التخزين ثم حاول مجددًا.";
     } finally { button.disabled = false; }
   }
+  /* تذكّر اختيار السنة الجامعية والسداسي على هذا الجهاز ليبقى بعد تحديث الصفحة */
+  const CTX_KEY = "ensd_academic_context";
+  function saveContext() {
+    try { localStorage.setItem(CTX_KEY, JSON.stringify({ y: activeYearId, s: activeSemesterId })); } catch {}
+  }
+  function restoreContext() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CTX_KEY) || "null");
+      const yr = saved && config?.years?.find(item => item.id === saved.y);
+      if (!yr) return;
+      activeYearId = yr.id;
+      activeSemesterId = yr.semesters?.some(item => item.id === saved.s) ? saved.s : (yr.semesters?.[0]?.id || "");
+    } catch {}
+  }
   async function init() {
     try {
       config = defaultConfig();
@@ -703,14 +717,15 @@
     prepareYearSchedules();
     scheduleGroupId = scheduleGroups()[0]?.id || "";
     scheduleFogId = scheduleGroups()[0]?.fogs?.[0]?.id || "";
+    restoreContext();
     refreshAll();
     ensureProgramImageEditor();
     renderProgramImageEditor();
     $("academicYearSelect")?.addEventListener("change", event => {
-      activeYearId = event.target.value; activeSemesterId = selectedYear()?.semesters[0]?.id || ""; refreshAll();
+      activeYearId = event.target.value; activeSemesterId = selectedYear()?.semesters[0]?.id || ""; saveContext(); refreshAll();
     });
     $("academicSemesterSelect")?.addEventListener("change", event => {
-      activeSemesterId = event.target.value; refreshAll();
+      activeSemesterId = event.target.value; saveContext(); refreshAll();
     });
     $("academicEditYear")?.addEventListener("change", () => {
       refreshEditorSelectors();
