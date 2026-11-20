@@ -7456,6 +7456,20 @@ html.lite-motion .au-overlay.in{-webkit-backdrop-filter:none;backdrop-filter:non
 .au-badge{overflow:hidden}.au-badge img.au-photo{width:100%;height:100%;object-fit:cover;display:block}
 .profile .avatar img.av-photo{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
 .au-ph{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.au-ph-btn{padding:8px 14px;border-radius:12px;border:1px solid var(--line,#cfe0da);background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:700;cursor:pointer}.au-ph-btn.del{color:#b3261e;border-color:rgba(179,38,30,.35)}.au-ph-btn:disabled{opacity:.55;cursor:wait}
+.au-file{display:block;cursor:pointer}.au-file input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.au-file b{display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;border-radius:15px;border:1.5px dashed var(--line);background:var(--surface-2,#f4f8f8);font-size:13.5px;font-weight:700;color:var(--primary-dark)}
+.au-file b svg{width:20px;height:20px;flex:none}.au-file b em{font-style:normal;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.au-idstage{margin-top:10px}.au-idwrap{border-radius:14px;overflow:hidden;border:1.5px solid var(--line);background:#000;line-height:0}
+.au-idwrap canvas{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+.au-idbtns{display:flex;gap:8px;margin-top:8px}
+.au-chk{display:flex;align-items:flex-start;gap:9px;margin:12px 2px 0;font-size:13px;font-weight:700;line-height:1.6}.au-chk input{margin-top:4px;width:18px;height:18px;flex:none}
+.au-input input[type=date]{direction:ltr;text-align:right}
+.au-devs{margin-top:6px;display:grid;gap:6px}.au-dev{font-size:12.5px;line-height:1.6;padding:7px 10px;border-radius:11px;background:var(--soft)}.au-dev small{display:block;color:var(--muted);font-size:11px}.au-dev i{font-style:normal;font-size:10.5px;font-weight:800;color:var(--primary-dark);margin-inline-start:6px}
+.au-claimbar{position:fixed;z-index:2147483000;inset-inline:12px;top:calc(10px + env(safe-area-inset-top,0px));max-width:520px;margin-inline:auto;padding:13px 15px;border-radius:16px;background:#fff4e5;border:1.5px solid #f0b45a;color:#4a2f00;box-shadow:0 14px 34px rgba(0,0,0,.22);font-size:13.5px;line-height:1.7;animation:auViewIn .35s both}
+.au-claimbar b{display:block;font-size:14.5px;margin-bottom:2px}.au-claimbar small{display:block;color:#7a5a20;font-size:12px}
+.au-claimbar .row{display:flex;gap:8px;margin-top:10px}.au-claimbar button{flex:1;min-height:40px;border-radius:12px;font:inherit;font-weight:800;font-size:13.5px;cursor:pointer;border:1.5px solid #d9a64f;background:transparent;color:#4a2f00}
+.au-claimbar button.no{background:#b3261e;border-color:#b3261e;color:#fff}.au-claimbar button:disabled{opacity:.6}
+html[data-theme=dark] .au-claimbar{background:#33260f;border-color:#8a6422;color:#ffe8c2}html[data-theme=dark] .au-claimbar small{color:#d9b97a}html[data-theme=dark] .au-claimbar button{color:#ffe8c2;border-color:#8a6422}
 </style>
 <script id="auth-ui-20261117">
 (function(){
@@ -7520,14 +7534,33 @@ paint();
 function refresh(){
  return api("/api/auth/me").then(function(j){
   if(j.__http!==200||typeof j.in!=="boolean")throw 0;
-  if(j.in){S.st="in";S.me=j;ls.set(KHINT,JSON.stringify(j));paint();if((j.group==="A"||j.group==="B")&&j.group!==ls.get("ensd_student_group")){try{window.setGroup&&window.setGroup(j.group)}catch(e){}}}
+  if(j.in){S.st="in";S.me=j;ls.set(KHINT,JSON.stringify(j));paint();claimBar(j);if((j.group==="A"||j.group==="B")&&j.group!==ls.get("ensd_student_group")){try{window.setGroup&&window.setGroup(j.group)}catch(e){}}}
   else{S.st="out";S.me=null;ls.del(KHINT);paint();return pendingCheck()}
  }).catch(function(){if(S.st==="unknown"){S.st="off";paint()}});
+}
+/* تنبيه صاحب الحساب أثناء مهلة طلب «هذا حسابي»: «هل هذا أنت؟» + زر «لا، ارفض» */
+function claimBar(j){
+ var old=D.getElementById("auClaimBar");if(old)old.remove();
+ var c=j&&j.claims&&j.claims.length?j.claims[j.claims.length-1]:null;if(!c||j.admin)return;
+ var key="ensd_claim_ok",seen=0;try{seen=Number(sessionStorage.getItem(key)||0)}catch(e){}
+ if(c.ts<=seen)return;
+ var bar=D.createElement("div");bar.id="auClaimBar";bar.className="au-claimbar";bar.setAttribute("role","alert");
+ bar.innerHTML='<b>طلب أحدهم استعادة حسابك، هل هذا أنت؟</b><small>'+(c.kd?"من جهاز معروف":"من جهاز غير معروف")+(c.dl?" · "+esc(c.dl):"")+'</small><div class="row"><button type="button" class="no">لا، ارفض</button><button type="button" class="yes">نعم، هذا أنا</button></div>';
+ D.body.appendChild(bar);
+ bar.querySelector(".yes").addEventListener("click",function(){try{sessionStorage.setItem(key,String(c.ts))}catch(e){}bar.remove()});
+ var no=bar.querySelector(".no");
+ no.addEventListener("click",function(){
+  no.disabled=true;
+  api("/api/auth/claim-reject",{method:"POST",body:{}}).then(function(r){
+   if(r.ok){bar.remove();toast("أُلغي الطلب وأُبلغت الإدارة.")}
+   else{no.disabled=false;toast("تعذّر الإلغاء، أعد المحاولة.")}
+  }).catch(function(){no.disabled=false;toast("تعذّر الاتصال.")});
+ });
 }
 function pendingCheck(){
  return api("/api/auth/status").then(function(j){
   if(j.status==="ok"){finishPending();ls.del(KHINT);location.reload()}
-  else if(j.status==="pending"){S.st="wait";paint()}
+  else if(j.status==="pending"||j.status==="scheduled"){S.st="wait";paint()}
  }).catch(function(){});
 }
 function finishPending(){var r=ls.get(KPEND);if(r){ls.set(KREG,r);ls.del(KPEND)}}
@@ -7585,7 +7618,9 @@ function viewLogin(msgText){
  '<div class="au-foot"><button class="au-link" id="auAdm" type="button">'+ic("key")+'دخول خاص</button></div>'+
  '<form class="au-admin" id="auAf" hidden novalidate><label class="au-field"><span>رمز المشرف</span><div class="au-input">'+ic("key")+'<input id="auCode" type="password" autocomplete="off"></div></label><button class="au-primary" type="submit"><span class="au-btn-label">دخول خاص</span><span class="au-spin"></span></button></form>');
 
- var box=$("#auStep"),busy=false,reg="",NOTE="";
+ var box=$("#auStep"),busy=false,reg="",NOTE="",CUR=null;
+ /* يظهر زر «هذا حسابي» فقط بعد إدخال كلمة مرور خاطئة */
+ function showClaim(){var sl=$("#auClaimSlot");if(!sl||sl.firstChild||!CUR)return;sl.innerHTML=sec("auClaim","هذا حسابي (نسيت كلمة المرور أو سبقني أحد إليه)");wire("#auClaim",function(){stepClaim(CUR)})}
  function say(t,bad){var m=$("#auMsg");if(!m)return;m.className="au-msg"+(t?(bad?" bad":" ok"):"");m.innerHTML=t?ic(bad?"alert":"check")+"<span>"+esc(t)+"</span>":""}
  function fail(t){say(t,1);shake()}
  function fld(label,id,icon,attrs,hint){return '<label class="au-field"><span>'+label+'</span><div class="au-input">'+ic(icon)+'<input id="'+id+'" '+attrs+'></div>'+(hint?'<small class="au-hint">'+hint+'</small>':'')+'</label>'}
@@ -7607,7 +7642,10 @@ function viewLogin(msgText){
    if(j.status==="ok"){ls.set(KREG,reg);render("success")}
    else if(j.status==="pending"){ls.set(KPEND,reg);S.st="wait";paint();render("pending")}
    else if(j.status==="banned")fail("تم إيقاف هذا الحساب. تواصل مع الإدارة.");
-   else if(j.status==="wrongpw")fail("كلمة المرور غير صحيحة.");
+   else if(j.status==="wrongpw"){fail("كلمة المرور غير صحيحة.");showClaim()}
+   else if(j.error==="claim_locked"){NOTE="انتهت صلاحية هذه الخطوة. جرّب الدخول أولاً بكلمة المرور.";stepReg()}
+   else if(j.error==="invalid_dob")fail("تاريخ الميلاد غير صالح.");
+   else if(j.error==="invalid_image")fail("صورة البطاقة غير صالحة أو كبيرة جداً. أعد التقاطها.");
    else if(j.error==="rate_limited")fail("محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.");
    else if(j.error==="weak_password")fail("كلمة المرور قصيرة: 6 أحرف على الأقل.");
    else if(j.error==="auth_not_configured")fail("نظام الدخول غير مهيّأ بعد.");
@@ -7650,22 +7688,79 @@ function viewLogin(msgText){
  function stepLogin(info){
   show(who(info.name)+
    fld("كلمة المرور","auPw","key",'type="password" name="password" autocomplete="current-password" enterkeyhint="go"')+primary("دخول")+
-   sec("auClaim","هذا حسابي (نسيت كلمة المرور أو سبقني أحد إليه)")+sec("auBack","تغيير الرقم"),
+   '<div id="auClaimSlot"></div>'+sec("auBack","تغيير الرقم"),
   function(){var pw=$("#auPw").value;if(!pw){fail("أدخل كلمة المرور.");return}post({step:"login",regno:reg,password:pw})},"#auPw");
-  wire("#auClaim",function(){stepClaim(info)});
+  CUR=info;
   wire("#auBack",function(){stepReg()});
  }
 
- /* «هذا حسابي»: كلمة مرور جديدة بعد موافقة الإدارة */
+ /* «هذا حسابي»: اسم + تاريخ ميلاد + صورة البطاقة (وجهك مغطّى) + كلمة مرور جديدة. لا يتغير شيء قبل موافقة المالك */
+ function idWidget(){
+  return '<div class="au-field"><span>صورة البطاقة (بدون صورة وجهك)</span>'+
+   '<label class="au-file"><input id="auIdFile" type="file" accept="image/*"><b>'+ic("id")+'<em id="auIdName">اختر صورة البطاقة أو صوّرها</em></b></label>'+
+   '<small class="au-hint">تصل الصورة إلى الإدارة وحدها وتُحذف تلقائياً بعد البتّ في طلبك. وجهك لا يُرسَل أبداً: ستغطّيه بنفسك قبل الإرسال.</small>'+
+   '<div class="au-idstage" id="auIdStage" hidden><small class="au-hint" style="margin:0 2px 8px">اسحب بإصبعك فوق صورة وجهك على البطاقة لتغطيتها بالأسود (يمكنك تغطية أكثر من موضع).</small>'+
+   '<div class="au-idwrap"><canvas id="auIdCv" aria-label="صورة البطاقة للتغطية"></canvas></div>'+
+   '<div class="au-idbtns"><button type="button" class="au-ph-btn" id="auIdUndo">تراجع</button><button type="button" class="au-ph-btn" id="auIdClear">مسح التغطية</button></div>'+
+   '<label class="au-chk"><input type="checkbox" id="auIdOk"><span>أؤكد أن صورة وجهي مغطّاة بالكامل</span></label></div></div>';
+ }
+ /* يعيد كائناً: result() => {ok,data|msg}. التغطية تُدمج في بكسلات الصورة قبل الرفع فلا يمكن استرجاع الوجه */
+ function wireId(){
+  var fi=$("#auIdFile"),stage=$("#auIdStage"),cv=$("#auIdCv"),cx=cv.getContext("2d"),img=null,rects=[],drag=null;
+  function draw(){
+   if(!img)return;cx.drawImage(img,0,0,cv.width,cv.height);cx.fillStyle="#000";
+   rects.forEach(function(r){cx.fillRect(r.x,r.y,r.w,r.h)});
+   if(drag){cx.fillStyle="rgba(0,0,0,.65)";cx.fillRect(drag.x,drag.y,drag.w,drag.h);cx.strokeStyle="#ff3b30";cx.lineWidth=3;cx.strokeRect(drag.x,drag.y,drag.w,drag.h)}
+  }
+  function pos(e){var b=cv.getBoundingClientRect();return{x:Math.min(cv.width,Math.max(0,(e.clientX-b.left)*cv.width/b.width)),y:Math.min(cv.height,Math.max(0,(e.clientY-b.top)*cv.height/b.height))}}
+  function upd(e){var p=pos(e);drag.x=Math.min(drag.sx,p.x);drag.y=Math.min(drag.sy,p.y);drag.w=Math.abs(p.x-drag.sx);drag.h=Math.abs(p.y-drag.sy);draw()}
+  cv.addEventListener("pointerdown",function(e){if(!img)return;e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(x){}var p=pos(e);drag={sx:p.x,sy:p.y,x:p.x,y:p.y,w:0,h:0}});
+  cv.addEventListener("pointermove",function(e){if(drag){e.preventDefault();upd(e)}});
+  function end(e){if(!drag)return;upd(e);if(drag.w>10&&drag.h>10)rects.push({x:drag.x,y:drag.y,w:drag.w,h:drag.h});drag=null;draw()}
+  cv.addEventListener("pointerup",end);cv.addEventListener("pointercancel",function(){drag=null;draw()});
+  $("#auIdUndo").addEventListener("click",function(){rects.pop();draw()});
+  $("#auIdClear").addEventListener("click",function(){rects=[];draw()});
+  fi.addEventListener("change",function(){
+   var f=fi.files&&fi.files[0];if(!f)return;
+   if(!/^image\//.test(f.type)){fail("اختر ملف صورة.");fi.value="";return}
+   var u=URL.createObjectURL(f),im=new Image();
+   im.onload=function(){
+    URL.revokeObjectURL(u);
+    var w=im.naturalWidth,h=im.naturalHeight;
+    if(w<400||h<250){fail("الصورة صغيرة جداً. صوّر البطاقة من مسافة أقرب.");fi.value="";return}
+    var k=Math.min(1,1280/Math.max(w,h));cv.width=Math.round(w*k);cv.height=Math.round(h*k);
+    img=im;rects=[];drag=null;draw();stage.hidden=false;$("#auIdOk").checked=false;
+    $("#auIdName").textContent=f.name||"تم اختيار الصورة";say("");
+   };
+   im.onerror=function(){URL.revokeObjectURL(u);fail("تعذّر قراءة الصورة. جرّب صورة أخرى.");fi.value=""};
+   im.src=u;
+  });
+  return{result:function(){
+   if(!img)return{ok:false,msg:"أضف صورة البطاقة."};
+   var area=cv.width*cv.height,big=rects.reduce(function(m,r){return Math.max(m,r.w*r.h)},0);
+   if(big<area*0.02)return{ok:false,msg:"غطِّ صورة وجهك على البطاقة بالأسود قبل الإرسال."};
+   if(!$("#auIdOk").checked)return{ok:false,msg:"أكّد أن صورة وجهك مغطّاة."};
+   drag=null;draw();
+   var q=0.82,d=cv.toDataURL("image/jpeg",q);
+   while(d.length>1150000&&q>0.4){q-=0.1;d=cv.toDataURL("image/jpeg",q)}
+   return d.length>1150000?{ok:false,msg:"الصورة كبيرة جداً. صوّرها من جديد."}:{ok:true,data:d};
+  }};
+ }
  function stepClaim(info){
-  show(who(info.name)+'<p class="au-lead">اكتب اسمك الكامل واختر كلمة مرور جديدة. يصل طلبك إلى الإدارة، وبعد موافقتها تدخل بها ويُلغى ما سواها.</p>'+
-   fld("الاسم الكامل","auName","user",'name="name" autocomplete="name" enterkeyhint="next" placeholder="الاسم واللقب"')+PW1()+primary("إرسال الطلب")+sec("auBack","رجوع"),
+  var maxD=new Date(),minD="1940-01-01";maxD.setFullYear(maxD.getFullYear()-14);
+  show(who(info.name)+'<p class="au-lead">لإثبات أنك صاحب الحساب: اكتب اسمك الكامل وتاريخ ميلادك، وأرفق صورة بطاقتك بعد تغطية وجهك، ثم اختر كلمة مرور جديدة. لا يتغير شيء في الحساب قبل موافقة الإدارة، وبعدها تُغيَّر كلمة المرور وتُلغى كل الجلسات القديمة.</p>'+
+   fld("الاسم الكامل","auName","user",'name="name" autocomplete="name" enterkeyhint="next" placeholder="الاسم واللقب"')+
+   fld("تاريخ الميلاد","auDob","cal",'type="date" min="'+minD+'" max="'+maxD.toISOString().slice(0,10)+'"')+
+   idWidget()+PW1()+primary("إرسال الطلب")+sec("auBack","رجوع"),
   function(){
    var n=$("#auName").value.trim().replace(/\s+/g," ");
    if(n.split(" ").length<2){fail("أدخل اسمك الكامل (كلمتان على الأقل).");$("#auName").focus();return}
+   var dob=$("#auDob").value;if(!/^\d{4}-\d{2}-\d{2}$/.test(dob)){fail("أدخل تاريخ ميلادك.");$("#auDob").focus();return}
+   var r=IDW.result();if(!r.ok){fail(r.msg);return}
    var pw=pwPair();if(!pw)return;
-   post({step:"claim",regno:reg,name:n,password:pw});
+   post({step:"claim",regno:reg,name:n,dob:dob,idimg:r.data,password:pw});
   },"#auName");
+  var IDW=wireId();
   wire("#auBack",function(){stepLogin(info)});
  }
 
@@ -7702,16 +7797,19 @@ function viewLogin(msgText){
 /* --- انتظار الموافقة --- */
 function viewPending(){
  hero(ic("clock"),"طلبك قيد المراجعة","تم إرسال طلبك إلى الإدارة");
- body('<div class="au-center"><div class="au-wait">'+ic("clock")+'</div><p>أبقِ هذه النافذة مفتوحة، وستدخل تلقائياً بمجرّد الموافقة على طلبك.</p></div><button type="button" class="au-ghost" id="auBack">رجوع</button>');
+ body('<div class="au-center"><div class="au-wait">'+ic("clock")+'</div><p id="auPendTx">أبقِ هذه النافذة مفتوحة، وستدخل تلقائياً بمجرّد الموافقة على طلبك.</p></div><button type="button" class="au-ghost" id="auBack">رجوع</button>');
  $("#auBack").addEventListener("click",function(){render("login")});
  stopPoll();
- poll=setInterval(function(){
+ function leftTx(ms){var m=Math.max(1,Math.ceil(ms/60000)),h=Math.floor(m/60);return h>=1?h+" ساعة"+(m%60?" و"+(m%60)+" دقيقة":""):m+" دقيقة"}
+ function tick(){
   api("/api/auth/status").then(function(j){
-   if(j.status==="ok"){finishPending();render("success")}
+   if(j.status==="scheduled"){var t=$("#auPendTx");if(t)t.textContent="تمت الموافقة على طلبك. لحمايتك يبدأ العمل بكلمة المرور الجديدة بعد "+leftTx(j.at-Date.now())+". أبقِ النافذة مفتوحة أو عُد لاحقاً وادخل بكلمتك الجديدة."}
+   else if(j.status==="ok"){finishPending();render("success")}
    else if(j.status==="rejected"){ls.del(KPEND);S.st="out";paint();render("login");toastInline("تم رفض الطلب. تواصل مع الإدارة.")}
    else if(j.status==="none"){S.st="out";paint();render("login")}
   }).catch(function(){});
- },5000);
+ }
+ tick();poll=setInterval(tick,5000);
 }
 function toastInline(t){var m=$("#auMsg");if(m){m.className="au-msg bad";m.innerHTML=ic("alert")+"<span>"+esc(t)+"</span>"}}
 
@@ -7823,7 +7921,8 @@ function viewProfile(){
   rows+=row(i++,"group","المجموعة",null,{inner:'<div class="au-seg" role="radiogroup" aria-label="اختر مجموعتك"><button type="button" role="radio" data-g="A" aria-checked="'+(g==="A")+'">المجموعة A</button><button type="button" role="radio" data-g="B" aria-checked="'+(g==="B")+'">المجموعة B</button></div><small class="au-hint" id="auGrpMsg">'+(g?"يمكنك تغيير مجموعتك في أي وقت.":"اختر مجموعتك لعرض المحتوى الخاص بها.")+'</small>'});
   rows+=row(i++,"hall","القاعة",esc(hallOf(g)||"تظهر بعد اختيار المجموعة"),{id:"auHall"});
   rows+=row(i++,"cap","التخصص","اللغة العربية · التعليم الابتدائي");
-  rows+=row(i++,"device","الأجهزة المرتبطة",(m.devices||1)+" من "+(m.maxDevices||4));
+  var dv=(m.devList||[]).map(function(d){return '<div class="au-dev">'+esc(d.l||"جهاز")+(d.cur?'<i>هذا الجهاز</i>':'')+'<small>آخر استعمال: '+esc(d.s?fmtDate(d.s):"—")+'</small></div>'}).join("");
+   rows+=row(i++,"device","الأجهزة المرتبطة",(m.devices||1)+" من "+(m.maxDevices||4),{inner:dv?'<div class="au-devs">'+dv+'</div>':""});
   if(m.since)rows+=row(i++,"cal","أول دخول",esc(fmtDate(m.since)));
   rows+=row(i++,"clock","انتهاء الجلسة",exp?esc(fmtDate(exp))+" · بعد "+left+" يوم":"—");
  }
