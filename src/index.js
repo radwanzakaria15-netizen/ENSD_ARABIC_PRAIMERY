@@ -1910,6 +1910,23 @@ async function buildRoster(env, text) {
   return { roster, rows, dup, skipped };
 }
 
+/* ----- كلمة المرور: PBKDF2-SHA256 مع ملح عشوائي (تُحفظ مشفّرة فقط) ----- */
+const PW_ITER = 50000, PW_MIN = 6, PW_MAX = 100;
+const validPw = (p) => typeof p === "string" && p.length >= PW_MIN && p.length <= PW_MAX;
+async function pbkdf2Hex(password, saltHex, iter) {
+  const salt = new Uint8Array(saltHex.match(/../g).map((h) => parseInt(h, 16)));
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iter }, key, 256));
+}
+async function hashPw(password) {
+  const s = hex(crypto.getRandomValues(new Uint8Array(16)));
+  return { s, i: PW_ITER, h: await pbkdf2Hex(password, s, PW_ITER) };
+}
+async function checkPw(password, pw) {
+  if (!pw || !pw.s || !pw.h || typeof password !== "string" || !password) return false;
+  return safeEq(await pbkdf2Hex(password, pw.s, pw.i || PW_ITER), pw.h);
+}
+
 /* ----- تسجيل الدخول ----- */
 async function putDev(env, sid, rec) {
   await kvOf(env).put("dev:" + sid, JSON.stringify(rec), { metadata: { n: rec.n, g: rec.g, ts: rec.ts, c: rec.d.length } });
@@ -1926,7 +1943,7 @@ async function deviceOf(request, env) {
 }
 const devCookie = (token) => setCookie("ensd_dev", token, 365 * 86400);
 
-async function createPending(env, dev, type, sid, typedName, rec, ip) {
+async function createPending(env, dev, type, sid, typedName, rec, ip, pw) {
   const kv = kvOf(env);
   const exists = await kv.get("pend:" + dev.dh);
   if (!exists) {
@@ -1937,7 +1954,7 @@ async function createPending(env, dev, type, sid, typedName, rec, ip) {
     if (list.keys.length > MAX_PENDING) return false;
   }
   const v = { t: type, sid, name: typedName, rn: rec ? rec[0] : "", g: rec ? rec[1] : "", ts: Date.now() };
-  await kv.put("pend:" + dev.dh, JSON.stringify(v), { expirationTtl: PEND_TTL, metadata: v });
+  await kv.put("pend:" + dev.dh, JSON.stringify(pw ? { ...v, pw } : v), { expirationTtl: PEND_TTL, metadata: v });
   return true;
 }
 
@@ -1960,40 +1977,84 @@ async function authLogin(request, env, kind) {
     return jsonC({ status: "ok", role, group }, 200, [await sessionCookie(env, "admin"), await roleCookie(env, role), group ? await groupCookie(env, group) : setCookie("ensd_g", "", 0)]);
   }
 
+  /* مسار الطلبة: الخطوات check / setup / login / claim / join
+     - check: يتحقق من رقم التسجيل فقط ويعيد الاسم ليؤكد الطالب أنه هو، ويحدد الوضع (setup/legacy/login)
+     - setup: أول مرة (أو حساب قديم بلا كلمة مرور): اختيار كلمة المرور
+     - login: رقم التسجيل + كلمة المرور؛ حتى MAX_DEVICES أجهزة، والجهاز الزائد يطلب موافقة
+     - claim: «هذا حسابي»: يضع كلمة مرور جديدة بعد موافقة المالك، ويُصفَّر ارتباط الأجهزة
+     - join: طلب انضمام لغير المدرج في القائمة */
   if (rlCount("fail:" + ip, 900000) >= 10) return jsonC({ error: "rate_limited" }, 429);
-  const name = String(body.name || "").trim().slice(0, 80), regno = normRegno(body.regno);
-  if (!regno || normName(name).split(" ").filter(Boolean).length < 2) return jsonC({ error: "invalid_input" }, 400);
+  const step = String(body.step || (kind === "request" ? "join" : "check"));
+  const regno = normRegno(body.regno), password = typeof body.password === "string" ? body.password : "";
+  const name = String(body.name || "").trim().slice(0, 80);
+  if (!regno) return jsonC({ error: "invalid_input" }, 400);
   const sid = (await mac(env, "r|" + regno)).slice(0, 24);
   const rec = await lookupStudent(env, sid);
-  const matched = !!rec && nameMatches(name, rec[0]);
+  if (rec && (await getBans(env)).has(sid)) return jsonC({ status: "banned" }, 403);
+  const cur = rec ? await kv.get("dev:" + sid, { type: "json" }) : null;
+  const mode = !cur ? "setup" : (cur.pw ? "login" : "legacy");
+  const hasName = normName(name).split(" ").filter(Boolean).length >= 2;
 
-  if (kind === "request") {
-    if (rlCount("req:" + ip, 3600000) >= 3) return jsonC({ error: "rate_limited" }, 429);
-    if (matched) kind = "login";
+  if (step === "check") {
+    if (!rec) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "unknown" }); }
+    return jsonC({ status: "found", name: rec[0], mode });
   }
 
-  if (kind === "login") {
-    if (!matched) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "nomatch" }, 401); }
-    if ((await getBans(env)).has(sid)) return jsonC({ status: "banned" }, 403);
+  if (step === "join") {
+    // طلب انضمام: لغير المدرج في القائمة (أو رقم موجود يتعلق به طلب «هذا حسابي»)
+    if (rec) return jsonC({ error: "invalid_input" }, 400);
+    if (!hasName || !validPw(password)) return jsonC({ error: "invalid_input" }, 400);
+    if (rlCount("req:" + ip, 3600000) >= 3) return jsonC({ error: "rate_limited" }, 429);
+    rlAdd("req:" + ip, 3600000);
     const dev = await deviceOf(request, env);
-    const cookies = dev.fresh ? [devCookie(dev.token)] : [];
-    const cur = await kv.get("dev:" + sid, { type: "json" });
-    if (!cur) {
-      await putDev(env, sid, { d: [dev.dh], n: rec[0], g: rec[1], ts: Date.now() });
-      return jsonC({ status: "ok" }, 200, [...cookies, await sessionCookie(env, sid)]);
-    }
-    if (cur.d.includes(dev.dh)) return jsonC({ status: "ok" }, 200, [...cookies, await sessionCookie(env, sid)]);
-    if (!(await createPending(env, dev, "device", sid, name, rec, ip))) return jsonC({ error: "rate_limited" }, 429);
+    if (!(await createPending(env, dev, "new", sid, name, null, ip, await hashPw(password)))) return jsonC({ error: "rate_limited" }, 429);
     return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
   }
 
-  // طلب مراجعة يدوية (اسم غير مطابق أو طالب غير مدرج)
-  rlAdd("req:" + ip, 3600000);
-  if (sid && (await getBans(env)).has(sid)) return jsonC({ status: "banned" }, 403);
+  if (!rec) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "unknown" }, 404); }
   const dev = await deviceOf(request, env);
-  const ok = await createPending(env, dev, rec ? "mismatch" : "new", sid, name, rec, ip);
-  if (!ok) return jsonC({ error: "rate_limited" }, 429);
-  return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
+  const devCk = dev.fresh ? [devCookie(dev.token)] : [];
+
+  if (step === "setup") {
+    if (mode === "login") return jsonC({ status: "has_password" }, 409);
+    if (!validPw(password)) return jsonC({ error: "weak_password" }, 400);
+    const pw = await hashPw(password);
+    if (mode === "setup") {
+      // أول مرة: يُنشأ الحساب ويُربط بهذا الجهاز مباشرة
+      await putDev(env, sid, { d: [dev.dh], n: rec[0], g: rec[1], ts: Date.now(), pw });
+      return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
+    }
+    // حساب قديم بلا كلمة مرور: من جهاز مسجَّل عنده فقط، وإلا فبموافقة المالك
+    if (cur.d.includes(dev.dh)) {
+      cur.pw = pw; await putDev(env, sid, cur);
+      return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
+    }
+    if (!(await createPending(env, dev, "device", sid, rec[0], rec, ip, pw))) return jsonC({ error: "rate_limited" }, 429);
+    return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
+  }
+
+  if (step === "login") {
+    if (mode !== "login") return jsonC({ status: "needs_setup" }, 409);
+    if (!(await checkPw(password, cur.pw))) { rlAdd("fail:" + ip, 900000); return jsonC({ status: "wrongpw" }, 401); }
+    if (cur.d.includes(dev.dh)) return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
+    if (cur.d.length < MAX_DEVICES) {
+      cur.d.push(dev.dh); await putDev(env, sid, cur);
+      return jsonC({ status: "ok" }, 200, [...devCk, await sessionCookie(env, sid)]);
+    }
+    if (!(await createPending(env, dev, "device", sid, rec[0], rec, ip))) return jsonC({ error: "rate_limited" }, 429);
+    return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
+  }
+
+  if (step === "claim") {
+    // «هذا حسابي»: لمن سبقه غيره إلى حسابه. الاسم الذي يكتبه يظهر للمالك مع الطلب.
+    if (!hasName || !validPw(password)) return jsonC({ error: "invalid_input" }, 400);
+    if (rlCount("req:" + ip, 3600000) >= 3) return jsonC({ error: "rate_limited" }, 429);
+    rlAdd("req:" + ip, 3600000);
+    if (!(await createPending(env, dev, "claim", sid, name, rec, ip, await hashPw(password)))) return jsonC({ error: "rate_limited" }, 429);
+    return jsonC({ status: "pending" }, 200, [devCookie(dev.token)]);
+  }
+
+  return jsonC({ error: "bad_step" }, 400);
 }
 
 async function authStatus(request, env) {
@@ -2112,8 +2173,14 @@ async function authAdmin(request, env, url) {
         if (!known) await kv.put("extra:" + p.sid, JSON.stringify([p.name, p.g || ""]));
         const rec = (await kv.get("dev:" + p.sid, { type: "json" })) ||
           { d: [], n: known ? known[0] : p.name, g: known ? known[1] : (p.g || ""), ts: Date.now() };
-        if (!rec.d.includes(id)) rec.d.push(id);
-        rec.d = rec.d.slice(-MAX_DEVICES);
+        if (p.t === "claim") {
+          // «هذا حسابي»: كلمة المرور الجديدة هي التي اختارها صاحب الطلب، ويبقى جهازه وحده
+          rec.d = [id]; if (p.pw) rec.pw = p.pw;
+        } else {
+          if (!rec.d.includes(id)) rec.d.push(id);
+          rec.d = rec.d.slice(-MAX_DEVICES);
+          if (p.pw && !rec.pw) rec.pw = p.pw;
+        }
         await putDev(env, p.sid, rec);
         await kv.put("res:" + id, JSON.stringify({ ok: true, sid: p.sid }), { expirationTtl: 3600 });
       } else {
@@ -2128,6 +2195,13 @@ async function authAdmin(request, env, url) {
     if (action === "ban") { await updateBans(env, (a) => [...a, sid]); return jsonC({ ok: true }); }
     if (action === "unban") { await updateBans(env, (a) => a.filter((x) => x !== sid)); return jsonC({ ok: true }); }
     if (action === "resetdev") { await kv.delete("dev:" + sid); return jsonC({ ok: true }); }
+    if (action === "resetpw") {
+      // تصفير كلمة المرور: تبقى الأجهزة؛ يضع الطالب كلمة جديدة من جهازه أو بطلب «هذا حسابي»
+      const r = await kv.get("dev:" + sid, { type: "json" });
+      if (!r) return jsonC({ error: "not_found" }, 404);
+      delete r.pw; await putDev(env, sid, r);
+      return jsonC({ ok: true });
+    }
     return jsonC({ error: "bad_action" }, 400);
   } catch (e) {
     return jsonC({ error: "kv_error", message: String(e.message || e).slice(0, 160) }, 502);
@@ -2627,7 +2701,7 @@ function renderPending(){
   it.appendChild(avatar(p.name));
   var b=el('div',null,'body'),nm=el('div',null,'name');
   nm.appendChild(el('span',p.name||''));
-  var kind=p.t==='new'?'طالب غير مدرج':p.t==='mismatch'?'اسم غير مطابق':'جهاز جديد';
+  var kind=p.t==='new'?'طلب انضمام (غير مدرج)':p.t==='claim'?'«هذا حسابي» (كلمة مرور جديدة)':p.t==='mismatch'?'اسم غير مطابق':'جهاز جديد';
   nm.appendChild(el('span',kind,'tag warn'));b.appendChild(nm);
   b.appendChild(el('div',(p.rn?'في القائمة: '+p.rn+(p.g?' · فوج '+p.g:''):'غير موجود في القائمة'),'meta'));
   b.appendChild(el('div',when(p.ts),'meta'));
@@ -2663,6 +2737,9 @@ function renderUsers(){
   ac.appendChild(btn(u.banned?'إلغاء الحظر':'حظر',u.banned?'soft':'danger',function(){
    if(u.banned)act('unban',{sid:u.sid},'تم إلغاء الحظر');
    else ask('حظر الطالب','سيُمنع «'+(u.n||'')+'» من الدخول فوراً.','حظر',function(){act('ban',{sid:u.sid},'تم الحظر')});
+  }));
+  ac.appendChild(btn('تصفير كلمة المرور','ghost',function(){
+   ask('تصفير كلمة المرور','ستُحذف كلمة مرور «'+(u.n||'')+'» وتبقى أجهزته، ليضع كلمة جديدة.','تصفير',function(){act('resetpw',{sid:u.sid},'تم تصفير كلمة المرور')});
   }));
   ac.appendChild(btn('تصفير الأجهزة','ghost',function(){
    ask('تصفير الأجهزة','سيُحذف ارتباط أجهزة «'+(u.n||'')+'» وسيحتاج للموافقة عند الدخول من جهاز جديد.','تصفير',function(){act('resetdev',{sid:u.sid},'تم تصفير الأجهزة')});
