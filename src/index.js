@@ -3234,7 +3234,7 @@ export default {
       return new HTMLRewriter()
         .on('script[src="/academic-admin.js"]', {
           element(element) {
-            element.setAttribute("src", "/academic-admin.js?v=20261116-ui");
+            element.setAttribute("src", "/academic-admin.js?v=20261120-ctx");
           }
         })
         .on('script[src*="/schedule-view.js"]', {
