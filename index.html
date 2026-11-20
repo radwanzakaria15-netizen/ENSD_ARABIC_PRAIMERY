@@ -1362,6 +1362,35 @@ html[data-theme=dark] .auth-banner{border-color:#5b4a22}
 .lesson-group-empty{margin:0 0 13px;padding:16px;border:1px dashed var(--line);border-radius:16px;color:var(--muted);font-size:13px;text-align:center}
 /* مفتاح المجموعات الديناميكي في صفحة الدروس: يتّسع لأي عدد من المجموعات */
 #page-lessons .lesson-group-switch{grid-template-columns:repeat(auto-fit,minmax(135px,1fr))!important}
+
+/* نسخة مضغوطة: قسم أقصر على الهاتف */
+#homeLessons{padding:12px;gap:9px}
+.hl-context{gap:8px}
+.hl-chip>span{display:none}
+.hl-chip .resource-select-trigger,.hl-chip .ux-sel-trigger,.hl-chip select{min-height:36px!important;height:36px;padding:4px 11px!important;font-size:12.5px!important;border-radius:11px!important}
+#homeLessons .hl-banner{padding:8px 13px;border-radius:13px;display:flex;align-items:center;justify-content:space-between}
+#homeLessons .hl-banner br{display:none}
+#homeLessons .hl-banner div{display:flex;align-items:baseline;gap:8px}
+#homeLessons .hl-banner b{font-size:14px}
+.hl-list{gap:8px}
+.hl-hero{padding:12px 14px;gap:8px;border-radius:17px;position:relative}
+.hl-hero-body{gap:11px}
+.hl-hero .hl-ico{width:42px;height:42px;border-radius:13px}
+.hl-hero .hl-ico svg{width:21px;height:21px}
+.hl-hero h4{font-size:15px;-webkit-line-clamp:1}
+.hl-hero-sub{font-size:12px;-webkit-line-clamp:1;margin-top:1px}
+.hl-hero-wm{width:70px;height:70px;top:4px}
+.hl-hero-foot{position:absolute;inset-inline-start:14px;bottom:11px;gap:5px;z-index:1;display:flex}
+.hl-hero-foot b{padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.14);font-weight:800;font-size:10.5px}
+.hl-hero-body{padding-bottom:22px}
+.hl-rail{display:none}
+.hl-row{padding:8px 11px;gap:10px;border-radius:14px}
+.hl-row .hl-ico{width:38px;height:38px;border-radius:12px}
+.hl-row .hl-ico svg{width:19px;height:19px}
+.hl-row-main b{font-size:13px;-webkit-line-clamp:1}
+.hl-row-main small{font-size:11px}
+.hl-pdf{display:none}
+.hl-all{min-height:38px;font-size:12.5px}
 html[data-theme=dark] .hl-row{background:var(--surface)!important}
 html[data-theme=dark] .hl-row .hl-ico{background:hsl(var(--sh,170) 30% 20%)!important;color:hsl(var(--sh,170) 55% 76%)!important}
 html[data-theme=dark] .hl-new{background:hsl(var(--sh,170) 35% 22%);color:hsl(var(--sh,170) 60% 78%)}
@@ -2533,7 +2562,7 @@ window.__academicBridge={
  "use strict";
  const $=id=>document.getElementById(id);
  const KEYRE=/^(?:([A-Z])|Y(\d{1,3})S([1-4])([A-Z]))-(\d{2})-(\d{2})-(\d{2})$/;
- const MAX_SHOWN=5;               /* الأحدث + 4 سابقة */
+ const MAX_SHOWN=3;               /* الأحدث + درسان سابقان */
  const NEW_WINDOW=7*24*3600*1000; /* «جديد» خلال أسبوع */
  const T0=Date.now();
  let CTX=null;                    /* السنة والسداسي الحاليان (يصلان من الإدارة الأكاديمية) */
@@ -2591,7 +2620,7 @@ window.__academicBridge={
    +'<span class="hl-hero-top"><span class="hl-tag">'+(isNew?'<i></i>':'')+(e.ts?'آخر درس منشور':'درس منشور')+'</span><span class="hl-time">'+hlEsc(ago(e.ts))+'</span></span>'
    +'<span class="hl-hero-body"><span class="hl-ico">'+svg(x)+'</span><span style="min-width:0"><h4>'+hlEsc(cleanTitle(e.f.name))+'</h4>'
    +'<p class="hl-hero-sub">'+hlEsc(subjectName(e.p.s))+(ch?' · '+hlEsc(ch):'')+'</p></span></span>'
-   +'<span class="hl-hero-foot"><span class="hl-meta">'+(extOf(e.f)?'<b>'+hlEsc(extOf(e.f))+'</b>':'')+(sizeText(e.f.size)?'<b dir="ltr">'+hlEsc(sizeText(e.f.size))+'</b>':'')+'</span><span class="hl-open">فتح المقياس ←</span></span>'
+   +'<span class="hl-hero-foot">'+(extOf(e.f)?'<b>'+hlEsc(extOf(e.f))+'</b>':'')+(sizeText(e.f.size)?'<b dir="ltr">'+hlEsc(sizeText(e.f.size))+'</b>':'')+'</span>'
    +'</button>';
  }
  function row(e,i){
