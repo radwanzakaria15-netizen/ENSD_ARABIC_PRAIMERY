@@ -132,14 +132,38 @@
     );
     const code = $("academicSemesterSelect");
     if (code) option(code, yr.semesters, activeSemesterId, "لا توجد سداسيات");
-    /* أزرار المجموعات في صفحة الدروس: مدرج وأفواج السنة المختارة فقط */
-    document.querySelectorAll(".lesson-group-option[data-group]").forEach(btn => {
-      const g = (yr.groups || []).find(item => String(item.code || "").toUpperCase() === btn.dataset.group);
-      const small = btn.querySelector("small"); if (!small) return;
-      if (!g) { small.textContent = "لم تُضف أفواج لهذه السنة بعد"; return; }
-      const names = (g.fogs || []).map(f => f.name).filter(Boolean);
-      small.textContent = (g.hall || "") + (names.length ? " · الأفواج " + (names.length > 1 ? names[0] + "–" + names[names.length - 1] : names[0]) : "");
+    applyGroups();
+    /* إعلام باقي الواجهة (الرئيسية) بالسنة والسداسي الحاليين */
+    try {
+      document.dispatchEvent(new CustomEvent("ensd:academic-context", { detail: {
+        years: (config.years || []).map(item => ({ id: item.id, name: item.name })),
+        semesters: (yr.semesters || []).map(item => ({ id: item.id, name: item.name })),
+        yearId: yr.id, yearName: yr.name, semesterId: sem.id, semesterName: sem.name
+      } }));
+    } catch {}
+  }
+  /* مجموعات السنة المختارة (هي نفسها مجموعات قسم التوقيت) تصل إلى الدروس والرئيسية */
+  function applyGroups() {
+    const yr = selectedYear();
+    if (!yr) return;
+    const groups = Array.isArray(yr.groups) ? yr.groups : [];
+    const used = new Set();
+    const list = [];
+    groups.forEach(group => {
+      let code = String(group.code || "").trim().toUpperCase().slice(0, 1);
+      if (!/^[A-Z]$/.test(code) || used.has(code)) code = nextGroupCode(used);
+      used.add(code);
+      list.push({
+        code, name: group.name || ("المجموعة " + code), hall: group.hall || "",
+        fogs: (group.fogs || []).map(f => f.name).filter(Boolean)
+      });
     });
+    window.__academicBridge?.setGroups?.(list);
+  }
+  /* أول حرف غير مستعمل (A..Z) لرمز مجموعة جديدة */
+  function nextGroupCode(taken) {
+    for (let i = 0; i < 26; i++) { const c = String.fromCharCode(65 + i); if (!taken.has(c)) return c; }
+    return "Z";
   }
   function refreshPublicSelectors() {
     const yr = selectedYear();
@@ -443,9 +467,9 @@
       const hall = await safePrompt("اسم المدرج أو القاعة (مثال: مدرج أ)", "", { title: "إضافة مجموعة", allowEmpty: true });
       if (hall === null) return;
       const groups = scheduleGroups();
-      const item = { id: id(), name, hall, code: String.fromCharCode(65 + groups.length), fogs: [] };
+      const item = { id: id(), name, hall, code: nextGroupCode(new Set(groups.map(g => String(g.code || "").toUpperCase()))), fogs: [] };
       groups.push(item); scheduleGroupId = item.id; scheduleFogId = "";
-      markDirty(); renderScheduleEditor();
+      markDirty(); renderScheduleEditor(); applyGroups();
     });
     $("asmEditGroup")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(); if (!group) return;
@@ -453,7 +477,7 @@
       if (!name) return;
       const hall = await safePrompt("اسم المدرج أو القاعة", group.hall || "", { title: "تعديل المجموعة", allowEmpty: true });
       if (hall === null) return;
-      group.name = name; group.hall = hall; markDirty(); renderScheduleEditor();
+      group.name = name; group.hall = hall; markDirty(); renderScheduleEditor(); applyGroups();
     });
     $("asmDeleteGroup")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(); if (!group) return;
@@ -462,7 +486,7 @@
       const remaining = groups.filter(g => g.id !== group.id);
       scheduleYear().groups = remaining;
       scheduleGroupId = remaining[0]?.id || ""; scheduleFogId = remaining[0]?.fogs?.[0]?.id || "";
-      markDirty(); renderScheduleEditor();
+      markDirty(); renderScheduleEditor(); applyGroups();
     });
     $("asmAddFog")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(); if (!group) { alert("أضف مجموعة أولًا."); return; }
@@ -470,18 +494,18 @@
       if (!name) return;
       const fog = { id: id(), name, scheduleImage: "" };
       group.fogs ||= []; group.fogs.push(fog); scheduleFogId = fog.id;
-      markDirty(); renderScheduleEditor();
+      markDirty(); renderScheduleEditor(); applyGroups();
     });
     $("asmEditFog")?.addEventListener("click", async () => {
       const fog = currentScheduleFog(); if (!fog) return;
       const name = await safePrompt("اسم الفوج", fog.name, { title: "تعديل اسم الفوج" });
-      if (!name) return; fog.name = name; markDirty(); renderScheduleEditor();
+      if (!name) return; fog.name = name; markDirty(); renderScheduleEditor(); applyGroups();
     });
     $("asmDeleteFog")?.addEventListener("click", async () => {
       const group = currentScheduleGroup(), fog = currentScheduleFog(); if (!group || !fog) return;
       if (!(await askConfirm("حذف الفوج «" + fog.name + "»؟", "حذف الفوج"))) return;
       group.fogs = group.fogs.filter(f => f.id !== fog.id);
-      scheduleFogId = group.fogs[0]?.id || ""; markDirty(); renderScheduleEditor();
+      scheduleFogId = group.fogs[0]?.id || ""; markDirty(); renderScheduleEditor(); applyGroups();
     });
     $("asmScheduleFile")?.addEventListener("change", uploadScheduleImage);
     $("asmRemoveSchedule")?.addEventListener("click", async () => {

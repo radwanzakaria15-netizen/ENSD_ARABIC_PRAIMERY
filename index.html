@@ -1293,6 +1293,90 @@ button.profile:focus-visible{outline:2px solid var(--primary);outline-offset:2px
 html[data-theme=dark] .auth-banner{border-color:#5b4a22}
 
 </style>
+
+<style id="home-latest-lessons-css-20261121">
+/* ===== الرئيسية: آخر الدروس (تتأثر بالسنة والسداسي والمجموعة) ===== */
+#page-home .hl-head .groups{flex-wrap:wrap;max-width:100%;justify-content:flex-start}
+#page-home .hl-head .groups button{white-space:nowrap}
+#homeLessons{padding:16px;display:flex;flex-direction:column;gap:13px;overflow:hidden}
+.hl-context{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hl-context[hidden]{display:none}
+.hl-chip{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:11px;font-weight:800;color:var(--muted)}
+.hl-chip>span{padding-inline-start:4px;letter-spacing:.2px}
+.hl-chip .ux-sel-trigger{border-inline-start-width:1px!important;box-shadow:none!important;min-height:40px!important;padding:8px 12px!important;border-radius:13px!important;font-size:13px!important;font-weight:800!important;background:var(--surface-2,#f5f9f8)!important;border-color:var(--line)!important;color:var(--ink)!important}
+.hl-chip select{width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:13px;background:var(--surface-2,#f5f9f8);color:var(--ink);font:inherit;font-weight:800;font-size:13px}
+#homeLessons .hl-banner{margin-bottom:0}
+.hl-list{display:grid;gap:10px}
+/* بطاقة الأحدث */
+.hl-hero{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:12px;width:100%;text-align:start;border:0;border-radius:20px;padding:18px 18px 16px;color:#fff;
+ background:radial-gradient(120% 140% at 100% 0%,hsl(var(--sh,170) 46% 40%) 0%,hsl(var(--sh,170) 52% 24%) 62%,hsl(var(--sh,170) 55% 17%) 100%);
+ box-shadow:0 14px 30px -14px hsl(var(--sh,170) 55% 22%/.6);cursor:pointer;transition:transform .22s cubic-bezier(.22,.8,.3,1),box-shadow .22s}
+.hl-hero:hover{transform:translateY(-2px)}
+.hl-hero:focus-visible,.hl-row:focus-visible{outline:3px solid rgba(40,124,120,.35);outline-offset:2px}
+.hl-hero::before{content:"";position:absolute;inset-inline-start:-46px;bottom:-60px;width:190px;height:190px;border-radius:50%;background:rgba(255,255,255,.07)}
+.hl-hero::after{content:"";position:absolute;inset-inline-start:34px;bottom:-84px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.05)}
+.hl-hero-wm{position:absolute;inset-inline-start:14px;top:10px;width:96px;height:96px;opacity:.12;pointer-events:none}
+.hl-hero-wm svg{width:100%;height:100%;fill:none;stroke:#fff;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.hl-hero-top{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hl-tag{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.17);backdrop-filter:blur(4px);font-size:11px;font-weight:850;letter-spacing:.2px}
+.hl-tag i{width:7px;height:7px;border-radius:50%;background:#ffd98a;box-shadow:0 0 0 3px rgba(255,217,138,.28);animation:hlPulse 1.8s ease-in-out infinite}
+@keyframes hlPulse{50%{box-shadow:0 0 0 6px rgba(255,217,138,0)}}
+.hl-time{font-size:11.5px;font-weight:700;opacity:.86}
+.hl-hero-body{position:relative;z-index:1;display:flex;align-items:center;gap:13px}
+.hl-ico{flex:none;display:grid;place-items:center;width:50px;height:50px;border-radius:16px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.22)}
+.hl-ico svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hl-hero h4{margin:0;font-size:17px;line-height:1.5;font-weight:900;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hl-hero-sub{margin:3px 0 0;font-size:12.5px;opacity:.88;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hl-hero-foot{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:800}
+.hl-hero-foot .hl-meta{display:flex;gap:6px;flex-wrap:wrap}
+.hl-hero-foot .hl-meta b{padding:3px 9px;border-radius:99px;background:rgba(255,255,255,.14);font-weight:800;font-size:11px}
+.hl-open{opacity:.95;white-space:nowrap}
+/* صفوف الدروس السابقة */
+.hl-row{display:flex;align-items:center;gap:12px;width:100%;text-align:start;border:1px solid var(--line);border-radius:17px;padding:11px 12px;background:var(--surface);color:var(--ink);cursor:pointer;
+ transition:transform .2s cubic-bezier(.22,.8,.3,1),border-color .2s,box-shadow .2s,background-color .2s}
+.hl-row:hover{transform:translateY(-1px);border-color:hsl(var(--sh,170) 32% 70%);box-shadow:0 8px 20px -14px hsl(var(--sh,170) 45% 30%/.55)}
+.hl-row .hl-ico{width:44px;height:44px;border-radius:14px;background:hsl(var(--sh,170) 42% 93%);border:0;color:hsl(var(--sh,170) 48% 33%)}
+.hl-row .hl-ico svg{width:22px;height:22px}
+.hl-row-main{flex:1;min-width:0}
+.hl-row-main b{display:block;font-size:13.5px;line-height:1.55;font-weight:850;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hl-row-main small{display:block;margin-top:2px;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hl-row-side{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px;text-align:end}
+.hl-row-side small{font-size:11px;color:var(--muted);white-space:nowrap}
+.hl-new{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;font-size:10.5px;font-weight:900;background:hsl(var(--sh,170) 55% 90%);color:hsl(var(--sh,170) 55% 28%)}
+.hl-new::before{content:"";width:6px;height:6px;border-radius:50%;background:hsl(var(--sh,170) 60% 40%)}
+.hl-pdf{font-size:10px;font-weight:900;letter-spacing:.4px;padding:2px 8px;border-radius:7px;background:var(--surface-2,#f5f9f8);border:1px solid var(--line);color:var(--muted)}
+.hl-rail{display:flex;align-items:center;gap:10px;margin:2px 4px 0;font-size:11.5px;font-weight:800;color:var(--muted)}
+.hl-rail::after{content:"";flex:1;height:1px;background:var(--line)}
+.hl-all{align-self:stretch;margin-top:2px;min-height:44px;border:1px dashed hsl(170 25% 72%);border-radius:14px;background:transparent;color:var(--primary-dark);font-weight:850;font-size:13px;transition:background-color .2s,transform .2s}
+.hl-all:hover{background:var(--soft)}
+/* حالة الفراغ والتحميل */
+.hl-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:24px 14px 18px;border:1px dashed var(--line);border-radius:20px;background:linear-gradient(180deg,var(--surface-2,#f5f9f8),transparent)}
+.hl-empty .hl-ico{width:58px;height:58px;border-radius:19px;background:var(--soft);color:var(--primary);border:0}
+.hl-empty .hl-ico svg{width:28px;height:28px}
+.hl-empty b{font-size:15px}
+.hl-empty p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.8;max-width:320px}
+.hl-subjects{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:6px}
+.hl-subjects span{padding:4px 11px;border-radius:99px;font-size:11.5px;font-weight:750;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.hl-skel{height:74px;border-radius:17px;background:linear-gradient(100deg,var(--surface-2,#eef3f2) 30%,var(--surface,#fff) 50%,var(--surface-2,#eef3f2) 70%);background-size:220% 100%;animation:hlSkel 1.3s linear infinite}
+@keyframes hlSkel{to{background-position:-120% 0}}
+.lesson-group-empty{margin:0 0 13px;padding:16px;border:1px dashed var(--line);border-radius:16px;color:var(--muted);font-size:13px;text-align:center}
+/* مفتاح المجموعات الديناميكي في صفحة الدروس: يتّسع لأي عدد من المجموعات */
+#page-lessons .lesson-group-switch{grid-template-columns:repeat(auto-fit,minmax(135px,1fr))!important}
+html[data-theme=dark] .hl-row{background:var(--surface)!important}
+html[data-theme=dark] .hl-row .hl-ico{background:hsl(var(--sh,170) 30% 20%)!important;color:hsl(var(--sh,170) 55% 76%)!important}
+html[data-theme=dark] .hl-new{background:hsl(var(--sh,170) 35% 22%);color:hsl(var(--sh,170) 60% 78%)}
+html[data-theme=dark] .hl-hero{box-shadow:0 14px 30px -16px #000}
+html[data-theme=dark] .hl-empty .hl-ico{background:var(--soft)}
+@media(max-width:700px){
+ #homeLessons{padding:13px;gap:11px}
+ .hl-hero{padding:15px 15px 13px;border-radius:18px}
+ .hl-hero h4{font-size:15.5px}
+ .hl-ico{width:46px;height:46px;border-radius:15px}
+ #page-home .hl-head{align-items:flex-start;flex-direction:column;gap:10px}
+}
+@media(prefers-reduced-motion:reduce){.hl-hero,.hl-row,.hl-tag i,.hl-skel{animation:none!important;transition:none!important}}
+html.lite-motion .hl-tag i,html.lite-motion .hl-skel{animation:none!important}
+</style>
 </head>
 <body>
 <a class="skip-link" href="#main-content">تخطَّ إلى المحتوى</a>
@@ -1324,15 +1408,16 @@ html[data-theme=dark] .auth-banner{border-color:#5b4a22}
    <div class="stat"><div class="stat-icon gold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h6l2 2h8v14H4z"/></svg></div><div><b>الموارد</b><small>ملفات ومراجع</small></div></div>
    <div class="stat"><div class="stat-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/></svg></div><div><b>الإعلانات</b><small>آخر المستجدات</small></div></div>
   </div>
-  <div class="section-head"><div><h3>الدروس والمحاضرات</h3><p>اختر مجموعتك لعرض المحتوى المخصص لها</p></div><div class="groups" role="tablist"><button class="active" data-group="A">المجموعة A</button><button data-group="B">المجموعة B</button></div></div>
+  <div class="section-head hl-head"><div><h3>الدروس والمحاضرات</h3><p id="homeLessonsSub">آخر الدروس المنشورة في مجموعتك</p></div><div class="groups" id="homeGroupTabs" role="tablist"><button class="active" data-group="A">المجموعة A</button><button data-group="B">المجموعة B</button></div></div>
   <div class="content-grid">
-   <section class="panel"><div class="group-banner"><div><b id="groupName">المجموعة A</b><br><span id="groupHall">مدرج أ</span></div><span>المحتوى حسب المجموعة</span></div>
-    <div class="course-list" id="courseList">
-     <article class="course" data-search="مدخل إلى علوم التربية"><div class="course-mark">ت</div><div class="course-info"><b>مدخل إلى علوم التربية</b><small>المحاضرات والملفات الخاصة بالمقياس</small></div><div class="course-meta"><span class="pill">مقياس</span><small>قريباً</small></div></article>
-     <article class="course" data-search="النحو العربي"><div class="course-mark">ن</div><div class="course-info"><b>النحو العربي</b><small>الدروس والتطبيقات</small></div><div class="course-meta"><span class="pill">مقياس</span><small>قريباً</small></div></article>
-     <article class="course" data-search="الصرف العربي"><div class="course-mark">ص</div><div class="course-info"><b>الصرف العربي</b><small>المحاضرات والأعمال الموجهة</small></div><div class="course-meta"><span class="pill">مقياس</span><small>قريباً</small></div></article>
+   <section class="panel hl-panel" id="homeLessons" aria-label="آخر الدروس المنشورة">
+    <div class="hl-context" id="homeContext" hidden>
+     <label class="hl-chip"><span>السنة</span><select id="homeYearSelect" aria-label="السنة الجامعية"></select></label>
+     <label class="hl-chip"><span>السداسي</span><select id="homeSemesterSelect" aria-label="السداسي"></select></label>
     </div>
-    <div class="empty" id="emptyCourses" style="display:none">لا توجد نتائج مطابقة للبحث.</div>
+    <div class="group-banner hl-banner"><div><b id="groupName">المجموعة A</b><br><span id="groupHall">مدرج أ</span></div><span id="homeLessonsCount">آخر الدروس</span></div>
+    <div class="hl-list" id="homeLessonsList" aria-live="polite"></div>
+    <button type="button" class="hl-all" id="homeLessonsAll">عرض كل الدروس ←</button>
    </section>
    <div class="side-stack">
     <section class="panel" id="homeAnnouncements"><div class="section-head" style="margin:0 0 8px"><h3>آخر الإعلانات</h3><button class="text-link" data-go="announcements">عرض الكل</button></div>
@@ -1551,7 +1636,35 @@ function go(page,fromHash){if(!document.getElementById("page-"+page))page="home"
 document.querySelectorAll("[data-page]").forEach(b=>b.addEventListener("click",()=>go(b.dataset.page)));
 document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
 let currentGroup="A";
-try{const savedGroup=localStorage.getItem("ensd_student_group");if(savedGroup==="A"||savedGroup==="B")currentGroup=savedGroup;}catch(e){}
+let PREF_GROUP="";
+try{const savedGroup=localStorage.getItem("ensd_student_group");if(/^[A-Z]$/.test(savedGroup||"")){currentGroup=savedGroup;PREF_GROUP=savedGroup;}}catch(e){}
+/* مجموعات السنة المختارة: تأتي من قسم التوقيت (إعدادات الإدارة الأكاديمية). الافتراضي A وB حتى يصل الإعداد */
+let GROUPS=[{code:"A",name:"المجموعة A",hall:"مدرج أ",fogs:["01","02","03","04","05","06"]},{code:"B",name:"المجموعة B",hall:"مدرج د",fogs:["07","08","09","10","11","12"]}];
+const hlEsc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function groupByCode(c){return GROUPS.find(g=>g.code===c)||null;}
+function groupNameOf(c){const g=groupByCode(c);return g?g.name:"المجموعة "+c;}
+function groupHallOf(c){const g=groupByCode(c);return g?g.hall:(c==="A"?"مدرج أ":c==="B"?"مدرج د":"");}
+function groupSubText(g){const f=g.fogs||[];return (g.hall||"")+(f.length?(g.hall?" · ":"")+"الأفواج "+(f.length>1?f[0]+"–"+f[f.length-1]:f[0]):"");}
+function ensureLessonData(){GROUPS.forEach(g=>{if(!lessonData[g.code]||lessonData[g.code].length!==lessonSubjects.length)lessonData[g.code]=lessonSubjects.map(name=>({name,base:name,lessons:[]}));});}
+function renderGroupSwitchers(){
+ const lessonsBox=document.querySelector("#page-lessons .lesson-group-switch");
+ if(lessonsBox){
+  lessonsBox.hidden=!GROUPS.length;
+  lessonsBox.innerHTML=GROUPS.map(g=>'<button class="lesson-group-option'+(g.code===currentGroup?" active":"")+'" data-group="'+hlEsc(g.code)+'"><span>'+hlEsc(g.name)+'</span><small>'+hlEsc(groupSubText(g)||"—")+'</small></button>').join("");
+  let note=document.getElementById("lessonGroupEmpty");
+  if(!GROUPS.length){if(!note){note=document.createElement("p");note.id="lessonGroupEmpty";note.className="lesson-group-empty";note.textContent="لم تُضف مجموعات لهذه السنة بعد.";lessonsBox.after(note);}}
+  else if(note)note.remove();
+ }
+ const homeBox=document.getElementById("homeGroupTabs");
+ if(homeBox){homeBox.hidden=!GROUPS.length;homeBox.innerHTML=GROUPS.map(g=>'<button class="'+(g.code===currentGroup?"active":"")+'" data-group="'+hlEsc(g.code)+'">'+hlEsc(g.name)+'</button>').join("");}
+}
+function paintGroupHeader(){
+ document.querySelectorAll("[data-group]").forEach(b=>b.classList.toggle("active",b.dataset.group===currentGroup));
+ const set=(id,t)=>{const el=document.getElementById(id);if(el)el.textContent=t;};
+ const none=!GROUPS.length;
+ set("groupName",none?"لا توجد مجموعات":groupNameOf(currentGroup));set("groupHall",none?"":groupHallOf(currentGroup));
+ set("lessonGroup",none?"—":groupNameOf(currentGroup));set("lessonHall",none?"":groupHallOf(currentGroup));
+}
 function filterLessons(){const q=(document.getElementById("lessonSearch")?.value||"").trim().toLocaleLowerCase("ar");const cards=[...document.querySelectorAll("#lessonList .lesson-subject-card")];let shown=0;cards.forEach(card=>{const match=card.textContent.toLocaleLowerCase("ar").includes(q);card.hidden=!match;if(match)shown++;});let status=document.getElementById("lessonSearchStatus");if(!status){status=document.createElement("div");status.id="lessonSearchStatus";status.className="search-status";document.getElementById("lessonList").after(status);}status.textContent=q?(shown?`عدد النتائج: ${shown}`:"لا توجد نتائج مطابقة."): "";}
 document.getElementById("lessonSearch")?.addEventListener("input",filterLessons);
 const lessonSubjects=["علم الأحياء","الصرف العربي","قضايا النقد","الرياضيات","الذكاء الاصطناعي في التعلم","علم نفس النمو: الطفل والمراهق","التربية الإسلامية","النحو العربي","اللغة الإنجليزية","لسانيات عامة"];
@@ -1601,12 +1714,13 @@ async function refreshPublishedLessons(updateCards=true){
   PUBLISHED_LESSONS=Object.create(null);
   (Array.isArray(entries)?entries:[]).forEach(entry=>{
    if(typeof entry==="string"){
-    if(/^[AB]-[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(entry))(PUBLISHED_LESSONS[entry]||(PUBLISHED_LESSONS[entry]=[])).push({key:entry,name:"محاضرة سابقة.pdf",type:"application/pdf",legacy:true});
+    if(/^(?:[A-Z]|Y\d{1,3}S[1-4][A-Z])-[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(entry))(PUBLISHED_LESSONS[entry]||(PUBLISHED_LESSONS[entry]=[])).push({key:entry,name:"محاضرة سابقة.pdf",type:"application/pdf",legacy:true});
    }else if(entry&&typeof entry==="object"&&entry.lessonKey&&entry.key){
     (PUBLISHED_LESSONS[entry.lessonKey]||(PUBLISHED_LESSONS[entry.lessonKey]=[])).push(entry);
    }
   });
   if(updateCards)renderLessonSubjects(currentGroup);
+  try{window.renderHomeLessons&&window.renderHomeLessons();}catch(e){}
   return true;
  }catch(error){
   return false;
@@ -1614,6 +1728,7 @@ async function refreshPublishedLessons(updateCards=true){
 }
 function renderLessonSubjects(g){
  const list=document.getElementById("lessonList");
+ if(!GROUPS.length){list.innerHTML="";try{window.renderHomeLessons&&window.renderHomeLessons();}catch(e){}return;}
  const items=lessonData[g]||[];
  list.innerHTML=items.map((item,index)=>{
   const prefix=lessonKey(g,index,0,0).replace(/-\d{2}-\d{2}$/,"-");
@@ -1623,10 +1738,12 @@ function renderLessonSubjects(g){
  }).join("");
  filterLessons();
  try{decorateLessonCardIcons();}catch(e){}
+ try{window.renderHomeLessons&&window.renderHomeLessons();}catch(e){}
 }
-function setGroup(g){currentGroup=g;try{localStorage.setItem("ensd_student_group",g);}catch(e){}document.querySelectorAll("[data-group]").forEach(b=>b.classList.toggle("active",b.dataset.group===g));const hall=g==="A"?"مدرج أ":"مدرج د";document.getElementById("groupName").textContent="المجموعة "+g;document.getElementById("groupHall").textContent=hall;document.getElementById("lessonGroup").textContent="المجموعة "+g;document.getElementById("lessonHall").textContent=hall;renderLessonSubjects(g);activateLessonAdminForGroup(g);}
-document.querySelectorAll("[data-group]").forEach(b=>b.addEventListener("click",()=>setGroup(b.dataset.group)));
-setGroup(currentGroup);
+function setGroup(g,auto){currentGroup=g;if(!auto){PREF_GROUP=g;try{localStorage.setItem("ensd_student_group",g);}catch(e){}}paintGroupHeader();renderLessonSubjects(g);activateLessonAdminForGroup(g);}
+/* النقر على أي زر مجموعة (الرئيسية أو الدروس) — بالتفويض لأن الأزرار تُبنى ديناميكياً */
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-group]");if(b&&b.dataset.group&&b.dataset.group!==currentGroup)setGroup(b.dataset.group);});
+renderGroupSwitchers();setGroup(currentGroup,true);
 refreshPublishedLessons(true).then(async(ok)=>{window.__lessonsFetched=!!ok;try{window.__paintLessonBadges&&window.__paintLessonBadges();}catch(e){}
  await activateLessonAdminForGroup(currentGroup);
  if(activeLessonCard&&lessonSubjectDialog)openLessonSubjectDialog(activeLessonCard);
@@ -1642,7 +1759,7 @@ document.querySelectorAll("[data-schedule-id]").forEach(button=>{
   view.hidden=false;
   view.classList.remove("schedule-enter");void view.offsetWidth;view.classList.add("schedule-enter");
   document.getElementById("scheduleGroupName").textContent="الفوج "+String(number).padStart(2,"0");
-  document.getElementById("scheduleGroupHall").textContent="المجموعة "+group+" · "+(group==="A"?"مدرج أ":"مدرج د");
+  document.getElementById("scheduleGroupHall").textContent="المجموعة "+group+" · "+groupHallOf(group);
   const img=document.getElementById("scheduleImage");
   if(image){img.src=image;img.alt="جدول توقيت الفوج "+String(number).padStart(2,"0");}
   else{img.removeAttribute("src");}
@@ -2394,11 +2511,175 @@ resourceInitSelects();
 window.__academicBridge={
  getSubjects(){return subjectData;},
  setSubjects(items){if(!subjectDetail.hidden){subjectDetail.hidden=true;subjectsGrid.hidden=false;document.querySelector('.subjects-toolbar').hidden=false;}subjectData.splice(0,subjectData.length,...items.map(item=>({...item,programImage:item.programImage||"",coefficient:(item.coefficient===undefined?"":item.coefficient)})));renderSubjects();},
- setLessonSubjects(names,namesA,namesB){lessonSubjects.splice(0,lessonSubjects.length,...names);lessonData.A=names.map((name,i)=>({name:(namesA&&namesA[i])||name,base:name,lessons:[]}));lessonData.B=names.map((name,i)=>({name:(namesB&&namesB[i])||name,base:name,lessons:[]}));renderLessonSubjects(currentGroup);const total=document.querySelector("#page-lessons .lessons-total b");if(total)total.textContent=String(names.length);const count=document.querySelector("#page-lessons .lesson-summary-count b");if(count)count.textContent=String(names.length);},
+ setLessonSubjects(names,namesA,namesB){lessonSubjects.splice(0,lessonSubjects.length,...names);lessonData.A=names.map((name,i)=>({name:(namesA&&namesA[i])||name,base:name,lessons:[]}));lessonData.B=names.map((name,i)=>({name:(namesB&&namesB[i])||name,base:name,lessons:[]}));GROUPS.forEach(g=>{if(g.code!=="A"&&g.code!=="B")lessonData[g.code]=names.map(name=>({name,base:name,lessons:[]}));});renderLessonSubjects(currentGroup);const total=document.querySelector("#page-lessons .lessons-total b");if(total)total.textContent=String(names.length);const count=document.querySelector("#page-lessons .lesson-summary-count b");if(count)count.textContent=String(names.length);},
    setLessonsMode(mode){window.__lessonShowAll=mode==="show";if(typeof lessonSubjectDialog!=="undefined"&&lessonSubjectDialog&&activeLessonCard)openLessonSubjectDialog(activeLessonCard);},
  setContext(year,semester){ACADEMIC_YEAR_NUMBER=Number(year)||2;ACADEMIC_SEMESTER_NUMBER=Number(semester)||1;},
+ setGroups(list){
+  GROUPS=(Array.isArray(list)?list:[]).filter(g=>g&&/^[A-Z]$/.test(g.code||"")).map(g=>({code:g.code,name:g.name||("المجموعة "+g.code),hall:g.hall||"",fogs:Array.isArray(g.fogs)?g.fogs:[]}));
+  ensureLessonData();
+  const want=groupByCode(PREF_GROUP)?PREF_GROUP:(groupByCode(currentGroup)?currentGroup:(GROUPS[0]?GROUPS[0].code:currentGroup));
+  const changed=want!==currentGroup;
+  if(changed)currentGroup=want;
+  renderGroupSwitchers();paintGroupHeader();
+  if(changed)activateLessonAdminForGroup(currentGroup);
+  renderLessonSubjects(currentGroup);
+ },
  refreshLessons(){renderLessonSubjects(currentGroup);}
 };
+</script>
+<script id="home-latest-lessons-20261121">
+/* الرئيسية ← «الدروس والمحاضرات»: آخر الدروس المنشورة، تتأثر بالسنة الجامعية والسداسي والمجموعة المختارة */
+(function(){
+ "use strict";
+ const $=id=>document.getElementById(id);
+ const KEYRE=/^(?:([A-Z])|Y(\d{1,3})S([1-4])([A-Z]))-(\d{2})-(\d{2})-(\d{2})$/;
+ const MAX_SHOWN=5;               /* الأحدث + 4 سابقة */
+ const NEW_WINDOW=7*24*3600*1000; /* «جديد» خلال أسبوع */
+ const T0=Date.now();
+ let CTX=null;                    /* السنة والسداسي الحاليان (يصلان من الإدارة الأكاديمية) */
+ let SHOWN=[];
+
+ function parseKey(k){
+  const m=KEYRE.exec(String(k));if(!m)return null;
+  const plain=!!m[1];
+  return {group:m[1]||m[4],year:plain?2:Number(m[2]),sem:plain?1:Number(m[3]),s:Number(m[5])-1,a:Number(m[6])-1,c:Number(m[7])-1};
+ }
+ /* ملفات المجموعة المختارة داخل السنة والسداسي الحاليين، الأحدث أولاً */
+ function collect(){
+  const out=[];
+  let published;try{published=PUBLISHED_LESSONS;}catch(e){return out;}
+  Object.keys(published).forEach(k=>{
+   const p=parseKey(k);
+   if(!p||p.group!==currentGroup||p.year!==ACADEMIC_YEAR_NUMBER||p.sem!==ACADEMIC_SEMESTER_NUMBER)return;
+   if(p.s<0||p.s>=lessonSubjects.length)return; /* مقياس محذوف */
+   (published[k]||[]).forEach(f=>{if(f&&f.key)out.push({k,p,f,ts:Number(f.ts)||0});});
+  });
+  out.sort((x,y)=>(y.ts-x.ts)||(x.k<y.k?1:x.k>y.k?-1:0));
+  return out;
+ }
+ const baseName=s=>{try{return (lessonData[currentGroup]&&lessonData[currentGroup][s]&&lessonData[currentGroup][s].base)||lessonSubjects[s]||"";}catch(e){return "";}};
+ const subjectName=s=>{try{return (lessonData[currentGroup]&&lessonData[currentGroup][s]&&lessonData[currentGroup][s].name)||lessonSubjects[s]||"";}catch(e){return "";}};
+ function chapterName(p){
+  try{const sub=subjectData[p.s];const ch=sub&&sub.axes[p.a]&&sub.axes[p.a].chapters[p.c];return ch?ch[0]:"";}catch(e){return "";}
+ }
+ const cleanTitle=n=>String(n||"").replace(/\.[A-Za-z0-9]{2,5}$/,"").replace(/[_]+/g," ").replace(/\s+/g," ").trim()||"محاضرة";
+ const sizeText=n=>{n=Number(n)||0;if(!n)return "";return n>=1048576?(n/1048576).toFixed(1).replace(/\.0$/,"")+" MB":Math.max(1,Math.round(n/1024))+" KB";};
+ const extOf=f=>{const m=/\.([A-Za-z0-9]{2,5})$/.exec(f.name||"");return (m?m[1]:(f.type&&f.type.indexOf("pdf")>=0?"pdf":"")).toUpperCase();};
+
+ /* صياغة الوقت بالعربية */
+ function ago(ts){
+  if(!ts)return "";
+  const d=Date.now()-ts;
+  if(d<0||d<3600e3)return "قبل قليل";
+  const h=Math.floor(d/3600e3);
+  if(h<24)return h===1?"منذ ساعة":h===2?"منذ ساعتين":h<=10?"منذ "+h+" ساعات":"منذ "+h+" ساعة";
+  const days=Math.floor(h/24);
+  if(days<7)return days===1?"منذ يوم":days===2?"منذ يومين":"منذ "+days+" أيام";
+  if(days<30){const w=Math.floor(days/7);return w===1?"منذ أسبوع":w===2?"منذ أسبوعين":"منذ "+w+" أسابيع";}
+  try{return new Date(ts).toLocaleDateString("ar-u-nu-latn",{day:"numeric",month:"long",year:"numeric"});}catch(e){return new Date(ts).toISOString().slice(0,10);}
+ }
+ const filesText=n=>n===1?"ملف منشور":n===2?"ملفان منشوران":n<=10?n+" ملفات منشورة":n+" ملفًا منشورًا";
+ const svg=x=>subjectIconSvg(x);
+ const BOOK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5C7 4 9.5 4.5 12 6v14c-2.5-1.5-5-2-8-.5z"/><path d="M20 5.5C17 4 14.5 4.5 12 6v14c2.5-1.5 5-2 8-.5z"/></svg>';
+
+ function hero(e,i){
+  const x={name:baseName(e.p.s)};
+  const ch=chapterName(e.p);
+  const isNew=e.ts&&Date.now()-e.ts<NEW_WINDOW;
+  return '<button type="button" class="hl-hero" data-i="'+i+'" style="--sh:'+subjectHue(x)+'">'
+   +'<span class="hl-hero-wm" aria-hidden="true">'+svg(x)+'</span>'
+   +'<span class="hl-hero-top"><span class="hl-tag">'+(isNew?'<i></i>':'')+(e.ts?'آخر درس منشور':'درس منشور')+'</span><span class="hl-time">'+hlEsc(ago(e.ts))+'</span></span>'
+   +'<span class="hl-hero-body"><span class="hl-ico">'+svg(x)+'</span><span style="min-width:0"><h4>'+hlEsc(cleanTitle(e.f.name))+'</h4>'
+   +'<p class="hl-hero-sub">'+hlEsc(subjectName(e.p.s))+(ch?' · '+hlEsc(ch):'')+'</p></span></span>'
+   +'<span class="hl-hero-foot"><span class="hl-meta">'+(extOf(e.f)?'<b>'+hlEsc(extOf(e.f))+'</b>':'')+(sizeText(e.f.size)?'<b dir="ltr">'+hlEsc(sizeText(e.f.size))+'</b>':'')+'</span><span class="hl-open">فتح المقياس ←</span></span>'
+   +'</button>';
+ }
+ function row(e,i){
+  const x={name:baseName(e.p.s)};
+  const ch=chapterName(e.p);
+  const isNew=e.ts&&Date.now()-e.ts<NEW_WINDOW;
+  return '<button type="button" class="hl-row" data-i="'+i+'" style="--sh:'+subjectHue(x)+'">'
+   +'<span class="hl-ico">'+svg(x)+'</span>'
+   +'<span class="hl-row-main"><b>'+hlEsc(cleanTitle(e.f.name))+'</b><small>'+hlEsc(subjectName(e.p.s))+(ch?' · '+hlEsc(ch):'')+'</small></span>'
+   +'<span class="hl-row-side">'+(isNew?'<span class="hl-new">جديد</span>':(extOf(e.f)?'<span class="hl-pdf">'+hlEsc(extOf(e.f))+'</span>':''))+(e.ts?'<small>'+hlEsc(ago(e.ts))+'</small>':'')+'</span>'
+   +'</button>';
+ }
+ function empty(title,text,chips){
+  return '<div class="hl-empty"><span class="hl-ico">'+BOOK+'</span><b>'+hlEsc(title)+'</b><p>'+hlEsc(text)+'</p>'
+   +(chips&&chips.length?'<div class="hl-subjects">'+chips.map(c=>'<span>'+hlEsc(c)+'</span>').join("")+'</div>':'')+'</div>';
+ }
+
+ function render(){
+  const list=$("homeLessonsList");if(!list)return;
+  let groups=[];try{groups=GROUPS;}catch(e){}
+  const ctxText=CTX?(CTX.yearName||"")+(CTX.semesterName?" · "+CTX.semesterName:""):"";
+  const sub=$("homeLessonsSub");
+  if(sub)sub.textContent="آخر الدروس المنشورة"+(ctxText?" · "+ctxText:" في مجموعتك");
+  const count=$("homeLessonsCount"),all=$("homeLessonsAll");
+  if(!groups.length){
+   SHOWN=[];list.innerHTML=empty("لم تُضف مجموعات لهذه السنة بعد","تظهر الدروس هنا بمجرد إضافة مجموعة لهذه السنة من قسم التوقيت ونشر أول درس.");
+   if(count)count.textContent="—";if(all)all.hidden=true;return;
+  }
+  const loaded=!!window.__lessonsFetched||Date.now()-T0>6000;
+  const items=collect();
+  if(!loaded&&!items.length){
+   SHOWN=[];list.innerHTML='<div class="hl-skel"></div><div class="hl-skel" style="height:64px"></div><div class="hl-skel" style="height:64px"></div>';
+   if(count)count.textContent="جارٍ التحميل…";if(all)all.hidden=true;return;
+  }
+  if(!items.length){
+   SHOWN=[];
+   let subs=[];try{subs=lessonSubjects.map((n,i)=>subjectName(i)).slice(0,6);}catch(e){}
+   list.innerHTML=empty("لا توجد دروس منشورة بعد","ستظهر هنا أحدث الدروس والمحاضرات فور نشرها"+(ctxText?" في "+ctxText:"")+".",subs);
+   if(count)count.textContent="لا دروس بعد";if(all)all.textContent="تصفّح مقاييس المجموعة ←";if(all)all.hidden=false;return;
+  }
+  SHOWN=items.slice(0,MAX_SHOWN);
+  list.innerHTML=hero(SHOWN[0],0)+(SHOWN.length>1?'<div class="hl-rail">دروس سابقة</div>'+SHOWN.slice(1).map((e,i)=>row(e,i+1)).join(""):"");
+  if(count)count.textContent=filesText(items.length);
+  if(all){all.hidden=false;all.textContent=items.length>SHOWN.length?"عرض كل الدروس ("+items.length+") ←":"عرض كل الدروس ←";}
+ }
+
+ /* فتح المقياس المقابل في صفحة الدروس */
+ function openEntry(e){
+  if(!e)return;
+  go("lessons");
+  setTimeout(()=>{
+   const card=[...document.querySelectorAll("#lessonList .lesson-subject-card")][e.p.s];
+   if(card&&typeof openLessonSubjectDialog==="function")openLessonSubjectDialog(card);
+  },300);
+ }
+ $("homeLessonsList")?.addEventListener("click",ev=>{
+  const b=ev.target.closest&&ev.target.closest("[data-i]");
+  if(b)openEntry(SHOWN[Number(b.dataset.i)]);
+ });
+ $("homeLessonsAll")?.addEventListener("click",()=>go("lessons"));
+
+ /* قائمتا السنة والسداسي على الرئيسية: تتزامنان مع قائمتي «المواد والمقاييس» */
+ function fill(sel,items,val,none){
+  if(!sel)return;
+  sel.replaceChildren();
+  if(!items.length){sel.add(new Option(none,""));return;}
+  items.forEach(i=>sel.add(new Option(i.name,i.id)));
+  if(items.some(i=>i.id===val))sel.value=val;
+ }
+ document.addEventListener("ensd:academic-context",ev=>{
+  CTX=ev.detail||null;if(!CTX)return;
+  fill($("homeYearSelect"),CTX.years||[],CTX.yearId,"لا توجد سنوات");
+  fill($("homeSemesterSelect"),CTX.semesters||[],CTX.semesterId,"لا توجد سداسيات");
+  const box=$("homeContext");if(box)box.hidden=!(CTX.years&&CTX.years.length);
+  render();
+ });
+ const mirror=(homeId,realId)=>$(homeId)?.addEventListener("change",ev=>{
+  const real=$(realId);if(!real||!ev.target.value)return;
+  real.value=ev.target.value;real.dispatchEvent(new Event("change",{bubbles:true}));
+ });
+ mirror("homeYearSelect","academicYearSelect");
+ mirror("homeSemesterSelect","academicSemesterSelect");
+
+ window.renderHomeLessons=render;
+ render();
+ setTimeout(render,6200); /* إن تعذّر الجلب لا يبقى الهيكل العظمي ظاهراً */
+})();
+
 </script>
 <script id="academic-coefficient-editor-20261115">
 (function(){
@@ -6693,9 +6974,10 @@ const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
  window.__feedLessons=function(entries){
   try{
    const next=Object.create(null);
-   (Array.isArray(entries)?entries:[]).forEach(e=>{if(e&&typeof e==="object"&&e.lessonKey&&e.key)(next[e.lessonKey]||(next[e.lessonKey]=[])).push(e);else if(typeof e==="string"&&/^[AB]-[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(e))(next[e]||(next[e]=[])).push({key:e,name:"محاضرة سابقة.pdf",type:"application/pdf",legacy:true});});
+   (Array.isArray(entries)?entries:[]).forEach(e=>{if(e&&typeof e==="object"&&e.lessonKey&&e.key)(next[e.lessonKey]||(next[e.lessonKey]=[])).push(e);else if(typeof e==="string"&&/^(?:[A-Z]|Y\d{1,3}S[1-4][A-Z])-[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(e))(next[e]||(next[e]=[])).push({key:e,name:"محاضرة سابقة.pdf",type:"application/pdf",legacy:true});});
    PUBLISHED_LESSONS=next;window.__lessonsFetched=true;
    if($("#page-lessons.active")&&!$(".lesson-subject-dialog"))renderLessonSubjects(currentGroup);else paint();
+   try{window.renderHomeLessons&&window.renderHomeLessons();}catch(e){}
   }catch(e){}
  };
 })();
