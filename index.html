@@ -7345,6 +7345,7 @@ html.au-lock{overflow:hidden}
 .au-view{animation:auViewIn .38s cubic-bezier(.2,.9,.3,1) both}
 @keyframes auViewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .au-lead{margin:0 0 16px;font-size:13.5px;line-height:1.8;color:var(--muted)}
+.au-who{display:flex;align-items:center;gap:12px;margin:0 0 14px;padding:12px 14px;border-radius:14px;background:var(--soft);border:1.5px solid var(--line);text-align:start}.au-who svg{width:22px;height:22px;flex:none;color:var(--primary)}.au-who small{display:block;font-size:11.5px;color:var(--muted)}.au-who b{font-size:15px;font-weight:800;color:var(--ink)}
 .au-field{display:block;margin:0 0 14px}
 .au-field>span{display:block;margin:0 2px 7px;font-size:13px;font-weight:700;color:var(--ink)}
 .au-input{display:flex;align-items:center;gap:10px;height:52px;padding:0 14px;border-radius:15px;background:var(--surface-2,#f4f8f8);border:1.5px solid var(--line);transition:border-color .2s,box-shadow .2s,background .2s}
@@ -7577,41 +7578,114 @@ function render(v){
  if(v==="login")viewLogin();else if(v==="pending")viewPending();else if(v==="success")viewSuccess();else viewProfile();
 }
 
-/* --- تسجيل الدخول --- */
+/* --- تسجيل الدخول: رقم التسجيل ← (تأكيد الاسم + كلمة مرور) أو (كلمة مرور) --- */
 function viewLogin(msgText){
  hero(ic("cap"),"تسجيل الدخول","فضاء طلبة الملحقة · اللغة العربية");
- body('<p class="au-lead">هذا الفضاء مخصّص لطلبة الدفعة. أدخل اسمك الكامل ورقم التسجيل كما في القائمة.</p>'+
- '<form id="auForm" novalidate autocomplete="on">'+
- '<label class="au-field"><span>الاسم الكامل</span><div class="au-input">'+ic("user")+'<input id="auName" name="name" autocomplete="name" enterkeyhint="next" placeholder="الاسم واللقب"></div><small class="au-hint">يمكنك تغيير اسمك فيما بعد من ملفك الشخصي.</small></label>'+
- '<label class="au-field"><span>رقم التسجيل</span><div class="au-input">'+ic("id")+'<input id="auReg" name="regno" inputmode="numeric" autocomplete="off" dir="ltr" enterkeyhint="go"></div></label>'+
- '<div class="au-msg" id="auMsg" role="alert" aria-live="polite"></div>'+
- '<button class="au-primary" id="auGo" type="submit"><span class="au-btn-label">دخول</span>'+ic("arrow")+'<span class="au-spin"></span></button>'+
- '<button class="au-secondary" id="auReq" type="button" hidden>بياناتي صحيحة، أرسل طلب مراجعة يدوية</button></form>'+
+ body('<div id="auStep"></div>'+
  '<div class="au-foot"><button class="au-link" id="auAdm" type="button">'+ic("key")+'دخول خاص</button></div>'+
  '<form class="au-admin" id="auAf" hidden novalidate><label class="au-field"><span>رمز المشرف</span><div class="au-input">'+ic("key")+'<input id="auCode" type="password" autocomplete="off"></div></label><button class="au-primary" type="submit"><span class="au-btn-label">دخول خاص</span><span class="au-spin"></span></button></form>');
 
- var f=$("#auForm"),go=$("#auGo"),req=$("#auReq"),msg=$("#auMsg"),busy=false;
- function say(t,bad){msg.className="au-msg"+(t?(bad?" bad":" ok"):"");msg.innerHTML=t?ic(bad?"alert":"check")+"<span>"+esc(t)+"</span>":""}
+ var box=$("#auStep"),busy=false,reg="",NOTE="";
+ function say(t,bad){var m=$("#auMsg");if(!m)return;m.className="au-msg"+(t?(bad?" bad":" ok"):"");m.innerHTML=t?ic(bad?"alert":"check")+"<span>"+esc(t)+"</span>":""}
  function fail(t){say(t,1);shake()}
- if(msgText)say(msgText,1);
- function send(path){
-  if(busy)return;
-  var name=$("#auName").value.trim().replace(/\s+/g," "),reg=normReg($("#auReg").value);
-  if(name.split(" ").length<2){fail("أدخل اسمك الكامل (كلمتان على الأقل).");$("#auName").focus();return}
-  if(!reg){fail("رقم التسجيل غير صالح: يجب أن يتكوّن من 10 إلى 14 رقماً.");$("#auReg").focus();return}
-  busy=true;go.classList.add("is-busy");go.disabled=true;say("");
-  api(path,{method:"POST",body:{name:name,regno:reg}}).then(function(j){
+ function fld(label,id,icon,attrs,hint){return '<label class="au-field"><span>'+label+'</span><div class="au-input">'+ic(icon)+'<input id="'+id+'" '+attrs+'></div>'+(hint?'<small class="au-hint">'+hint+'</small>':'')+'</label>'}
+ function primary(txt){return '<button class="au-primary" id="auGo" type="submit"><span class="au-btn-label">'+txt+'</span>'+ic("arrow")+'<span class="au-spin"></span></button>'}
+ function sec(id,txt){return '<button class="au-secondary" id="'+id+'" type="button">'+txt+'</button>'}
+ function who(n){return '<div class="au-who">'+ic("user")+'<div><small>الاسم في القائمة</small><b>'+esc(n)+'</b></div></div>'}
+ function show(html,onSubmit,firstId){
+  var M='<div class="au-msg" id="auMsg" role="alert" aria-live="polite"></div>',k=html.indexOf('<button class="au-primary"');
+  box.innerHTML='<form id="auForm" novalidate autocomplete="on">'+(k<0?html+M:html.slice(0,k)+M+html.slice(k))+'</form>';
+  var f=$("#auForm");f.addEventListener("submit",function(e){e.preventDefault();if(!busy)onSubmit()});
+  if(NOTE){say(NOTE,1);NOTE=""}
+  if(firstId)setTimeout(function(){var i=$(firstId);if(i&&matchMedia("(pointer:fine)").matches)i.focus({preventScroll:true})},60);
+ }
+ function wire(id,fn){var e=$(id);if(e)e.addEventListener("click",fn)}
+ function post(payload,after){
+  var go=$("#auGo");busy=true;if(go){go.classList.add("is-busy");go.disabled=true}say("");
+  api("/api/auth/login",{method:"POST",body:payload}).then(function(j){
+   if(after&&after(j)===true)return;
    if(j.status==="ok"){ls.set(KREG,reg);render("success")}
    else if(j.status==="pending"){ls.set(KPEND,reg);S.st="wait";paint();render("pending")}
    else if(j.status==="banned")fail("تم إيقاف هذا الحساب. تواصل مع الإدارة.");
-   else if(j.status==="nomatch"){fail("البيانات غير مطابقة للقائمة. تحقق من الاسم ورقم التسجيل.");req.hidden=false}
+   else if(j.status==="wrongpw")fail("كلمة المرور غير صحيحة.");
    else if(j.error==="rate_limited")fail("محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.");
+   else if(j.error==="weak_password")fail("كلمة المرور قصيرة: 6 أحرف على الأقل.");
    else if(j.error==="auth_not_configured")fail("نظام الدخول غير مهيّأ بعد.");
-   else fail("تحقق من الاسم الكامل (كلمتان على الأقل) ورقم التسجيل.");
-  }).catch(function(){fail("تعذّر الاتصال. أعد المحاولة.")}).then(function(){busy=false;go.disabled=false;go.classList.remove("is-busy")});
+   else if(j.status==="needs_setup"){stepReg()}
+   else if(j.status==="has_password"){NOTE="لهذا الحساب كلمة مرور بالفعل. أدخلها للدخول.";stepReg()}
+   else fail("تعذّر إتمام الطلب. تحقق من البيانات وأعد المحاولة.");
+  }).catch(function(){fail("تعذّر الاتصال. أعد المحاولة.")}).then(function(){busy=false;var g=$("#auGo");if(g){g.disabled=false;g.classList.remove("is-busy")}});
  }
- f.addEventListener("submit",function(e){e.preventDefault();send("/api/auth/login")});
- req.addEventListener("click",function(){send("/api/auth/request")});
+ function pwPair(){
+  var a=$("#auPw1").value,b=$("#auPw2").value;
+  if(a.length<6){fail("كلمة المرور: 6 أحرف على الأقل.");$("#auPw1").focus();return null}
+  if(a!==b){fail("كلمتا المرور غير متطابقتين.");$("#auPw2").focus();return null}
+  return a;
+ }
+ var PW1=function(){return fld("كلمة المرور","auPw1","key",'type="password" autocomplete="new-password" enterkeyhint="next" placeholder="6 أحرف على الأقل"')+fld("أعد كتابة كلمة المرور","auPw2","key",'type="password" autocomplete="new-password" enterkeyhint="go"')};
+
+ function stepReg(){
+  show('<p class="au-lead">هذا الفضاء مخصّص لطلبة الدفعة. أدخل رقم التسجيل (10 إلى 14 رقماً) للمتابعة.</p>'+
+   fld("رقم التسجيل","auReg","id",'name="regno" inputmode="numeric" autocomplete="username" dir="ltr" enterkeyhint="go" value="'+esc(reg)+'"')+primary("متابعة"),
+  function(){
+   var r=normReg($("#auReg").value);
+   if(!r){fail("رقم التسجيل غير صالح: يجب أن يتكوّن من 10 إلى 14 رقماً.");$("#auReg").focus();return}
+   reg=r;
+   post({step:"check",regno:reg},function(j){
+    if(j.status==="found"){j.mode==="login"?stepLogin(j):stepSetup(j);return true}
+    if(j.status==="unknown"){stepJoin();return true}
+   });
+  },"#auReg");
+ }
+
+ /* أول مرة (أو حساب قديم بلا كلمة مرور): تأكيد الاسم ثم اختيار كلمة المرور */
+ function stepSetup(info){
+  show(who(info.name)+'<p class="au-lead">إن كان هذا اسمك فاختر كلمة مرور. ستدخل بها برقم التسجيل من أي جهاز.</p>'+
+   PW1()+primary("هذا أنا، ادخل")+sec("auBack","ليس اسمي، تغيير الرقم"),
+  function(){var pw=pwPair();if(pw)post({step:"setup",regno:reg,password:pw})},"#auPw1");
+  wire("#auBack",function(){stepReg()});
+ }
+
+ /* الدخول المعتاد */
+ function stepLogin(info){
+  show(who(info.name)+
+   fld("كلمة المرور","auPw","key",'type="password" name="password" autocomplete="current-password" enterkeyhint="go"')+primary("دخول")+
+   sec("auClaim","هذا حسابي (نسيت كلمة المرور أو سبقني أحد إليه)")+sec("auBack","تغيير الرقم"),
+  function(){var pw=$("#auPw").value;if(!pw){fail("أدخل كلمة المرور.");return}post({step:"login",regno:reg,password:pw})},"#auPw");
+  wire("#auClaim",function(){stepClaim(info)});
+  wire("#auBack",function(){stepReg()});
+ }
+
+ /* «هذا حسابي»: كلمة مرور جديدة بعد موافقة الإدارة */
+ function stepClaim(info){
+  show(who(info.name)+'<p class="au-lead">اكتب اسمك الكامل واختر كلمة مرور جديدة. يصل طلبك إلى الإدارة، وبعد موافقتها تدخل بها ويُلغى ما سواها.</p>'+
+   fld("الاسم الكامل","auName","user",'name="name" autocomplete="name" enterkeyhint="next" placeholder="الاسم واللقب"')+PW1()+primary("إرسال الطلب")+sec("auBack","رجوع"),
+  function(){
+   var n=$("#auName").value.trim().replace(/\s+/g," ");
+   if(n.split(" ").length<2){fail("أدخل اسمك الكامل (كلمتان على الأقل).");$("#auName").focus();return}
+   var pw=pwPair();if(!pw)return;
+   post({step:"claim",regno:reg,name:n,password:pw});
+  },"#auName");
+  wire("#auBack",function(){stepLogin(info)});
+ }
+
+ /* طلب انضمام: رقم غير مدرج في القائمة */
+ function stepJoin(){
+  show('<p class="au-lead">هذا الرقم غير مدرج في القائمة. إن كان صحيحاً فاكتب اسمك الكامل واختر كلمة مرور، وسيراجع المشرف طلبك.</p>'+
+   fld("الاسم الكامل","auName","user",'name="name" autocomplete="name" enterkeyhint="next" placeholder="الاسم واللقب"')+PW1()+primary("إرسال طلب انضمام")+sec("auBack","تصحيح رقم التسجيل"),
+  function(){
+   var n=$("#auName").value.trim().replace(/\s+/g," ");
+   if(n.split(" ").length<2){fail("أدخل اسمك الكامل (كلمتان على الأقل).");$("#auName").focus();return}
+   var pw=pwPair();if(!pw)return;
+   post({step:"join",regno:reg,name:n,password:pw});
+  },"#auName");
+  wire("#auBack",function(){stepReg()});
+  say("رقم التسجيل غير موجود في القائمة.",1);
+ }
+
+ NOTE=msgText||"";
+ stepReg();
+
  var af=$("#auAf");
  $("#auAdm").addEventListener("click",function(){af.hidden=!af.hidden;if(!af.hidden){setTimeout(function(){$("#auCode").focus()},60);af.scrollIntoView({block:"nearest",behavior:"smooth"})}});
  af.addEventListener("submit",function(e){
