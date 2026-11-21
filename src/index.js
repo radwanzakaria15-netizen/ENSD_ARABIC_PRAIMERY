@@ -703,7 +703,7 @@ function gpaClean(raw) {
     if (!sid) sid = "s" + crypto.randomUUID().slice(0, 6);
     out.push({ id: sid, title: title || "سداسي", subjects: subs });
   }
-  return { v: 1, semesters: out, updatedAt: new Date().toISOString() };
+  return { v: 1, allowRt: !!(raw && raw.allowRt), semesters: out, updatedAt: new Date().toISOString() };
 }
 
 async function handleGpa(request, env) {
