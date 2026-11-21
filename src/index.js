@@ -1,4 +1,6 @@
 const KEY_PATTERN = /^(?:[A-Z]|Y\d{1,3}S[1-4][A-Z])-\d{2}-\d{2}-\d{2}$/;
+/* مرفقات الإعلانات (صورة/PDF/Word) تُحفظ تحت مفتاح ann-<وقت>-<رقم>-<عشوائي>/ وتُدار بصلاحية الإعلانات لا بصلاحية الدروس */
+const ANN_ATT_RE = /^ann-[a-z0-9]{1,13}-\d{1,2}-[a-z0-9]{1,8}$/;
 const MAX_FILE_SIZE = 4_200_000;
 const encoder = new TextEncoder();
 
@@ -148,7 +150,7 @@ function contentTypeForName(name) {
   return "application/octet-stream";
 }
 
-function fileInfo(key, size = 0) {
+function fileInfo(key, size = 0, allowAnn = false) {
   if (KEY_PATTERN.test(key)) {
     return { lessonKey: key, key, name: "محاضرة سابقة.pdf", type: "application/pdf", size: Number(size) || 0, legacy: true };
   }
@@ -156,7 +158,7 @@ function fileInfo(key, size = 0) {
   if (slash < 0) return null;
   const lessonKey = key.slice(0, slash);
   const storedName = key.slice(slash + 1);
-  if (!KEY_PATTERN.test(lessonKey) || /^[\/\\\u0000-\u001f\u007f]/u.test(storedName) || storedName.length > 190) return null;
+  if (!(KEY_PATTERN.test(lessonKey) || (allowAnn && ANN_ATT_RE.test(lessonKey))) || /^[\/\\\u0000-\u001f\u007f]/u.test(storedName) || storedName.length > 190 || /[\/\\]/.test(storedName)) return null; // الاسم المخزَّن لا يحوي مسارات (منع ../)
   const marker = storedName.indexOf("__");
   const name = marker >= 0 ? storedName.slice(marker + 2) : storedName;
   if (!name) return null;
@@ -168,7 +170,7 @@ function fileInfo(key, size = 0) {
 
 function validStoredKey(key) {
   if (KEY_PATTERN.test(key)) return true;
-  return Boolean(fileInfo(key));
+  return Boolean(fileInfo(key, 0, true));
 }
 
 /* تنفيذ دوال غير متزامنة بتوازٍ محدود مع حفظ ترتيب النتائج */
@@ -271,7 +273,7 @@ async function edgeFile(request, ttl, produce, cc) {
    الموارد قد تُستبدل بالاسم نفسه (owner_replace) فنكتفي بيوم واحد. المفاتيح القديمة بلا طابع → 10 دقائق. */
 function fileCacheControl(key) {
   if (String(key).startsWith("resources/")) return "private, max-age=86400";
-  const info = fileInfo(key);
+  const info = fileInfo(key, 0, true);
   return info && info.ts ? "private, max-age=2592000, immutable" : "private, max-age=600";
 }
 const APPROVED_INDEX_KEY = "resources/index-approved.json";
@@ -1443,20 +1445,25 @@ async function handleApi(request, env, ctx) {
 
   if (url.pathname !== "/api/file") return json({ error: "not_found" }, 404);
   if (request.method === "POST") {
-    if (!KEY_PATTERN.test(key)) return json({ error: "invalid_lesson_key" }, 400);
+    if (!KEY_PATTERN.test(key) && !ANN_ATT_RE.test(key)) return json({ error: "invalid_lesson_key" }, 400);
   } else if (!validStoredKey(key)) {
     return json({ error: "not_found" }, 404);
   }
 
+  const isAnnAtt = ANN_ATT_RE.test(String(key).split("/")[0]);
   const lessonGroup = lessonGroupFromKey(key);
-  if (request.method !== "GET" && !isLessonAdmin(request, env, lessonGroup)) {
-    if (!lessonGroup || !lessonAdminCodes(env, lessonGroup).length) return json({ error: "admin_code_not_configured" }, 503);
-    return json({ error: "unauthorized" }, 401);
+  if (request.method !== "GET") {
+    if (isAnnAtt) {
+      if (!(await canManageAnn(request, env))) return json({ error: "unauthorized" }, 401);
+    } else if (!isLessonAdmin(request, env, lessonGroup)) {
+      if (!lessonGroup || !lessonAdminCodes(env, lessonGroup).length) return json({ error: "admin_code_not_configured" }, 503);
+      return json({ error: "unauthorized" }, 401);
+    }
   }
 
   try {
     if (request.method === "GET") return await edgeFile(request, 21600, async () => {
-      const info = fileInfo(key);
+      const info = fileInfo(key, 0, true);
       const response = await signedB2Request(env, "GET", key);
       if (response.status === 404) return json({ error: "not_found" }, 404);
       if (!response.ok) throw new Error("B2 download failed (" + response.status + "): " + (await response.text()).slice(0, 180));
