@@ -677,6 +677,62 @@ function isAcademicAdmin(request, env) {
   return Boolean(expected) && supplied === expected;
 }
 
+/* ===== حاسبة المعدل: القراءة للجميع (بعد الدخول)، والتعديل للمالك وحده ===== */
+const GPA_KEY = "tools/gpa-config.json";
+function gpaClean(raw) {
+  const clip = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
+  const sems = Array.isArray(raw && raw.semesters) ? raw.semesters.slice(0, 6) : [];
+  const out = [];
+  for (const sm of sems) {
+    const subs = [];
+    const seen = new Set();
+    for (const s of (Array.isArray(sm && sm.subjects) ? sm.subjects.slice(0, 80) : [])) {
+      let id = clip(s && s.id, 24).replace(/[^A-Za-z0-9_-]/g, "");
+      if (!id || seen.has(id)) id = "m" + crypto.randomUUID().slice(0, 6);
+      seen.add(id);
+      const name = clip(s && s.name, 60);
+      if (!name) continue;
+      const coef = Number(s && s.coef);
+      const item = { id, name, coef: coef > 0 && coef <= 50 ? coef : 1, td: !!(s && s.td), tp: !!(s && s.tp) };
+      const group = clip(s && s.group, 40);
+      if (group) { item.group = group; item.td = false; item.tp = false; }
+      subs.push(item);
+    }
+    const title = clip(sm && sm.title, 60);
+    let sid = clip(sm && sm.id, 24).replace(/[^A-Za-z0-9_-]/g, "");
+    if (!sid) sid = "s" + crypto.randomUUID().slice(0, 6);
+    out.push({ id: sid, title: title || "سداسي", subjects: subs });
+  }
+  return { v: 1, semesters: out, updatedAt: new Date().toISOString() };
+}
+
+async function handleGpa(request, env) {
+  if (request.method === "GET") return edgeJson("gpa", 120, async () => {
+    try {
+      const response = await signedB2Request(env, "GET", GPA_KEY);
+      if (response.status === 404) return json({ config: null });
+      if (!response.ok) throw new Error("GPA config read failed (" + response.status + ")");
+      return json({ config: await response.json() });
+    } catch (error) {
+      return json({ error: "gpa_config_read_failed", message: String(error.message || error).slice(0, 180) }, 502);
+    }
+  });
+  // كل ما عدا القراءة للمالك فقط (جلسة المالك أو رمز الإدارة الأكاديمية)
+  if (!(await isOwnerSession(request, env))) return json({ error: "unauthorized" }, 401);
+  if (request.method === "POST") return json({ ok: true, owner: true });
+  if (request.method === "PUT") {
+    let body = {};
+    try { body = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+    const config = gpaClean(body && body.config);
+    if (!config.semesters.length) return json({ error: "invalid_config" }, 400);
+    const r = await signedB2Request(env, "PUT", GPA_KEY, encoder.encode(JSON.stringify(config)), {}, "application/json");
+    if (!r.ok) return json({ error: "storage_error", status: r.status }, 502);
+    await edgeDrop("gpa");
+    return json({ ok: true, config });
+  }
+  return json({ error: "method_not_allowed" }, 405);
+}
+
 async function handleAcademic(request, env) {
   const key = "academic/config.json";
   if (request.method === "POST") {
@@ -1365,6 +1421,7 @@ async function handleApi(request, env, ctx) {
   }
 
   if (url.pathname === "/api/academic") return handleAcademic(request, env);
+  if (url.pathname === "/api/gpa") return handleGpa(request, env);
   if (url.pathname === "/api/academic-image") return handleAcademicImage(request, env);
   if (url.pathname === "/api/resources") return handleResources(request, env);
   if (url.pathname === "/api/announcements") return handleAnnouncements(request, env);
@@ -3340,7 +3397,7 @@ export default {
     if (gate) return gate;
     if (url.pathname === "/api/publish") return handlePublish(request, env);
     if (url.pathname === "/api/history") return handleHistory(request, env);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/literary" || url.pathname === "/api/notifications" || url.pathname === "/api/sync" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/gpa" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/literary" || url.pathname === "/api/notifications" || url.pathname === "/api/sync" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
       const response = await handleApi(request, env, ctx);
       if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
       return response;
