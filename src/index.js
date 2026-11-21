@@ -3315,7 +3315,16 @@ function litView(r, full) {
   }
   return o;
 }
-const LIT_SEL = "SELECT l.id, l.type, l.title, l.ex, l.pv, l.nv, l.name, l.ts, (l.me = ?1) AS mine, (SELECT COUNT(*) FROM lit_lk k WHERE k.id = l.id) AS likes, EXISTS(SELECT 1 FROM lit_lk k WHERE k.id = l.id AND k.me = ?1) AS liked";
+/* شارة الكاتب (المالك/الأستاذ/مشرف) تُحسب في الخادم من هوية صاحب العمل */
+async function litViewA(env, r, full, pc) {
+  const o = litView(r, full), who = String(r.who || "");
+  let role = "", u = "";
+  if (who.startsWith("a-")) { const k = who.slice(2); if (BADGE_ROLES.includes(k)) { role = k; u = "r-" + k; } }
+  else if (pc && pc.sups.some((x) => x.sid === who)) { role = "supervisor"; try { u = await supUid(env, who); } catch {} }
+  if (role) { o.author.role = role; o.author.u = u; }
+  return o;
+}
+const LIT_SEL = "SELECT l.id, l.type, l.title, l.ex, l.pv, l.nv, l.name, l.ts, l.me AS who, (l.me = ?1) AS mine, (SELECT COUNT(*) FROM lit_lk k WHERE k.id = l.id) AS likes, EXISTS(SELECT 1 FROM lit_lk k WHERE k.id = l.id AND k.me = ?1) AS liked";
 async function handleLiterary(request, env, ctx) {
   const ss = await readSession(request, env);
   if (!ss.ok) return json({ error: "login_required" }, 401);
@@ -3323,13 +3332,14 @@ async function handleLiterary(request, env, ctx) {
   const who = await rxIdentity(request, env, ss), me = who.me;
   try {
     const db = await litInit(env);
+    const pc = await rxPersonCtx(env, false);
     if (request.method === "GET") {
       if (id) {
         const r = await db.prepare(LIT_SEL + ", l.body FROM lit l WHERE l.id = ?2").bind(me, id).first();
-        return r ? json({ item: litView(r, true) }) : json({ error: "not_found" }, 404);
+        return r ? json({ item: await litViewA(env, r, true, pc) }) : json({ error: "not_found" }, 404);
       }
       const rs = await db.prepare(LIT_SEL + " FROM lit l ORDER BY l.ts DESC LIMIT ?2").bind(me, LIT_LIST_MAX).all();
-      return json({ items: (rs.results || []).map((r) => litView(r, false)) });
+      return json({ items: await Promise.all((rs.results || []).map((r) => litViewA(env, r, false, pc))) });
     }
     if (request.method === "POST" && action === "like") {
       let b = {}; try { b = await request.json(); } catch {}
@@ -3382,7 +3392,7 @@ async function handleLiterary(request, env, ctx) {
         await db.prepare("INSERT INTO lit (id, me, name, type, title, ex, pv, nv, body, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)").bind(lid, me, name, d.type, title, ex, pv, nv, body, ts).run();
       }
       const r = await db.prepare(LIT_SEL + ", l.body FROM lit l WHERE l.id = ?2").bind(me, lid).first();
-      return json({ item: litView(r, true) });
+      return json({ item: await litViewA(env, r, true, pc) });
     }
     return json({ error: "method_not_allowed" }, 405);
   } catch (e) { return dbErr(e); }
