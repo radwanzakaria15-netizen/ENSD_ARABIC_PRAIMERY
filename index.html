@@ -9500,7 +9500,17 @@ function gpCss(){var old=document.getElementById("gp-css");if(old)old.remove();v
 .gp-mini{min-height:36px;padding:0 12px;border:0;border-radius:99px;background:var(--soft);color:var(--primary);font:inherit;font-weight:800;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
 .gp-semt{display:flex;gap:8px;margin:0 0 12px;align-items:center}.gp-semt .gp-in{text-align:start;padding:0 12px}
 .gp-grow{display:grid;gap:8px;align-items:center;margin-bottom:6px}.gp-grow.gp-e{grid-template-columns:1fr 56px auto}
+.gp-ov{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:20px;background:rgba(10,22,28,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);animation:gpFade .18s ease}
+.gp-dlg{width:min(340px,100%);padding:26px 20px 18px;border-radius:28px;background:var(--surface,#fff);color:var(--ink,#14202a);text-align:center;box-shadow:0 24px 60px -12px rgba(0,0,0,.45);animation:gpPop .26s cubic-bezier(.2,.9,.3,1.2)}
+.gp-dlg i{width:58px;height:58px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#fdecea;color:#c9382f}
+.gp-dlg p{margin:0 0 4px;font-size:17px;font-weight:900;line-height:1.7}.gp-dlg small{display:block;color:var(--muted);font-size:12px;line-height:1.8}
+.gp-dlg .gp-dbtn{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}
+.gp-dlg button{min-height:46px;border:0;border-radius:99px;font:inherit;font-weight:800;font-size:14px;cursor:pointer}
+.gp-dlg .gp-yes{background:#c9382f;color:#fff}.gp-dlg .gp-no{background:var(--bg);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+@keyframes gpFade{from{opacity:0}to{opacity:1}}@keyframes gpPop{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}
 `;document.head.appendChild(s)}
+function gpAsk(title,note,ok){var o=document.createElement("div");o.className="gp-ov";o.innerHTML='<div class="gp-dlg" role="alertdialog" aria-modal="true"><i>'+ic("trash",26)+'</i><p>'+esc(title)+'</p>'+(note?'<small>'+esc(note)+'</small>':'')+'<div class="gp-dbtn"><button type="button" class="gp-no">إلغاء</button><button type="button" class="gp-yes">حذف</button></div></div>';
+ function close(){o.remove()}o.addEventListener("click",function(e){if(e.target===o||e.target.closest(".gp-no"))close();else if(e.target.closest(".gp-yes")){close();ok()}});document.body.appendChild(o)}
 function gpInp(s,k,label,cls){return'<label class="gp-f'+(cls?" "+cls:"")+'"><span>'+label+'</span><input inputmode="decimal" autocomplete="off" placeholder="0" data-id="'+esc(s.id)+'" data-k="'+k+'" value="'+esc((GM[s.id]||{})[k]||"")+'"></label>'}
 function gpOff(label){return'<div class="gp-f gp-off"><span>'+label+'</span><div class="gp-dash">—</div></div>'}
 function gpResBox(s){return'<div class="gp-r" data-r="'+esc(s.id)+'"><small>العلامة</small><b>—</b></div>'}
@@ -9522,14 +9532,14 @@ function gpSumHtml(sem){var r=gpSem(sem);if(!r.total)return"";
  return'<span class="gp-lbl">معدل '+esc(sem.title)+'</span><b class="gp-big">'+gpFmt(r.avg)+'</b><small>'+(r.avg!=null&&r.low.length&&r.done<r.total?'تنبيه: علامة أقل من 5 في '+esc(r.low.join("، ")):'')+'</small>'+v}
 function gpAnnHtml(c){var rows=[],sum=0,n=0,miss=0;c.semesters.forEach(function(sem){var r=gpSem(sem);if(!sem.subjects.length)return;var ok=r.avg!=null&&r.done===r.total;rows.push('<div><span>'+esc(sem.title)+'</span><b>'+(r.avg==null?"—":gpFmt(r.avg))+(r.avg!=null&&!ok?" *":"")+'</b></div>');if(r.avg!=null){sum+=r.avg;n++}else miss++});
  var avg=n&&!miss?sum/n:null;return'<div class="gp-sum"><span class="gp-lbl">المعدل السنوي</span><b class="gp-big">'+gpFmt(avg)+'</b><small>'+(avg==null?'احسب معدل كل سداسي أولاً (تبويب السداسي) ليظهر المعدل السنوي.':'المعدل السنوي = متوسط معدلات السداسيات.')+'</small>'+(avg!=null?(avg>=10?'<span class="gp-v ok">معدل سنوي ≥ 10</span>':'<span class="gp-v no">المعدل السنوي أقل من 10</span>'):'')+'</div><div class="gp-ann">'+rows.join("")+'</div>'}
-function gpView(){gpCss();var c=GP.edit?GP.draft:GP.cfg,box=$("#gpBox");if(!box)return;if(GP.tab>c.semesters.length)GP.tab=0;var ann=!GP.edit&&c.semesters.length>1&&GP.tab===c.semesters.length,h="";
+function gpView(){gpCss();var c=GP.edit?GP.draft:GP.cfg,box=$("#gpBox");if(!box)return;if(GP.tab>c.semesters.length)GP.tab=0;if(!GP.edit&&!c.allowRt)GP.rt=false;var ann=!GP.edit&&c.semesters.length>1&&GP.tab===c.semesters.length,h="";
  h+='<div class="gp-tabs">'+c.semesters.map(function(s,i){return'<button type="button" data-a="tab" data-i="'+i+'" class="'+(i===GP.tab?"on":"")+'">'+esc(s.title)+'</button>'}).join("")+(!GP.edit&&c.semesters.length>1?'<button type="button" data-a="tab" data-i="'+c.semesters.length+'" class="'+(ann?"on":"")+'">المعدل السنوي</button>':'')+(GP.edit?'<button type="button" data-a="addSem">'+ic("plus",14)+' سداسي</button>':'')+'</div>';
  if(GP.edit){var sem=c.semesters[GP.tab];h+='<div class="gp-ban">وضع المالك: عدّل المواد والمعاملات وفعّل TD أو TP لكل مادة، ثم اضغط «حفظ». الطلبة لا يرون هذه الأدوات.</div>'+
-  '<div class="gp-semt"><input class="gp-in" data-e="semTitle" value="'+esc(sem.title)+'" placeholder="عنوان السداسي">'+(c.semesters.length>1?'<button type="button" class="gp-x" data-a="delSem">'+ic("trash",15)+' حذف</button>':'')+'</div>'+
+  '<label class="gp-sw" style="margin:0 0 12px"><input type="checkbox" data-a="allowRt"'+(c.allowRt?" checked":"")+'> السماح للطلبة بخيار الاستدراكي</label>'+'<div class="gp-semt"><input class="gp-in" data-e="semTitle" value="'+esc(sem.title)+'" placeholder="عنوان السداسي">'+(c.semesters.length>1?'<button type="button" class="gp-x" data-a="delSem">'+ic("trash",15)+' حذف</button>':'')+'</div>'+
   '<div class="gp-grid">'+gpCards(sem)+'</div><div class="gp-act"><button type="button" class="gp-mini" data-a="addS">'+ic("plus",14)+' مادة</button><button type="button" class="gp-mini" data-a="addG">'+ic("plus",14)+' مجموعة مواد</button></div>'+
   '<div class="gp-act"><button type="button" class="lw-btn p" data-a="save">'+ic("check",16)+' حفظ</button><button type="button" class="lw-btn" data-a="cancel">إلغاء</button></div><p class="gp-legend" id="gpMsg" style="justify-content:center">'+esc(GP.msg)+'</p>'}
  else if(ann){h+=gpAnnHtml(c)}
- else{var sm=c.semesters[GP.tab];h+='<div class="gp-legend"><span></span><label class="gp-sw"><input type="checkbox" data-a="rt"'+(GP.rt?" checked":"")+'> الاستدراكي</label></div>'+
+ else{var sm=c.semesters[GP.tab];h+=(c.allowRt?'<div class="gp-legend"><span></span><label class="gp-sw"><input type="checkbox" data-a="rt"'+(GP.rt?" checked":"")+'> الاستدراكي</label></div>':'')+
   (sm.subjects.length?'<div class="gp-grid">'+gpCards(sm)+'</div><div class="gp-sum" id="gpSum"></div><div class="gp-act"><button type="button" class="lw-btn p" data-a="calc">احسب المعدل</button><button type="button" class="lw-btn" data-a="reset">إعادة</button></div>':'<div class="lw-empty">لم تُضف مواد لهذا السداسي بعد.</div>')}
  if(!GP.edit)h+=(GP.own?'<div class="gp-act"><button type="button" class="gp-mini" data-a="edit">'+ic("edit",14)+' إدارة المواد (المالك)</button></div>':'');
  box.innerHTML=h;gpRecalc()}
@@ -9552,7 +9562,7 @@ function gpaView(){GP.edit=false;GP.msg="";GP.tab=0;
   if(t.dataset.e==="semTitle")sem.title=t.value;else if(t.dataset.e==="name"&&s)s.name=t.value;
   else if(t.dataset.e==="coef"&&s){var n=parseFloat(String(t.value).replace(/[٠-٩]/g,function(d){return d.charCodeAt(0)-1632}).replace(/[٫،,]/g,"."));s.coef=n>0&&n<=50?n:1}
   else if(t.dataset.e==="group"&&s&&t.value.trim()){var old=s.group;sem.subjects.forEach(function(x){if(x.group===old)x.group=t.value})}});
- box.addEventListener("change",function(e){var t=e.target;if(t.dataset.a==="rt"){GP.rt=t.checked;gpView()}});
+ box.addEventListener("change",function(e){var t=e.target;if(t.dataset.a==="rt"){GP.rt=t.checked;gpView()}else if(t.dataset.a==="allowRt"&&GP.edit){GP.draft.allowRt=t.checked}});
  box.addEventListener("click",function(e){var b=e.target.closest("[data-a]");if(!b||b.tagName==="INPUT")return;var a=b.dataset.a,i=+b.dataset.i,c=GP.edit?GP.draft:GP.cfg,sem=c.semesters[GP.tab];
   if(a==="tab"){GP.tab=i;gpView()}
   else if(a==="calc"){gpRecalc();var s=$("#gpSum");if(s)s.scrollIntoView({behavior:"smooth",block:"center"})}
@@ -9562,10 +9572,10 @@ function gpaView(){GP.edit=false;GP.msg="";GP.tab=0;
   else if(a==="addS"){sem.subjects.push({id:gpId(),name:"مادة جديدة",coef:1,td:true,tp:false});gpView()}
   else if(a==="addG"){sem.subjects.push({id:gpId(),name:"مادة",coef:1,td:false,tp:false,group:"مجموعة جديدة"});gpView()}
   else if(a==="addIn"){var g=sem.subjects[i];if(g){sem.subjects.push({id:gpId(),name:"مادة",coef:1,td:false,tp:false,group:g.group});gpView()}}
-  else if(a==="del"){if(confirm("حذف هذه المادة؟")){sem.subjects.splice(i,1);gpView()}}
+  else if(a==="del"){{var nm=sem.subjects[i]&&sem.subjects[i].name;gpAsk("حذف المادة «"+nm+"»؟","لن تظهر للطلبة بعد الحفظ.",function(){sem.subjects.splice(i,1);gpView()})}}
   else if(a==="tg"){var s=sem.subjects[i];if(s){s[b.dataset.t]=!s[b.dataset.t];gpView()}}
   else if(a==="addSem"){c.semesters.push({id:gpId(),title:"سداسي جديد",subjects:[]});GP.tab=c.semesters.length-1;gpView()}
-  else if(a==="delSem"){if(c.semesters.length>1&&confirm("حذف هذا السداسي بكل موادّه؟")){c.semesters.splice(GP.tab,1);GP.tab=0;gpView()}}
+  else if(a==="delSem"){if(c.semesters.length>1)gpAsk("حذف «"+sem.title+"» بكل موادّه؟","لن يظهر للطلبة بعد الحفظ.",function(){c.semesters.splice(GP.tab,1);GP.tab=0;gpView()})}
   else if(a==="save"){b.disabled=true;GP.msg="جارٍ الحفظ…";var m=$("#gpMsg");if(m)m.textContent=GP.msg;
    fetch("/api/gpa",{method:"PUT",credentials:"same-origin",headers:gpHdr(1),body:JSON.stringify({config:GP.draft})}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})}).then(function(x){
     if(x.ok&&x.j&&x.j.config){GP.cfg=x.j.config;gpCache(x.j.config);GP.edit=false;GP.draft=null;GP.msg="";if(GP.tab>=GP.cfg.semesters.length)GP.tab=0;gpView()}
