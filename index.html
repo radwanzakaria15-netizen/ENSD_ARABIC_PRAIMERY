@@ -4617,7 +4617,7 @@ async function annReplaceAtt(id,i){
  try{
   if(!ANN_ADMIN&&!(await annResolveCode()))throw new Error("أعد تسجيل الدخول إلى الإدارة.");
   toast("جارٍ رفع الملف الجديد…");
-  newKey=await annUploadFile("ann-"+Date.now().toString(36)+"-r"+Math.random().toString(36).slice(2,6),f);
+  newKey=await annUploadFile("ann-"+Date.now().toString(36)+"-9-"+(Math.random().toString(36).slice(2,6)||"x"),f);
   const att=a.att.map((x,j)=>j===i?{n:f.name.slice(0,60),t:f.type||attMime(f.name),k:newKey}:x);
   await annEditSave(a,att);
   annDeleteFile(old.k);await loadAnnouncements();toast("تم استبدال الملف.");
@@ -4650,7 +4650,7 @@ $("#annForm")?.addEventListener("submit",async e=>{
   try{
    for(let i=0;i<comp.files.length;i++){
     const file=comp.files[i];btn.textContent="جارٍ رفع المرفق "+(i+1)+" من "+comp.files.length+"…";
-    const key="ann-"+Date.now().toString(36)+"-"+i+"-"+Math.random().toString(36).slice(2,6);
+    const key="ann-"+Date.now().toString(36)+"-"+i+"-"+(Math.random().toString(36).slice(2,6)||"x");
     const saved=await annUploadFile(key,file);uploaded.push(saved);
     att.push({n:file.name.slice(0,60),t:file.type||attMime(file.name),k:saved});
    }
