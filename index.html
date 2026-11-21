@@ -8667,6 +8667,14 @@ html:root body .ann-rx .fav-btn{width:auto!important;min-width:46px!important;he
 @media(prefers-reduced-motion:reduce){.fav-btn .fav-n.bump{animation:none}}
 
 /* ===== تصميم الإعلان المثبّت + إدارة الملفات ===== */
+.ann-list{grid-template-columns:minmax(0,1fr)}
+.ann-card{min-width:0;max-width:100%;box-sizing:border-box}
+.ann-card>*{min-width:0;max-width:100%}
+.ann-card .ann-atts{grid-template-columns:minmax(0,1fr)}
+.ann-card .ann-att-chip{min-width:0;max-width:100%;box-sizing:border-box}
+.ann-card .ann-att-chip span{min-width:0}
+.ann-card .ann-poll,.ann-card .ann-poll .pv-opt{box-sizing:border-box;max-width:100%;min-width:0}
+.ann-card h4,.ann-card p{overflow-wrap:anywhere}
 html[data-theme=dark] .ann-card.pinned:not(.has-bg) h4{color:#fff6dd}
 html[data-theme=dark] .ann-card.pinned:not(.has-bg) p,html[data-theme=dark] .ann-card.pinned:not(.has-bg) time{color:#d9cfb4}
 /* المرفقات داخل أي بطاقة: نص واضح في الوضعين */
