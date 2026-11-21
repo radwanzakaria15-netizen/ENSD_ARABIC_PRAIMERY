@@ -9443,7 +9443,7 @@ function gpClone(o){return JSON.parse(JSON.stringify(o))}
 function gpId(){return"m"+Math.random().toString(36).slice(2,8)}
 function gpNum(v){v=String(v==null?"":v).replace(/[٠-٩]/g,function(d){return d.charCodeAt(0)-1632}).replace(/[٫،,]/g,".").trim();if(v==="")return NaN;var n=parseFloat(v);return isFinite(n)&&n>=0&&n<=20?n:NaN}
 function gpFmt(v){return v==null?"—":(Math.round(v*100)/100).toFixed(2)}
-function gpMod(s,m){m=m||{};var uT=!s.group&&s.td,uP=!s.group&&s.tp,hx=s.group?true:s.ex!==false;
+function gpMod(s,m){m=m||{};var uT=!!s.td,uP=!!s.tp,hx=s.ex!==false;
  function cw(){var td=uT?gpNum(m.td):0,tp=uP?gpNum(m.tp):0;if((uT&&isNaN(td))||(uP&&isNaN(tp)))return null;return uT&&uP?(td+tp)/2:uT?td:uP?tp:null}
  if(!hx)return cw();
  function f(x){if(isNaN(x))return null;var c=cw();if(c==null)return(uT||uP)?null:x;return(2*x+c)/3}
@@ -9518,15 +9518,16 @@ function gpAsk(title,note,ok){var o=document.createElement("div");o.className="g
 function gpInp(s,k,label,cls){return'<label class="gp-f'+(cls?" "+cls:"")+'"><span>'+label+'</span><input inputmode="decimal" autocomplete="off" placeholder="0" data-id="'+esc(s.id)+'" data-k="'+k+'" value="'+esc((GM[s.id]||{})[k]||"")+'"></label>'}
 function gpOff(label){return'<div class="gp-f gp-off"><span>'+label+'</span><div class="gp-dash">—</div></div>'}
 function gpResBox(s){return'<div class="gp-r" data-r="'+esc(s.id)+'"><small>العلامة</small><b>—</b></div>'}
+function gpFields(s){return'<div class="gp-pair">'+(s.td?gpInp(s,"td","TD"):gpOff("TD"))+(s.ex!==false?gpInp(s,"ex","Exam"):gpOff("Exam"))+(s.tp?gpInp(s,"tp","TP"):"")+(GP.rt&&s.ex!==false?gpInp(s,"rt","استدراكي",s.tp?"":"gp-full"):"")+'</div>'}
 function gpCard(s){return'<div class="gp-card"><div class="gp-ch"><b>'+esc(s.name)+'</b>'+(Number(s.coef)!==1?'<i class="gp-coef">م '+esc(s.coef)+'</i>':'')+'</div><div class="gp-pair">'+
  (s.td?gpInp(s,"td","TD"):gpOff("TD"))+(s.ex!==false?gpInp(s,"ex","Exam"):gpOff("Exam"))+(s.tp?gpInp(s,"tp","TP"):"")+(GP.rt&&s.ex!==false?gpInp(s,"rt","استدراكي",s.tp?"":"gp-full"):"")+'</div>'+gpResBox(s)+'</div>'}
-function gpGroup(name,rows){return'<div class="gp-card gp-wide"><div class="gp-ch"><b>'+esc(name)+'</b></div><div class="gp-gg">'+rows.map(function(s){return'<div class="gp-gi"><b>'+esc(s.name)+(Number(s.coef)!==1?' <i class="gp-coef">م '+esc(s.coef)+'</i>':'')+'</b>'+gpInp(s,"ex","Exam")+(GP.rt?gpInp(s,"rt","استدراكي"):"")+gpResBox(s)+'</div>'}).join("")+'</div></div>'}
+function gpGroup(name,rows){return'<div class="gp-card gp-wide"><div class="gp-ch"><b>'+esc(name)+'</b></div><div class="gp-gg">'+rows.map(function(s){return'<div class="gp-gi"><b>'+esc(s.name)+(Number(s.coef)!==1?' <i class="gp-coef">م '+esc(s.coef)+'</i>':'')+'</b>'+gpFields(s)+gpResBox(s)+'</div>'}).join("")+'</div></div>'}
 function gpEdCard(sem,s){var i=sem.subjects.indexOf(s);return'<div class="gp-card gp-ed"><input class="gp-in" data-e="name" data-i="'+i+'" value="'+esc(s.name)+'" placeholder="اسم المادة">'+
  '<label class="gp-f"><span>المعامل</span><input class="gp-in" inputmode="decimal" data-e="coef" data-i="'+i+'" value="'+esc(s.coef)+'"></label>'+
  '<div class="gp-tg"><button type="button" data-a="tg" data-t="td" data-i="'+i+'" class="'+(s.td?"on":"")+'">TD</button><button type="button" data-a="tg" data-t="tp" data-i="'+i+'" class="'+(s.tp?"on":"")+'">TP</button><button type="button" data-a="tg" data-t="ex" data-i="'+i+'" class="'+(s.ex!==false?"on":"")+'">Exam</button></div>'+
  '<button type="button" class="gp-x" data-a="del" data-i="'+i+'">'+ic("trash",15)+' حذف المادة</button></div>'}
 function gpEdGroup(sem,name,rows){var gi=sem.subjects.indexOf(rows[0]);return'<div class="gp-card gp-wide gp-ed"><input class="gp-in" data-e="group" data-i="'+gi+'" value="'+esc(name)+'" placeholder="اسم المجموعة">'+
- rows.map(function(s){var i=sem.subjects.indexOf(s);return'<div class="gp-grow gp-e"><input class="gp-in" data-e="name" data-i="'+i+'" value="'+esc(s.name)+'" placeholder="المادة"><input class="gp-in" inputmode="decimal" data-e="coef" data-i="'+i+'" value="'+esc(s.coef)+'" aria-label="المعامل"><button type="button" class="gp-x" data-a="del" data-i="'+i+'" aria-label="حذف">'+ic("trash",15)+'</button></div>'}).join("")+
+ rows.map(function(s){var i=sem.subjects.indexOf(s);return'<div class="gp-grow gp-e"><input class="gp-in" data-e="name" data-i="'+i+'" value="'+esc(s.name)+'" placeholder="المادة"><input class="gp-in" inputmode="decimal" data-e="coef" data-i="'+i+'" value="'+esc(s.coef)+'" aria-label="المعامل"><button type="button" class="gp-x" data-a="del" data-i="'+i+'" aria-label="حذف">'+ic("trash",15)+'</button></div><div class="gp-tg" style="margin:-2px 0 10px"><button type="button" data-a="tg" data-t="td" data-i="'+i+'" class="'+(s.td?"on":"")+'">TD</button><button type="button" data-a="tg" data-t="tp" data-i="'+i+'" class="'+(s.tp?"on":"")+'">TP</button><button type="button" data-a="tg" data-t="ex" data-i="'+i+'" class="'+(s.ex!==false?"on":"")+'">Exam</button></div>'}).join("")+
  '<button type="button" class="gp-mini" data-a="addIn" data-i="'+gi+'">'+ic("plus",14)+' مادة في المجموعة</button></div>'}
 function gpCards(sem){var out=[],seen={};
  sem.subjects.forEach(function(s){if(s.group){if(seen[s.group])return;seen[s.group]=1;var rows=sem.subjects.filter(function(x){return x.group===s.group});out.push(GP.edit?gpEdGroup(sem,s.group,rows):gpGroup(s.group,rows))}else out.push(GP.edit?gpEdCard(sem,s):gpCard(s))});
