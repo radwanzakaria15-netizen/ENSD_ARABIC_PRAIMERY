@@ -3281,7 +3281,9 @@ if(code)load();
 /* ===== الأعمال الأدبية المشتركة (قصائد، قصص، خواطر…) — تُحفظ في D1 فتظهر لكل الطلبة =====
    GET /api/literary            قائمة خفيفة (مقتطفات)         GET ?id=…   العمل كاملًا
    POST /api/literary           إنشاء/تعديل (id للتعديل)       POST ?action=like   {id,on}
-   DELETE /api/literary?id=…    حذف (صاحب العمل أو الإدارة) */
+   DELETE /api/literary?id=…    حذف (صاحب العمل أو الإدارة)
+   POST /api/literary?action=approve {id,on}  موافقة المالك على النشر (أو إلغاؤه) — المالك فقط
+   أعمال الطلبة تُحفظ معلّقة (ap=0) ولا يراها غير صاحبها والمالك حتى يوافق المالك؛ أعمال المالك تُنشر مباشرة. */
 const LIT_TYPES = ["poem", "story", "novel", "khat", "text", "other"];
 const LIT_MAX_BODY = 60000, LIT_MAX_TITLE = 120, LIT_MAX_VERSES = 200, LIT_MAX_HEMI = 300, LIT_PER_USER = 100, LIT_LIST_MAX = 500;
 let litReady = null;
@@ -3290,11 +3292,16 @@ async function litInit(env) {
   if (!db) throw new Error("d1_not_configured");
   if (!litReady) {
     litReady = db.batch([
-      db.prepare("CREATE TABLE IF NOT EXISTS lit (id TEXT PRIMARY KEY, me TEXT NOT NULL, name TEXT, type TEXT NOT NULL, title TEXT, ex TEXT, pv TEXT, nv INTEGER, body TEXT, ts INTEGER NOT NULL)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS lit (id TEXT PRIMARY KEY, me TEXT NOT NULL, name TEXT, type TEXT NOT NULL, title TEXT, ex TEXT, pv TEXT, nv INTEGER, body TEXT, ts INTEGER NOT NULL, ap INTEGER NOT NULL DEFAULT 1)"),
       db.prepare("CREATE INDEX IF NOT EXISTS lit_ts ON lit (ts)"),
       db.prepare("CREATE INDEX IF NOT EXISTS lit_me ON lit (me)"),
       db.prepare("CREATE TABLE IF NOT EXISTS lit_lk (id TEXT NOT NULL, me TEXT NOT NULL, PRIMARY KEY (id, me))")
-    ]).then(() => db, (e) => { litReady = null; throw e; });
+    ]).then(async () => {
+      /* الجداول القديمة: عمود الموافقة (الأعمال المنشورة سابقاً تبقى منشورة ap=1) */
+      try { await db.prepare("SELECT ap FROM lit LIMIT 1").first(); }
+      catch { await db.prepare("ALTER TABLE lit ADD COLUMN ap INTEGER NOT NULL DEFAULT 1").run(); }
+      return db;
+    }).catch((e) => { litReady = null; throw e; });
   }
   return litReady;
 }
@@ -3306,7 +3313,7 @@ function litVerses(v) {
     .filter((r) => r[0] || r[1]);
 }
 function litView(r, full) {
-  const o = { id: r.id, type: r.type, title: r.title || "", author: { name: r.name || "طالب" }, ts: r.ts, likes: Number(r.likes) || 0, liked: !!Number(r.liked), mine: !!Number(r.mine) };
+  const o = { id: r.id, type: r.type, title: r.title || "", author: { name: r.name || "طالب" }, ts: r.ts, likes: Number(r.likes) || 0, liked: !!Number(r.liked), mine: !!Number(r.mine), pending: Number(r.ap) === 0 };
   if (full) {
     if (r.type === "poem") { try { o.v = JSON.parse(r.body || "[]"); } catch { o.v = []; } } else o.body = r.body || "";
   } else {
@@ -3324,32 +3331,45 @@ async function litViewA(env, r, full, pc) {
   if (role) { o.author.role = role; o.author.u = u; }
   return o;
 }
-const LIT_SEL = "SELECT l.id, l.type, l.title, l.ex, l.pv, l.nv, l.name, l.ts, l.me AS who, (l.me = ?1) AS mine, (SELECT COUNT(*) FROM lit_lk k WHERE k.id = l.id) AS likes, EXISTS(SELECT 1 FROM lit_lk k WHERE k.id = l.id AND k.me = ?1) AS liked";
+const LIT_SEL = "SELECT l.id, l.type, l.title, l.ex, l.pv, l.nv, l.name, l.ts, l.ap, l.me AS who, (l.me = ?1) AS mine, (SELECT COUNT(*) FROM lit_lk k WHERE k.id = l.id) AS likes, EXISTS(SELECT 1 FROM lit_lk k WHERE k.id = l.id AND k.me = ?1) AS liked";
 async function handleLiterary(request, env, ctx) {
   const ss = await readSession(request, env);
   if (!ss.ok) return json({ error: "login_required" }, 401);
   const u = new URL(request.url), action = u.searchParams.get("action") || "", id = String(u.searchParams.get("id") || "");
   const who = await rxIdentity(request, env, ss), me = who.me;
+  const isOwner = !!who.admin && me === "a-owner";
   try {
     const db = await litInit(env);
     const pc = await rxPersonCtx(env, false);
     if (request.method === "GET") {
       if (id) {
         const r = await db.prepare(LIT_SEL + ", l.body FROM lit l WHERE l.id = ?2").bind(me, id).first();
-        return r ? json({ item: await litViewA(env, r, true, pc) }) : json({ error: "not_found" }, 404);
+        if (!r || (Number(r.ap) === 0 && !Number(r.mine) && !isOwner)) return json({ error: "not_found" }, 404);
+        return json({ item: await litViewA(env, r, true, pc) });
       }
-      const rs = await db.prepare(LIT_SEL + " FROM lit l ORDER BY l.ts DESC LIMIT ?2").bind(me, LIT_LIST_MAX).all();
+      const rs = await db.prepare(LIT_SEL + " FROM lit l" + (isOwner ? "" : " WHERE l.ap <> 0 OR l.me = ?1") + " ORDER BY l.ts DESC LIMIT ?2").bind(me, LIT_LIST_MAX).all();
       return json({ items: await Promise.all((rs.results || []).map((r) => litViewA(env, r, false, pc))) });
     }
     if (request.method === "POST" && action === "like") {
       let b = {}; try { b = await request.json(); } catch {}
       const lid = String(b.id || "");
-      if (!(await db.prepare("SELECT 1 AS x FROM lit WHERE id = ?1").bind(lid).first())) return json({ error: "not_found" }, 404);
+      const lr = await db.prepare("SELECT ap FROM lit WHERE id = ?1").bind(lid).first();
+      if (!lr) return json({ error: "not_found" }, 404);
+      if (Number(lr.ap) === 0) return json({ error: "not_approved" }, 403);
       if (rlCount("lit:" + me, 60000) >= 60) return json({ error: "rate_limited" }, 429);
       rlAdd("lit:" + me, 60000);
       await db.prepare(b.on ? "INSERT OR IGNORE INTO lit_lk (id, me) VALUES (?1, ?2)" : "DELETE FROM lit_lk WHERE id = ?1 AND me = ?2").bind(lid, me).run();
       const c = await db.prepare("SELECT COUNT(*) AS n FROM lit_lk WHERE id = ?1").bind(lid).first();
       return json({ ok: true, likes: Number(c && c.n) || 0 });
+    }
+    if (request.method === "POST" && action === "approve") {
+      if (!isOwner) return json({ error: "forbidden" }, 403);
+      let b = {}; try { b = await request.json(); } catch {}
+      const lid = String(b.id || "");
+      if (!(await db.prepare("SELECT 1 AS x FROM lit WHERE id = ?1").bind(lid).first())) return json({ error: "not_found" }, 404);
+      const on = b.on !== false;
+      await db.prepare("UPDATE lit SET ap = ?2 WHERE id = ?1").bind(lid, on ? 1 : 0).run();
+      return json({ ok: true, pending: !on });
     }
     if (request.method === "DELETE") {
       if (!id) return json({ error: "invalid_input" }, 400);
@@ -3382,14 +3402,14 @@ async function handleLiterary(request, env, ctx) {
         const r = await db.prepare("SELECT me FROM lit WHERE id = ?1").bind(lid).first();
         if (!r) return json({ error: "not_found" }, 404);
         if (r.me !== me) return json({ error: "forbidden" }, 403);
-        await db.prepare("UPDATE lit SET type = ?2, title = ?3, ex = ?4, pv = ?5, nv = ?6, body = ?7, name = ?8 WHERE id = ?1").bind(lid, d.type, title, ex, pv, nv, body, name).run();
+        await db.prepare("UPDATE lit SET type = ?2, title = ?3, ex = ?4, pv = ?5, nv = ?6, body = ?7, name = ?8, ap = ?9 WHERE id = ?1").bind(lid, d.type, title, ex, pv, nv, body, name, isOwner ? 1 : 0).run(); // أي تعديل من غير المالك يعيد العمل للمراجعة
       } else {
         const cnt = await db.prepare("SELECT COUNT(*) AS n FROM lit WHERE me = ?1").bind(me).first();
         if ((Number(cnt && cnt.n) || 0) >= LIT_PER_USER) return json({ error: "limit" }, 429);
         const now = Date.now();
         const ts = Number.isFinite(d.ts) && d.ts > 1577836800000 && d.ts <= now ? Math.floor(d.ts) : now; // يحفظ تاريخ الأعمال المنقولة من الجهاز
         lid = "l" + now.toString(36) + Math.random().toString(36).slice(2, 7);
-        await db.prepare("INSERT INTO lit (id, me, name, type, title, ex, pv, nv, body, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)").bind(lid, me, name, d.type, title, ex, pv, nv, body, ts).run();
+        await db.prepare("INSERT INTO lit (id, me, name, type, title, ex, pv, nv, body, ts, ap) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)").bind(lid, me, name, d.type, title, ex, pv, nv, body, ts, isOwner ? 1 : 0).run();
       }
       const r = await db.prepare(LIT_SEL + ", l.body FROM lit l WHERE l.id = ?2").bind(me, lid).first();
       return json({ item: await litViewA(env, r, true, pc) });
