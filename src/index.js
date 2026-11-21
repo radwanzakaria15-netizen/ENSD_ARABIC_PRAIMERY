@@ -1352,6 +1352,7 @@ async function handleApi(request, env, ctx) {
 
   if (url.pathname === "/api/badges") return handleBadges(request, env);
   if (url.pathname === "/api/reactions") return handleReactions(request, env, ctx);
+  if (url.pathname === "/api/literary") return handleLiterary(request, env, ctx);
   if (url.pathname === "/api/notifications") return handleNotifications(request, env);
   if (url.pathname === "/api/sync") return handleSync(request, env);
   if (url.pathname === "/api/polls") return handlePolls(request, env);
@@ -3218,6 +3219,117 @@ if(code)load();
 `;
 
 
+
+/* ===== الأعمال الأدبية المشتركة (قصائد، قصص، خواطر…) — تُحفظ في D1 فتظهر لكل الطلبة =====
+   GET /api/literary            قائمة خفيفة (مقتطفات)         GET ?id=…   العمل كاملًا
+   POST /api/literary           إنشاء/تعديل (id للتعديل)       POST ?action=like   {id,on}
+   DELETE /api/literary?id=…    حذف (صاحب العمل أو الإدارة) */
+const LIT_TYPES = ["poem", "story", "novel", "khat", "text", "other"];
+const LIT_MAX_BODY = 60000, LIT_MAX_TITLE = 120, LIT_MAX_VERSES = 200, LIT_MAX_HEMI = 300, LIT_PER_USER = 100, LIT_LIST_MAX = 500;
+let litReady = null;
+async function litInit(env) {
+  const db = env && env.DB && typeof env.DB.prepare === "function" ? env.DB : null;
+  if (!db) throw new Error("d1_not_configured");
+  if (!litReady) {
+    litReady = db.batch([
+      db.prepare("CREATE TABLE IF NOT EXISTS lit (id TEXT PRIMARY KEY, me TEXT NOT NULL, name TEXT, type TEXT NOT NULL, title TEXT, ex TEXT, pv TEXT, nv INTEGER, body TEXT, ts INTEGER NOT NULL)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS lit_ts ON lit (ts)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS lit_me ON lit (me)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS lit_lk (id TEXT NOT NULL, me TEXT NOT NULL, PRIMARY KEY (id, me))")
+    ]).then(() => db, (e) => { litReady = null; throw e; });
+  }
+  return litReady;
+}
+const litStrip = (h) => String(h || "").replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+function litVerses(v) {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, LIT_MAX_VERSES)
+    .map((r) => [String((r && r[0]) || "").slice(0, LIT_MAX_HEMI).trim(), String((r && r[1]) || "").slice(0, LIT_MAX_HEMI).trim()])
+    .filter((r) => r[0] || r[1]);
+}
+function litView(r, full) {
+  const o = { id: r.id, type: r.type, title: r.title || "", author: { name: r.name || "طالب" }, ts: r.ts, likes: Number(r.likes) || 0, liked: !!Number(r.liked), mine: !!Number(r.mine) };
+  if (full) {
+    if (r.type === "poem") { try { o.v = JSON.parse(r.body || "[]"); } catch { o.v = []; } } else o.body = r.body || "";
+  } else {
+    o.ex = r.ex || ""; o.nv = Number(r.nv) || 0; o.part = 1;
+    if (r.type === "poem") { try { o.pv = JSON.parse(r.pv || "[]"); } catch { o.pv = []; } }
+  }
+  return o;
+}
+const LIT_SEL = "SELECT l.id, l.type, l.title, l.ex, l.pv, l.nv, l.name, l.ts, (l.me = ?1) AS mine, (SELECT COUNT(*) FROM lit_lk k WHERE k.id = l.id) AS likes, EXISTS(SELECT 1 FROM lit_lk k WHERE k.id = l.id AND k.me = ?1) AS liked";
+async function handleLiterary(request, env, ctx) {
+  const ss = await readSession(request, env);
+  if (!ss.ok) return json({ error: "login_required" }, 401);
+  const u = new URL(request.url), action = u.searchParams.get("action") || "", id = String(u.searchParams.get("id") || "");
+  const who = await rxIdentity(request, env, ss), me = who.me;
+  try {
+    const db = await litInit(env);
+    if (request.method === "GET") {
+      if (id) {
+        const r = await db.prepare(LIT_SEL + ", l.body FROM lit l WHERE l.id = ?2").bind(me, id).first();
+        return r ? json({ item: litView(r, true) }) : json({ error: "not_found" }, 404);
+      }
+      const rs = await db.prepare(LIT_SEL + " FROM lit l ORDER BY l.ts DESC LIMIT ?2").bind(me, LIT_LIST_MAX).all();
+      return json({ items: (rs.results || []).map((r) => litView(r, false)) });
+    }
+    if (request.method === "POST" && action === "like") {
+      let b = {}; try { b = await request.json(); } catch {}
+      const lid = String(b.id || "");
+      if (!(await db.prepare("SELECT 1 AS x FROM lit WHERE id = ?1").bind(lid).first())) return json({ error: "not_found" }, 404);
+      if (rlCount("lit:" + me, 60000) >= 60) return json({ error: "rate_limited" }, 429);
+      rlAdd("lit:" + me, 60000);
+      await db.prepare(b.on ? "INSERT OR IGNORE INTO lit_lk (id, me) VALUES (?1, ?2)" : "DELETE FROM lit_lk WHERE id = ?1 AND me = ?2").bind(lid, me).run();
+      const c = await db.prepare("SELECT COUNT(*) AS n FROM lit_lk WHERE id = ?1").bind(lid).first();
+      return json({ ok: true, likes: Number(c && c.n) || 0 });
+    }
+    if (request.method === "DELETE") {
+      if (!id) return json({ error: "invalid_input" }, 400);
+      const r = await db.prepare("SELECT me FROM lit WHERE id = ?1").bind(id).first();
+      if (!r) return json({ ok: true });
+      if (r.me !== me && !who.admin) return json({ error: "forbidden" }, 403);
+      await db.batch([db.prepare("DELETE FROM lit WHERE id = ?1").bind(id), db.prepare("DELETE FROM lit_lk WHERE id = ?1").bind(id)]);
+      return json({ ok: true });
+    }
+    if (request.method === "POST") {
+      let d = null; try { d = await request.json(); } catch {}
+      if (!d || !LIT_TYPES.includes(d.type)) return json({ error: "invalid_input" }, 400);
+      if (rlCount("litw:" + me, 60000) >= 12) return json({ error: "rate_limited" }, 429);
+      rlAdd("litw:" + me, 60000);
+      const title = String(d.title || "").slice(0, LIT_MAX_TITLE).trim();
+      let body = "", v = [], ex = "", pv = "[]", nv = 0;
+      if (d.type === "poem") {
+        v = litVerses(d.v);
+        if (!v.length) return json({ error: "empty" }, 400);
+        body = JSON.stringify(v); pv = JSON.stringify(v.slice(0, 1)); nv = v.length;
+      } else {
+        body = String(d.body || "").slice(0, LIT_MAX_BODY);
+        const t = litStrip(body);
+        if (!t && !/<table/i.test(body)) return json({ error: "empty" }, 400);
+        ex = t.length > 150 ? t.slice(0, 150) + "…" : t;
+      }
+      const name = String(((await rxPerson(env, me, await rxPersonCtx(env, true))) || {}).name || "طالب").slice(0, 60);
+      let lid = String(d.id || "");
+      if (lid) {
+        const r = await db.prepare("SELECT me FROM lit WHERE id = ?1").bind(lid).first();
+        if (!r) return json({ error: "not_found" }, 404);
+        if (r.me !== me) return json({ error: "forbidden" }, 403);
+        await db.prepare("UPDATE lit SET type = ?2, title = ?3, ex = ?4, pv = ?5, nv = ?6, body = ?7, name = ?8 WHERE id = ?1").bind(lid, d.type, title, ex, pv, nv, body, name).run();
+      } else {
+        const cnt = await db.prepare("SELECT COUNT(*) AS n FROM lit WHERE me = ?1").bind(me).first();
+        if ((Number(cnt && cnt.n) || 0) >= LIT_PER_USER) return json({ error: "limit" }, 429);
+        const now = Date.now();
+        const ts = Number.isFinite(d.ts) && d.ts > 1577836800000 && d.ts <= now ? Math.floor(d.ts) : now; // يحفظ تاريخ الأعمال المنقولة من الجهاز
+        lid = "l" + now.toString(36) + Math.random().toString(36).slice(2, 7);
+        await db.prepare("INSERT INTO lit (id, me, name, type, title, ex, pv, nv, body, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)").bind(lid, me, name, d.type, title, ex, pv, nv, body, ts).run();
+      }
+      const r = await db.prepare(LIT_SEL + ", l.body FROM lit l WHERE l.id = ?2").bind(me, lid).first();
+      return json({ item: litView(r, true) });
+    }
+    return json({ error: "method_not_allowed" }, 405);
+  } catch (e) { return dbErr(e); }
+}
+
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(execDueAll(env).catch(() => {}));
@@ -3228,7 +3340,7 @@ export default {
     if (gate) return gate;
     if (url.pathname === "/api/publish") return handlePublish(request, env);
     if (url.pathname === "/api/history") return handleHistory(request, env);
-    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/notifications" || url.pathname === "/api/sync" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
+    if (url.pathname === "/api/lessons" || url.pathname === "/api/file" || url.pathname === "/api/academic" || url.pathname === "/api/academic-image" || url.pathname === "/api/resources" || url.pathname === "/api/resource" || url.pathname === "/api/announcements" || url.pathname === "/api/badges" || url.pathname === "/api/reactions" || url.pathname === "/api/literary" || url.pathname === "/api/notifications" || url.pathname === "/api/sync" || url.pathname === "/api/polls" || url.pathname === "/api/comments") {
       const response = await handleApi(request, env, ctx);
       if (request.method !== "GET" && request.method !== "HEAD" && response.status >= 200 && response.status < 300 && PUBLISH_PATHS.has(url.pathname)) schedulePublish(ctx, env);
       return response;
