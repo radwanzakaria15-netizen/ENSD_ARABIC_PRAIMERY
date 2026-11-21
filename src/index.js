@@ -694,8 +694,9 @@ function gpaClean(raw) {
       if (!name) continue;
       const coef = Number(s && s.coef);
       const item = { id, name, coef: coef > 0 && coef <= 50 ? coef : 1, td: !!(s && s.td), tp: !!(s && s.tp) };
+      if (s && s.ex === false) item.ex = false;
       const group = clip(s && s.group, 40);
-      if (group) { item.group = group; item.td = false; item.tp = false; }
+      if (group) { item.group = group; item.td = false; item.tp = false; delete item.ex; }
       subs.push(item);
     }
     const title = clip(sm && sm.title, 60);
