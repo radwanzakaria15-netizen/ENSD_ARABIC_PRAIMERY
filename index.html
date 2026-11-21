@@ -4298,14 +4298,15 @@ function annCmBtn(a){
 const PV={},CMD={},cmOpen=new Set(),pvBusy=new Set();
 function annPollHtml(a){
  const p=a.poll;if(!p)return "";const st=PV[a.id]||{counts:[],voters:0,mine:[]},prev=a.id==="preview";
- const tot=Math.max(1,st.counts.reduce((x,y)=>x+y,0)),voted=st.mine.length>0;
- const rows=p.o.map((t,i)=>{const n=st.counts[i]||0,pc=voted||p.closed||prev?Math.round(n*100/tot):0,mine=st.mine.includes(i);
-  return '<button type="button" class="pv-opt'+(mine?" on":"")+'"'+(prev||p.closed?" disabled":"")+' data-pv="'+esc(a.id)+'" data-i="'+i+'" aria-pressed="'+mine+'">'
+ const tot=Math.max(1,st.counts.reduce((x,y)=>x+y,0)),voted=st.mine.length>0,top=st.counts.reduce((m,n)=>Math.max(m,n),0);
+ const rows=p.o.map((t,i)=>{const n=st.counts[i]||0,pc=voted||p.closed||prev?Math.round(n*100/tot):0,mine=st.mine.includes(i),lead=(voted||p.closed)&&n>0&&n===top;
+  return '<button type="button" class="pv-opt'+(mine?" on":"")+(lead?" lead":"")+'"'+(prev||p.closed?" disabled":"")+' data-pv="'+esc(a.id)+'" data-i="'+i+'" aria-pressed="'+mine+'">'
    +'<span class="pv-bar" style="width:'+(voted||p.closed?pc:0)+'%"></span>'
-   +'<span class="pv-mark">'+(p.multi?(mine?"☑":"☐"):(mine?"●":"○"))+'</span><span class="pv-t">'+esc(t)+'</span>'
+   +'<span class="pv-mark'+(p.multi?" sq":"")+'"></span><span class="pv-t">'+esc(t)+'</span>'
    +(voted||p.closed?'<span class="pv-pc">'+pc+'%</span>':'')+'</button>'}).join("");
- const foot=(st.voters?st.voters+" مصوّت":"لا أصوات بعد")+" · "+(p.multi?"عدّة إجابات":"إجابة واحدة")+(p.closed?" · التصويت مغلق":"");
- return '<div class="ann-poll" data-pid="'+esc(a.id)+'"><div class="pv-q">📊 '+esc(p.q)+'</div>'+rows+'<div class="pv-foot"><span>'+foot+'</span>'+(voted&&!p.closed&&!prev?'<button type="button" class="pv-undo" data-pv-undo="'+esc(a.id)+'">سحب صوتي</button>':'')+'</div></div>';
+ const head='<div class="pv-head"><span class="pv-ico"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg></span><span class="pv-kind">'+(p.multi?"استفتاء":"تصويت")+'</span>'+(p.closed?'<span class="pv-lock">مغلق</span>':'')+'</div>';
+ const foot='<span class="pv-meta"><b>'+(st.voters?st.voters+" مصوّت":"لا أصوات بعد")+'</b><i>'+(p.multi?"عدّة إجابات":"إجابة واحدة")+'</i></span>';
+ return '<div class="ann-poll" data-pid="'+esc(a.id)+'">'+head+'<div class="pv-q">'+esc(p.q)+'</div><div class="pv-opts">'+rows+'</div><div class="pv-foot">'+foot+(voted&&!p.closed&&!prev?'<button type="button" class="pv-undo" data-pv-undo="'+esc(a.id)+'">سحب صوتي</button>':'')+'</div></div>';
 }
 function paintPoll(id){const a=ANN.find(x=>x.id===id),el=document.querySelector('.ann-poll[data-pid="'+CSS.escape(id)+'"]');if(!a||!el)return;el.outerHTML=annPollHtml(a)}
 async function pollFetch(a){
@@ -4451,14 +4452,22 @@ const attMime=n=>ATT_MIME[((String(n).match(/\.([a-z0-9]+)$/i)||[])[1]||"").toLo
 const attKind=x=>/^image\//.test(x.t||"")||/\.(jpe?g|png|webp)$/i.test(x.n||"")?"img":(/pdf/i.test(x.t||"")||/\.pdf$/i.test(x.n||"")?"pdf":"doc");
 const attLabel={img:"صورة",pdf:"PDF",doc:"Word"};
 const attUrl=(k,dl)=>"/api/file?key="+encodeURIComponent(k)+(dl?"&download=1":"");
+const ANN_PREV={},ANN_BLOB=new WeakMap();
+const attObj=f=>{let u=ANN_BLOB.get(f);if(!u){u=URL.createObjectURL(f);ANN_BLOB.set(f,u)}return u};
+/* الصورة تُفتح داخل الصفحة نفسها (بدون تنقّل أو تحميل) */
+document.addEventListener("click",e=>{const a=e.target.closest&&e.target.closest("a.ann-att-img");if(!a)return;e.preventDefault();
+ const im=a.querySelector("img");if(!im)return;const o=document.createElement("div");o.className="ann-lb";o.setAttribute("role","dialog");o.setAttribute("aria-modal","true");
+ o.innerHTML='<button type="button" class="ann-lb-x" aria-label="إغلاق">×</button><img alt="">';o.querySelector("img").src=im.currentSrc||im.src;o.querySelector("img").alt=im.alt||"";
+ const close=()=>{o.remove();document.removeEventListener("keydown",key)},key=ev=>{if(ev.key==="Escape")close()};
+ o.addEventListener("click",close);document.addEventListener("keydown",key);document.body.appendChild(o)});
 function annAttsHtml(a){
  if(!a.att||!a.att.length)return"";
  const imgs=[],chips=[];
  a.att.forEach(x=>{const kind=attKind(x),real=!/^preview:/.test(x.k);
-  if(kind==="img")imgs.push(real?'<a class="ann-att-img" href="'+esc(attUrl(x.k))+'" target="_blank" rel="noopener"><img src="'+esc(attUrl(x.k))+'" alt="'+esc(x.n)+'" loading="lazy"></a>':'<span class="ann-att-img"><span class="ann-att-ph">'+esc(x.n)+'</span></span>');
+  if(kind==="img")imgs.push(real?'<a class="ann-att-img" href="'+esc(attUrl(x.k))+'" target="_blank" rel="noopener"><img src="'+esc(attUrl(x.k))+'" alt="'+esc(x.n)+'" decoding="async"></a>':(ANN_PREV[x.k]?'<span class="ann-att-img"><img src="'+esc(ANN_PREV[x.k])+'" alt="'+esc(x.n)+'"></span>':'<span class="ann-att-img"><span class="ann-att-ph">'+esc(x.n)+'</span></span>'));
   else chips.push(real?'<a class="ann-att-chip k-'+kind+'" href="'+esc(attUrl(x.k,kind==="doc"))+'" '+(kind==="pdf"?'target="_blank" rel="noopener"':'download')+'><i>'+attLabel[kind]+'</i><span>'+esc(x.n)+'</span><em>'+(kind==="pdf"?"فتح":"تحميل")+'</em></a>':'<span class="ann-att-chip k-'+kind+'"><i>'+attLabel[kind]+'</i><span>'+esc(x.n)+'</span></span>');
  });
- return '<div class="ann-atts">'+(imgs.length?'<div class="ann-att-imgs">'+imgs.join("")+'</div>':"")+chips.join("")+'</div>';
+ return '<div class="ann-atts">'+(imgs.length?'<div class="ann-att-imgs'+(imgs.length===1?' one':'')+'">'+imgs.join("")+'</div>':"")+chips.join("")+'</div>';
 }
 async function annUploadFile(key,file){
  const type=file.type&&file.type!=="application/octet-stream"?file.type:attMime(file.name);
@@ -4481,7 +4490,8 @@ function compPaint(){
  f.elements.category.value=audCategory(compAud());f.elements.audience.value=compAud();
  $$("#annSwatches .ann-swatch").forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.color||"")===comp.bg)));
  [["#annTitleSwatches",comp.tc],["#annTextSwatches",comp.xc]].forEach(([sel,v])=>$$(sel+" .ann-swatch").forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.color||"")===v))));
- const al=$("#annAttList");if(al)al.innerHTML=comp.keepAtt.map((x,i)=>'<div class="ann-att-row"><span class="ann-att-ico k-'+attKind(x)+'">'+attLabel[attKind(x)]+'</span><span class="ann-att-name">'+esc(x.n)+'</span><small>مرفق حالي</small><button type="button" data-keep-rm="'+i+'" aria-label="حذف المرفق">×</button></div>').join("")+comp.files.map((x,i)=>'<div class="ann-att-row"><span class="ann-att-ico k-'+attKind({n:x.name,t:x.type})+'">'+attLabel[attKind({n:x.name,t:x.type})]+'</span><span class="ann-att-name">'+esc(x.name)+'</span><small>'+Math.max(1,Math.round(x.size/1024))+' ك.ب</small><button type="button" data-att-rm="'+i+'" aria-label="إزالة المرفق">×</button></div>').join("");
+ Object.keys(ANN_PREV).forEach(k=>delete ANN_PREV[k]);comp.files.forEach((x,i)=>{if(attKind({n:x.name,t:x.type})==="img")ANN_PREV["preview:"+i]=attObj(x)});
+  const al=$("#annAttList");if(al)al.innerHTML=comp.keepAtt.map((x,i)=>'<div class="ann-att-row">'+(attKind(x)==="img"?'<img class="ann-att-th" src="'+esc(attUrl(x.k))+'" alt="">':'<span class="ann-att-ico k-'+attKind(x)+'">'+attLabel[attKind(x)]+'</span>')+'<span class="ann-att-name">'+esc(x.n)+'</span><small>مرفق حالي</small><button type="button" data-keep-rm="'+i+'" aria-label="حذف المرفق">×</button></div>').join("")+comp.files.map((x,i)=>'<div class="ann-att-row">'+(attKind({n:x.name,t:x.type})==="img"?'<img class="ann-att-th" src="'+esc(attObj(x))+'" alt="">':'<span class="ann-att-ico k-'+attKind({n:x.name,t:x.type})+'">'+attLabel[attKind({n:x.name,t:x.type})]+'</span>')+'<span class="ann-att-name">'+esc(x.name)+'</span><small>'+Math.max(1,Math.round(x.size/1024))+' ك.ب</small><button type="button" data-att-rm="'+i+'" aria-label="إزالة المرفق">×</button></div>').join("");
  const clr=$("#annImgClear");if(clr)clr.hidden=!comp.img;
  const pv=$("#annPreview");if(pv)pv.innerHTML=annCard(normAnn({id:"preview",title:(f.elements.title.value||"").trim()||"عنوان الإعلان",body:f.elements.body.value||"نص الإعلان يظهر هنا.",category:audCategory(compAud()),audience:compAud(),bg:comp.bg,bgImage:comp.img,tc:comp.tc,xc:comp.xc,att:comp.keepAtt.concat(comp.files.map((x,i)=>({n:x.name,t:x.type||attMime(x.name),k:"preview:"+i}))),date:f.elements.date.value||new Date().toISOString().slice(0,10),pinned:f.elements.pinned.checked,cm:comp.cm,nc:comp.nc,nr:comp.nr,poll:comp.editId?comp.keepPoll:compPoll(true)},0));
 }
@@ -5541,6 +5551,44 @@ div.cm-bar{cursor:default}.cm-bar.off{opacity:.75}
 .ann-pollrow button{width:40px;border-radius:10px;border:1px solid var(--bd,#cfd6dd);background:transparent;color:inherit;font-size:1.1rem;cursor:pointer}
 .ann-pollbtn{margin:2px 0 8px;padding:9px 14px;border-radius:10px;border:1px dashed var(--bd,#cfd6dd);background:transparent;color:inherit;font:inherit;cursor:pointer}
 </style>
+<style id="ann-extra-v2">
+/* ===== بطاقة التصويت / الاستفتاء ===== */
+.ann-poll{position:relative;margin:16px 0 6px;padding:16px 14px 12px;border-radius:22px;background:linear-gradient(160deg,color-mix(in srgb,currentColor 9%,transparent),color-mix(in srgb,currentColor 4%,transparent));border:1px solid color-mix(in srgb,currentColor 14%,transparent);box-shadow:0 8px 24px -14px color-mix(in srgb,currentColor 55%,transparent);overflow:hidden}
+.ann-poll::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(to left,#1f8a6f,#c9a24a);opacity:.85}
+.pv-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.pv-ico{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,currentColor 12%,transparent)}
+.pv-kind{font-size:.74rem;font-weight:800;letter-spacing:.2px;opacity:.75}
+.pv-lock{margin-inline-start:auto;font-size:.7rem;font-weight:800;padding:3px 10px;border-radius:99px;background:color-mix(in srgb,currentColor 14%,transparent)}
+.pv-q{font-size:1.06rem;font-weight:800;line-height:1.6;margin:0 2px 12px}
+.pv-opts{display:grid;gap:8px}
+.ann-poll .pv-opt{position:relative;display:flex;align-items:center;gap:11px;width:100%;min-height:50px;margin:0;padding:10px 13px;border-radius:15px;border:1.5px solid color-mix(in srgb,currentColor 16%,transparent);background:color-mix(in srgb,currentColor 4%,transparent);color:inherit;font:inherit;font-weight:600;text-align:start;cursor:pointer;overflow:hidden;transition:transform .15s ease,border-color .2s ease,background .2s ease}
+.ann-poll .pv-opt:not(:disabled):active{transform:scale(.985)}
+.ann-poll .pv-opt:not(:disabled):hover{border-color:color-mix(in srgb,currentColor 38%,transparent)}
+.ann-poll .pv-opt:disabled{cursor:default}
+.ann-poll .pv-opt.on{border-color:color-mix(in srgb,currentColor 70%,transparent);background:color-mix(in srgb,currentColor 9%,transparent);font-weight:800}
+.ann-poll .pv-bar{position:absolute;inset:0 0 0 auto;background:linear-gradient(to left,color-mix(in srgb,currentColor 22%,transparent),color-mix(in srgb,currentColor 9%,transparent));border-radius:inherit;transition:width .6s cubic-bezier(.2,.8,.3,1);pointer-events:none}
+.ann-poll .pv-opt.lead .pv-bar{background:linear-gradient(to left,color-mix(in srgb,#1f8a6f 55%,transparent),color-mix(in srgb,#1f8a6f 22%,transparent))}
+.pv-mark{position:relative;flex:none;width:22px;height:22px;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 45%,transparent);transition:border-color .2s}
+.pv-mark.sq{border-radius:7px}
+.pv-mark::after{content:"";position:absolute;inset:3px;border-radius:inherit;background:currentColor;transform:scale(0);transition:transform .2s cubic-bezier(.3,1.5,.5,1)}
+.pv-opt.on .pv-mark{border-color:currentColor}.pv-opt.on .pv-mark::after{transform:scale(1)}
+.ann-poll .pv-t{position:relative;flex:1;line-height:1.5;word-break:break-word}
+.ann-poll .pv-pc{position:relative;flex:none;font-weight:800;font-size:.86rem;font-variant-numeric:tabular-nums;padding:3px 9px;border-radius:99px;background:color-mix(in srgb,currentColor 12%,transparent)}
+.ann-poll .pv-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;font-size:.78rem;opacity:1}
+.pv-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.pv-meta b{font-weight:800;opacity:.85}
+.pv-meta i{font-style:normal;font-weight:700;padding:2px 9px;border-radius:99px;background:color-mix(in srgb,currentColor 10%,transparent);opacity:.8}
+.ann-poll .pv-undo{border:1px solid color-mix(in srgb,currentColor 28%,transparent);border-radius:99px;padding:5px 13px;background:transparent;color:inherit;font:inherit;font-size:.76rem;font-weight:800;text-decoration:none;cursor:pointer}
+@media(prefers-reduced-motion:reduce){.ann-poll .pv-bar,.pv-mark::after,.ann-poll .pv-opt{transition:none}}
+/* ===== صور المرفقات ===== */
+.ann-att-imgs.one{grid-template-columns:1fr}.ann-att-imgs.one .ann-att-img img{max-height:420px}
+.ann-att-img{cursor:zoom-in}
+.ann-att-th{width:44px;height:44px;border-radius:10px;object-fit:cover;flex:none;border:1px solid rgba(128,140,150,.3)}
+.ann-lb{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:14px;background:rgba(8,12,16,.9);cursor:zoom-out;animation:annLb .18s ease}
+.ann-lb img{max-width:100%;max-height:92vh;border-radius:12px;object-fit:contain;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.ann-lb-x{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);inset-inline-end:14px;width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:26px;line-height:1;cursor:pointer}
+@keyframes annLb{from{opacity:0}to{opacity:1}}
+</style>
+
 <style id="ann-card-v5-restore">
 /* ===== بطاقة الإعلان بتصميم v5 (التصنيف/اللون/صورة الخلفية تعمل كما هي) ===== */
 .ann-list{gap:12px}
