@@ -9287,6 +9287,34 @@ html.lite-motion #page-home.active .home-cards .hc,html.lite-motion #page-home.a
 @media(max-width:560px){.lt-vi{flex-direction:column;align-items:stretch;gap:0}.lt-vi .lt-dia{display:none}.lt-vi input{text-align:start}.lt-vr{align-items:flex-start;padding-bottom:6px;border-bottom:1px dashed color-mix(in srgb,var(--gold) 30%,transparent)}.lt-vr em,.lt-vr .lt-rm{margin-top:14px}}
 /* محرر النصوص: يتبع حجم الشاشة المرئي حتى لا تغطي لوحة المفاتيح زر الحفظ */
 .lw-ov.vv{align-items:stretch}.lw-ov.vv .lt-full{height:100%;max-height:none;border-radius:20px 20px 0 0}
+/* إصلاح الكتابة على الهاتف: شريط الأدوات صف واحد قابل للتمرير بدل أن يلتهم الشاشة، ومنطقة الكتابة تبقى ظاهرة فوق لوحة المفاتيح */
+.lt-full>.lt-ttl,.lt-full>.lt-tools,.lt-full>.lt-tbl,.lt-full>.lw-bar{flex:none}
+.lt-full .lt-scroll{flex:1 1 0;min-height:110px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.lt-full .lt-tools{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.lt-full .lt-tools::-webkit-scrollbar{display:none}
+.lt-full .lt-tools>*{flex:none}
+.lw-ov.kb .lt-full{padding-top:6px;padding-bottom:6px}
+.lw-ov.kb .lt-ttl{font-size:16px;line-height:1.4;padding:2px 4px}
+.lw-ov.kb .lw-bar{margin-top:6px}
+.lw-ov.kb .lt-scroll{margin-top:6px}
+/* ===== بطاقات مدمجة وأنيقة: صف علوي واحد (النوع + الكاتب + الإعجاب) ثم العنوان ثم المعاينة ===== */
+.lt-list{gap:8px}
+.lt-c{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;column-gap:8px;row-gap:0;padding:9px 13px;border-radius:16px;box-shadow:0 0 0 1px var(--line),0 3px 10px rgba(20,50,60,.04)}
+.lt-c .lt-top{grid-column:1;grid-row:1;margin:0;gap:6px;min-width:0}
+.lt-c .lt-ic{width:24px;height:24px;border-radius:8px}.lt-c .lt-ic svg{width:14px;height:14px}
+.lt-c .lt-tag{font-size:11.5px}.lt-c .lt-n{font-size:10.5px}
+.lt-c .lt-ft{display:contents}
+.lt-c .lt-au{grid-column:2;grid-row:1;gap:5px;font-size:11px;max-width:92px;white-space:nowrap}
+.lt-c .lt-au b{width:20px;height:20px;font-size:10px;flex:none}
+.lt-c .lt-h{grid-column:3;grid-row:1;min-height:26px;padding:0 8px;gap:4px;font-size:11.5px}.lt-c .lt-h svg{width:14px;height:14px}
+.lt-c h4,.lt-c .lt-ex,.lt-c .lt-ex1{grid-column:1/-1;min-width:0}
+.lt-c h4{grid-row:2;font-size:15px;margin:5px 0 0;line-height:1.5}
+.lt-poem h4{font-size:16px}
+.lt-c .lt-ex{grid-row:3;margin:1px 0 0;font-size:12.8px;line-height:1.6;-webkit-line-clamp:2}
+.lt-c .lt-ex1{grid-row:3;margin:0;font-size:14.5px;line-height:1.6}
+.lt-c.lt-poem,.lt-poem .lt-c{padding:9px 13px;box-shadow:0 0 0 1px color-mix(in srgb,var(--c) 38%,transparent),inset 0 0 0 3px var(--surface),inset 0 0 0 4px color-mix(in srgb,var(--c) 30%,transparent)}
+.lt-c.lt-novel{padding-inline-start:26px}.lt-novel::before{width:11px}
+.lt-khat .lt-ex{font-size:13px}
 @media(prefers-reduced-motion:reduce){.lt-c{transition:none}}
 </style>
 <script id="lw-js">
@@ -9382,7 +9410,8 @@ function richEd(item,isNew){var T=TY[item.type]||TY.other;
  P.addEventListener("pointerdown",function(){P._re=document.activeElement===P&&!kb;kb=true;P.setAttribute("inputmode","text")});
  P.addEventListener("click",function(){if(!P._re)return;P._re=false;var r=rg;P._rf=1;P.blur();P.focus();P._rf=0;if(r){var s=getSelection();s.removeAllRanges();s.addRange(r)}});
  P.addEventListener("blur",function(){if(P._rf)return;kb=false;P.setAttribute("inputmode","none")});
- var vv=window.visualViewport;function vfit(){if(!o.isConnected){if(vv)vv.removeEventListener("resize",vfit);return}if(vv){o.classList.add("vv");o.style.inset=vv.offsetTop+"px 0 auto 0";o.style.height=vv.height+"px"}}if(vv){vv.addEventListener("resize",vfit);vv.addEventListener("scroll",vfit);vfit()}
+ function cv(){var q=getSelection();if(!q.rangeCount||!P.contains(q.anchorNode))return;var r=q.getRangeAt(0).cloneRange(),n=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement,rc=(r.getClientRects()[0])||n.getBoundingClientRect(),w=P.parentElement,b=w.getBoundingClientRect();if(rc.bottom>b.bottom-10)w.scrollTop+=rc.bottom-b.bottom+36;else if(rc.top<b.top+6)w.scrollTop-=b.top-rc.top+36}P.addEventListener("input",function(){setTimeout(cv,0)});P.addEventListener("focus",function(){setTimeout(cv,300)});
+ var vv=window.visualViewport;function vfit(){if(!o.isConnected){if(vv)vv.removeEventListener("resize",vfit);return}if(vv){o.classList.add("vv");o.style.inset=vv.offsetTop+"px 0 auto 0";o.style.height=vv.height+"px";o.classList.toggle("kb",vv.height<window.screen.height*0.75);setTimeout(cv,60)}}if(vv){vv.addEventListener("resize",vfit);vv.addEventListener("scroll",vfit);vfit()}
 
  function sc(){var s=getSelection();if(s.rangeCount&&P.contains(s.anchorNode))rg=s.getRangeAt(0).cloneRange()}document.addEventListener("selectionchange",sc);
  function close(){document.removeEventListener("selectionchange",sc);o.remove()}
