@@ -4376,7 +4376,7 @@ function annCard(a){
   +'<div class="ann-top"><span class="ann-cat t'+toneOf(a.category)+'">'+esc(audLabel(a.aud,a.category))+'</span>'
   +(a.pinned?'<span class="ann-pin"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 3l5 5-2 1-3.2 3.2.7 4.3-1.4 1.4-3.6-3.6L6 20l-1-1 4.7-5.5L6.1 9.9l1.4-1.4 4.3.7L15 6z"/></svg>مثبّت</span>':'')+(isNew?'<span class="ann-new">جديد</span>':'')
   +(a.date?'<time datetime="'+esc(a.date)+'">'+esc(fmtDate(a.date))+'</time>':'')+'</div>'
-  +'<h4'+(a.tc?' style="color:'+a.tc+' !important"':'')+'>'+esc(a.title)+'</h4>'+(a.body?'<p'+(a.xc?' style="color:'+a.xc+' !important"':'')+'>'+esc(a.body)+'</p>':'')
+  +'<h4'+(a.tc&&custom?' style="color:'+a.tc+' !important"':'')+'>'+esc(a.title)+'</h4>'+(a.body?'<p'+(a.xc&&custom?' style="color:'+a.xc+' !important"':'')+'>'+esc(a.body)+'</p>':'')
   +(a.link?'<a class="ann-link" href="'+esc(a.link)+'" target="_blank" rel="noopener">'+esc(a.linkText)+'</a>':'')+annAttsHtml(a)+annPollHtml(a)+annRxHtml(a)+annCmHtml(a)+'</article>';
 }
 const audRank=a=>a==="all"?0:a==="A"?1:a==="B"?2:/^c/.test(a)?3:4;
@@ -8667,9 +8667,18 @@ html:root body .ann-rx .fav-btn{width:auto!important;min-width:46px!important;he
 @media(prefers-reduced-motion:reduce){.fav-btn .fav-n.bump{animation:none}}
 
 /* ===== تصميم الإعلان المثبّت + إدارة الملفات ===== */
-.ann-card.pinned{border-color:transparent;padding-inline-start:23px;overflow:hidden;
- background:linear-gradient(135deg,#fff6dd 0%,#fffdf6 55%,#fff 100%);
+html[data-theme=dark] .ann-card.pinned:not(.has-bg) h4{color:#fff6dd}
+html[data-theme=dark] .ann-card.pinned:not(.has-bg) p,html[data-theme=dark] .ann-card.pinned:not(.has-bg) time{color:#d9cfb4}
+/* المرفقات داخل أي بطاقة: نص واضح في الوضعين */
+.ann-card:not(.has-bg) .ann-att-chip{color:#14202a;background:rgba(255,255,255,.75);border-color:rgba(128,140,150,.35)}
+html[data-theme=dark] .ann-card:not(.has-bg) .ann-att-chip{color:#eef2f4;background:rgba(255,255,255,.07)}
+.ann-card.has-bg .ann-att-chip{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.3)}
+.ann-card.has-bg .ann-att-chip span{color:inherit}
+.ann-card.pinned{border-color:transparent;padding-inline-start:23px;overflow:hidden}
+.ann-card.pinned:not(.has-bg){background:linear-gradient(135deg,#fff6dd 0%,#fffdf6 55%,#fff 100%);color:#14202a;
  box-shadow:0 0 0 1.5px #e7b95a,0 14px 30px -14px rgba(193,140,66,.55)}
+.ann-card.pinned:not(.has-bg) h4{color:#14202a}
+.ann-card.pinned:not(.has-bg) p,.ann-card.pinned:not(.has-bg) time{color:#3d4a55}
 .ann-card.pinned::before{content:"";position:absolute;inset-block:0;inset-inline-start:0;width:7px;background:linear-gradient(180deg,#f7d278,#c18c42)}
 .ann-card.pinned::after{content:"";position:absolute;inset-block-start:-46px;inset-inline-end:-46px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(233,178,79,.32),transparent 70%);pointer-events:none}
 .ann-card.pinned>*{position:relative;z-index:1}
@@ -8679,7 +8688,7 @@ html:root body .ann-rx .fav-btn{width:auto!important;min-width:46px!important;he
 .ann-card.has-bg.pinned{box-shadow:0 0 0 2px #f0c35f,0 16px 32px -14px rgba(0,0,0,.6)}
 .ann-card.has-bg.pinned::after{display:none}
 .ann-card.has-bg .ann-pin{color:#5c3d0c}
-html[data-theme=dark] .ann-card.pinned{background:linear-gradient(135deg,#2f2713 0%,#211c10 60%,#1b1a16 100%);box-shadow:0 0 0 1.5px #8a6a2c,0 14px 30px -14px rgba(0,0,0,.7)}
+html[data-theme=dark] .ann-card.pinned:not(.has-bg){background:linear-gradient(135deg,#2f2713 0%,#211c10 60%,#1b1a16 100%);color:#f3ead3;box-shadow:0 0 0 1.5px #8a6a2c,0 14px 30px -14px rgba(0,0,0,.7)}
 html[data-theme=dark] .ann-card.has-bg.pinned{box-shadow:0 0 0 2px #d9a84a,0 16px 32px -14px rgba(0,0,0,.7)}
 html[data-theme=dark] .ann-pin,html[data-theme=dark] .ann-card.has-bg .ann-pin{color:#3b2706}
 .ann-manage-row{flex-wrap:wrap}
